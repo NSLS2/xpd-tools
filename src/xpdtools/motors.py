@@ -82,7 +82,7 @@ class RotationMotor(AsyncEpicsMotor):
     methods that are specific to rotation scans.
     """
 
-    def __init__(self, prefix: str, encoder_pos_at_zero: int = 0, name: str = ""):
+    def __init__(self, prefix: str, name: str = ""):
         super().__init__(prefix, name=name)
         self.encoder_counts_per_rev = derived_signal_r(
             self.get_encoder_counts_per_rev,
@@ -90,7 +90,6 @@ class RotationMotor(AsyncEpicsMotor):
             derived_precision=0,
             encoder_resolution=self.encoder_resolution,
         )
-        self.encoder_pos_at_zero = encoder_pos_at_zero
 
     def get_encoder_counts_per_rev(self, encoder_resolution: float) -> int:
         """Calculate the number of encoder counts per revolution.
@@ -107,22 +106,22 @@ class RotationMotor(AsyncEpicsMotor):
         """
         return int(360.0 * encoder_resolution)
 
-    async def get_encoder_value_from_angle(self, angle: float) -> int:
-        """Calculate the encoder value from an angle.
+    # async def get_encoder_value_from_angle(self, angle: float) -> int:
+    #     """Calculate the encoder value from an angle.
 
-        Parameters
-        ----------
-        angle : float
-            The angle in degrees.
+    #     Parameters
+    #     ----------
+    #     angle : float
+    #         The angle in degrees.
 
-        Returns
-        -------
-        int
-            The encoder value corresponding to the given angle.
-        """
-        encoder_resolution = await self.encoder_resolution.get_value()
-        return get_encoder_value_from_pos(
-            current_position=angle,
-            encoder_resolution=encoder_resolution,
-            encoder_pos_at_zero=self.encoder_pos_at_zero,
-        )
+    #     Returns
+    #     -------
+    #     int
+    #         The encoder value corresponding to the given angle.
+    #     """
+    #     encoder_resolution = await self.encoder_resolution.get_value()
+    #     return get_encoder_value_from_pos(
+    #         current_position=angle,
+    #         encoder_resolution=encoder_resolution,
+    #         encoder_pos_at_zero=self.encoder_pos_at_zero,
+    #     )

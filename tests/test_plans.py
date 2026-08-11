@@ -6,11 +6,14 @@ from pathlib import Path
 import pytest
 from bluesky.run_engine import RunEngine
 from ophyd_async.core import (
+    Device,
+    DeviceVector,
     StaticPathProvider,
     UUIDFilenameProvider,
     callback_on_mock_put,
     init_devices,
     set_mock_value,
+    soft_signal_r_and_setter,
 )
 from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
     _get_mock_signal_backend,
@@ -82,9 +85,16 @@ async def devices(tmp_path: Path):
     path_provider = StaticPathProvider(
         UUIDFilenameProvider(), tmp_path, create_dir_depth=-2
     )
+
+    class CalcBlock(Device):
+        def __init__(self):
+            self.out, _ = soft_signal_r_and_setter(int)
+            super().__init__(name="calc1")
+
     async with init_devices(mock=True):
         panda = HDFPanda("PANDA:", path_provider)
-        motor = RotationMotor("MOT:", encoder_pos_at_zero=0, name="rot_motor")
+        panda.calc = DeviceVector({1: CalcBlock()})
+        motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
             "DET1:",
             ADWriterFactory.hdf(path_provider),

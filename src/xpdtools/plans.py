@@ -10,6 +10,7 @@ from ophyd_async.epics.adcore import ADBaseIO, AreaDetector
 from ophyd_async.fastcs.panda import HDFPanda as PandABox
 
 from xpdtools.detectors.utils import get_detector_acq_times
+from xpdtools.flyers import get_zero_encoder_position
 
 from .flyers import (
     SingleAxisFlyscanController,
@@ -60,6 +61,15 @@ def single_axis_flyscan(
 
     # Get the start position in encoder counts
     encoder_res = yield from bps.rd(motor.encoder_resolution)
+    current_motor_pos = yield from bps.rd(motor.user_readback)
+    current_panda_encoder_value = yield from bps.rd(panda.calc[1].out)  # type: ignore
+    panda_encoder_val_at_start = get_zero_encoder_position(
+        current_position=current_motor_pos,
+        start_position=start,
+        encoder_resolution=encoder_res,
+        current_encoder_value=current_panda_encoder_value,
+    )
+
     max_velocity = yield from bps.rd(motor.max_velocity)
 
     acquisition_periods = yield from get_detector_acq_times(detectors)
@@ -82,7 +92,7 @@ def single_axis_flyscan(
         stop_position=stop,
         encoder_resolution=encoder_res,
         max_motor_velocity=max_velocity,
-        encoder_pos_at_zero=motor.encoder_pos_at_zero,
+        encoder_pos_at_zero=panda_encoder_val_at_start,
         acq_time_overhead=acq_time_overhead,
         time_based=time_based,
     )

@@ -125,6 +125,34 @@ def calculate_move_time_for_flyscan(
     return max(fastest_possible_move_time, total_acq_time)
 
 
+def get_zero_encoder_position(
+    current_position: float,
+    start_position: float,
+    encoder_resolution: float,
+    current_encoder_value: int,
+):
+    """Calculate the encoder position corresponding to 0 degrees.
+
+    Parameters
+    ----------
+    current_position : float
+        The current position of the motor.
+    start_position : float
+        The start position of the flyscan.
+    encoder_resolution : float
+        The resolution of the encoder in counts per degree.
+    current_encoder_value : int
+        The current encoder value.
+
+    Returns
+    -------
+    int
+        The encoder position corresponding to 0 degrees.
+    """
+    dist_to_start_in_cts = (current_position - start_position) / encoder_resolution
+    return int(current_encoder_value - dist_to_start_in_cts)
+
+
 def construct_fly_info_models(
     num_pulses: int,
     max_exposure_time: float,
