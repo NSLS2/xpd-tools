@@ -6,6 +6,7 @@ from xpdtools.flyers import (
     SingleAxisFlyscanInfo,
     calculate_move_time_for_flyscan,
     construct_fly_info_models,
+    get_zero_encoder_position,
 )
 
 
@@ -188,3 +189,31 @@ def test_construct_fly_info_models_raises(
             max_motor_velocity,
             encoder_pos_at_zero,
         )
+
+
+@pytest.mark.parametrize(
+    "current_position, start_position, encoder_resolution, current_encoder_value,"
+    "expected_zero_encoder_position",
+    [
+        (10.0, 0.0, 0.1, 100, 0),
+        (5.0, 2.0, 0.2, 50, 35),
+        (20.0, 10.0, 0.5, 200, 180),
+        (15.0, 5.0, 0.1, 150, 50),
+        (8.0, 4.0, 0.2, 80, 60),
+        (183, 0.0, 0.0009, 198353, -4980),
+    ],
+)
+def test_get_zero_encoder_position(
+    current_position: float,
+    start_position: float,
+    encoder_resolution: float,
+    current_encoder_value: int,
+    expected_zero_encoder_position: int,
+):
+    zero_encoder_position = get_zero_encoder_position(
+        current_position=current_position,
+        start_position=start_position,
+        encoder_resolution=encoder_resolution,
+        current_encoder_value=current_encoder_value,
+    )
+    assert zero_encoder_position == expected_zero_encoder_position
