@@ -43,6 +43,7 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     position_scale: float = 1.0
     position_offset: float = 0.0
 
+
 class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
     """Controller for a single axis flyscan."""
 

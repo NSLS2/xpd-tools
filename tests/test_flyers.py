@@ -61,6 +61,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=1,
                 pulse_step=100,
                 time_based=False,
+                position_scale=0.1,
+                position_offset=0.0,
             ),
             FlyMotorInfo(start_position=0.0, end_position=100.0, time_for_move=2.0),
         ),
@@ -80,6 +82,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=1,
                 pulse_step=225,
                 time_based=False,
+                position_scale=0.1,
+                position_offset=0.0,
             ),
             FlyMotorInfo(start_position=90.0, end_position=0.0, time_for_move=3.0),
         ),
@@ -99,6 +103,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=0.101,
                 pulse_step=0.2,
                 time_based=True,
+                position_scale=10.0,
+                position_offset=0.0,
             ),
             FlyMotorInfo(start_position=0.0, end_position=50.0, time_for_move=2.0),
         ),
@@ -118,6 +124,8 @@ def test_calculate_move_time_for_flyscan(
                 pulse_width=0.051,
                 pulse_step=0.051,
                 time_based=True,
+                position_scale=360 / 70000,
+                position_offset=-39240 * (360 / 70000),
             ),
             FlyMotorInfo(start_position=0.0, end_position=180.0, time_for_move=91.851),
         ),
@@ -151,6 +159,12 @@ def test_construct_fly_info_models(
     assert flyer_info.pulse_width == pytest.approx(expected_flyer_info.pulse_width)
     assert flyer_info.pulse_step == pytest.approx(expected_flyer_info.pulse_step)
     assert flyer_info.time_based == expected_flyer_info.time_based
+    assert flyer_info.position_scale == pytest.approx(
+        expected_flyer_info.position_scale
+    )
+    assert flyer_info.position_offset == pytest.approx(
+        expected_flyer_info.position_offset
+    )
     assert motor_info.start_position == pytest.approx(
         expected_motor_info.start_position
     )

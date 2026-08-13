@@ -14,6 +14,7 @@ from ophyd_async.core import (
     init_devices,
     set_mock_value,
     soft_signal_r_and_setter,
+    soft_signal_rw,
 )
 from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
     _get_mock_signal_backend,
@@ -89,6 +90,10 @@ async def devices(tmp_path: Path):
     class CalcBlock(Device):
         def __init__(self):
             self.out, _ = soft_signal_r_and_setter(int)
+            self.dataset = soft_signal_rw(str)
+            self.units = soft_signal_rw(str)
+            self.scale = soft_signal_rw(float)
+            self.offset = soft_signal_rw(float)
             super().__init__(name="calc1")
 
     async with init_devices(mock=True):
@@ -120,6 +125,7 @@ async def devices(tmp_path: Path):
 def test_single_axis_flyscan(RE: RunEngine, devices, time_based: bool):
     """Test that single_axis_flyscan runs to completion and emits correct documents."""
     pilatus1, panda, motor = devices
+    print(list(panda.children()))
 
     docs: dict[str, list] = {}
 
@@ -154,6 +160,11 @@ def test_single_axis_flyscan(RE: RunEngine, devices, time_based: bool):
     stop_doc = docs["stop"][0]
     assert stop_doc["exit_status"] == "success"
     assert stop_doc["run_start"] == start_doc["uid"]
+
+    # --- Verify PandA position calc scale/offset ---
+    # encoder_resolution=0.1, encoder_pos_at_zero resolves to 0 -> offset 0.0
+    assert asyncio.run(panda.calc[1].scale.get_value()) == pytest.approx(0.1)
+    assert asyncio.run(panda.calc[1].offset.get_value()) == pytest.approx(0.0)
 
     # --- Verify descriptor ---
     assert "descriptor" in docs
