@@ -10,6 +10,7 @@ from ophyd_async.core import (
     set_mock_put_proceeds,
     set_mock_value,
 )
+from ophyd_async.epics.core import epics_signal_r
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 
 
@@ -90,6 +91,7 @@ class RotationMotor(AsyncEpicsMotor):
             derived_precision=0,
             encoder_resolution=self.encoder_resolution,
         )
+        self.encoder_counts = epics_signal_r(int, prefix + ".REP")
 
     def get_encoder_counts_per_rev(self, encoder_resolution: float) -> int:
         """Calculate the number of encoder counts per revolution.
