@@ -38,6 +38,10 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     pulse_width: float | int
     pulse_step: float | int
     time_based: bool
+    position_dataset_name: str = "Angle"
+    position_dataset_units: str = "deg"
+    position_scale: float = 1.0
+    position_offset: float = 0.0
 
 
 class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
@@ -49,9 +53,14 @@ class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
     async def prepare(self, value: SingleAxisFlyscanInfo):
         pcomp = self.panda.pcomp[1]
         pulse = self.panda.pulse[1]
+        calc = self.panda.calc[1]  # type: ignore
         coros = [
             pcomp.dir.set(value.direction),
             pcomp.start.set(value.start),
+            calc.dataset.set(value.position_dataset_name),
+            calc.units.set(value.position_dataset_units),
+            calc.scale.set(value.position_scale),
+            calc.offset.set(value.position_offset),
         ]
         if not value.time_based:
             coros.extend(
@@ -163,6 +172,8 @@ def construct_fly_info_models(
     encoder_pos_at_zero: int = 0,
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
+    position_dataset_name: str = "Angle",
+    position_dataset_units: str = "deg",
 ) -> tuple[SingleAxisFlyscanInfo, FlyMotorInfo]:
     """Construct the fly info models for a single axis flyscan.
 
@@ -216,6 +227,10 @@ def construct_fly_info_models(
         pulse_width=pulse_width,
         pulse_step=pulse_step,
         time_based=time_based,
+        position_dataset_name=position_dataset_name,
+        position_dataset_units=position_dataset_units,
+        position_scale=encoder_resolution,
+        position_offset=(-1 * encoder_pos_at_zero * encoder_resolution),
     )
 
     motor_info = FlyMotorInfo(
