@@ -9,8 +9,8 @@ from ophyd_async.core import (
 from ophyd_async.epics.adcore import AreaDetector
 from ophyd_async.fastcs.panda import HDFPanda
 
-from xpdtools.detectors.utils import get_detector_acq_times
-from xpdtools.flyers import get_zero_encoder_position
+from xpd_tools.detectors.utils import get_detector_acq_times
+from xpd_tools.flyers import get_zero_encoder_position
 
 from .flyers import (
     SingleAxisFlyscanController,

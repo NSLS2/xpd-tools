@@ -21,13 +21,13 @@ def print_version_info():
     from ophyd_async import __version__ as ophyd_async_version
     from tiled import __version__ as tiled_version
 
-    from xpdtools import __version__ as xpdtools_version
+    from xpd_tools import __version__ as xpd_tools_version
 
     rprint("\n[bold]Version Information[/bold]")
     rprint(f"  [bold]bluesky[/bold]: [blue]{bluesky_version}[/blue]")
     rprint(f"  [bold]ophyd_async[/bold]: [blue]{ophyd_async_version}[/blue]")
     rprint(f"  [bold]tiled[/bold]: [blue]{tiled_version}[/blue]")
-    rprint(f"  [bold]xpdtools[/bold]: [blue]{xpdtools_version}[/blue]\n")
+    rprint(f"  [bold]xpd-tools[/bold]: [blue]{xpd_tools_version}[/blue]\n")
 
 
 def show_docs(name: str, doc: dict[str, Any]):

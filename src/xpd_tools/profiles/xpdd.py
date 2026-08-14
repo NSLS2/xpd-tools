@@ -20,14 +20,14 @@ from ophyd_async.fastcs.panda import HDFPanda
 from ophyd_async.plan_stubs import store_settings
 from tiled.client import from_uri
 
-from xpdtools.detectors.panda import PandAConfiguration, switch_panda_configuration
-from xpdtools.detectors.pilatus4 import Pilatus4Detector
-from xpdtools.motors import RotationMotor
-from xpdtools.plans import single_axis_flyscan
-from xpdtools.utils import ProposalIDPrompt, initialize_run_engine
+from xpd_tools.detectors.panda import PandAConfiguration, switch_panda_configuration
+from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+from xpd_tools.motors import RotationMotor
+from xpd_tools.plans import single_axis_flyscan
+from xpd_tools.utils import ProposalIDPrompt, initialize_run_engine
 
-XPDTOOLS_RUNNING_IN_CI = (
-    os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true"
+XPD_TOOLS_RUNNING_IN_CI = (
+    os.environ.get("XPD_TOOLS_RUNNING_IN_CI", "false").lower() == "true"
 )
 
 os.environ["REDIS_HOST"] = "xf28id2-xpdd-redis1.nsls2.bnl.gov"
@@ -45,22 +45,17 @@ RE.md["beamline_id"] = "28-ID-2"
 RE.waiting_hook = ProgressBarManager()  # type: ignore[assignment]
 
 
-if not XPDTOOLS_RUNNING_IN_CI:
+if not XPD_TOOLS_RUNNING_IN_CI:
     tiled_writing_client = from_uri(
         "https://tiled.nsls2.bnl.gov",
         api_key=os.environ.get("TILED_BLUESKY_WRITING_API_KEY_XPDD", ""),
     )["xpdd"]["migration"]
 else:
-    from tiled.server.simple import SimpleTiledServer
+    from tiled.client import simple
 
-    tiled_server = SimpleTiledServer(
-        directory="/tmp/xpdtools",
-        readable_storage="/tmp/tiled_server",
-        api_key="xpdtools",
+    tiled_reading_client = tiled_writing_client = c = simple(
+        "/tmp/xpd_tools", api_key="xpd_tools", readable_storage="/tmp/xpd_tools"
     )
-    tiled_writing_client = from_uri(tiled_server.uri)
-    tiled_reading_client = c = from_uri(tiled_server.uri)
-
 
 # Setup writing to the database
 tw = TiledWriter(tiled_writing_client)
@@ -74,7 +69,7 @@ ipython = get_ipython()
 if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
     ipython.prompts = ProposalIDPrompt(RE, ipython)
     ipython.run_line_magic("autoawait", "call_in_bluesky_event_loop")
-    if not XPDTOOLS_RUNNING_IN_CI:
+    if not XPD_TOOLS_RUNNING_IN_CI:
         tiled_reading_client = c = from_uri("https://tiled.nsls2.bnl.gov")["xpdd"][
             "migration"
         ]
@@ -82,7 +77,7 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
 
 path_provider = NSLS2PathProvider(RE.md, beamline_tla="xpd", beamline_tla_suffix="-new")
 
-with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
+with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
     panda1 = HDFPanda("XF:28ID2-ES{PANDA:1}:", path_provider)
     rot_motor = RotationMotor("XF:28IDD-ES:2{Twister}Mtr")
     step_motor = AsyncEpicsMotor("XF:28IDD-ES:2{Twister}Mtr", name="amazon_motor")

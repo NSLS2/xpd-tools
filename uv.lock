@@ -4677,7 +4677,7 @@ wheels = [
 ]
 
 [[package]]
-name = "xpdtools"
+name = "xpd-tools"
 source = { editable = "." }
 dependencies = [
     { name = "bluesky" },

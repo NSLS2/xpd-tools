@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xpdtools"
+name = "xpd-tools"
 authors = [
   { name = "Brookhaven National Laboratory", email = "jwlodek@bnl.gov" },
 ]
@@ -93,10 +93,10 @@ profiles = [
 ]
 
 [tool.setuptools.package-data]
-"xpdtools.panda_configurations" = ["*.yaml"]
+"xpd_tools.panda_configurations" = ["*.yaml"]
 
 [tool.setuptools_scm]
-write_to = "src/xpdtools/_version.py"
+write_to = "src/xpd_tools/_version.py"
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -108,7 +108,7 @@ reportMissingImports = false  # Ignore missing stubs in imported modules
 addopts = """
     --tb=native -vv --strict-markers --doctest-modules
     --doctest-glob="*.rst" --doctest-glob="*.md"
-    --ignore=docs/examples --ignore=src/xpdtools/profiles
+    --ignore=docs/examples --ignore=src/xpd_tools/profiles
     """
 # https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
 filterwarnings = [
@@ -127,7 +127,7 @@ timeout = 60
 
 [tool.coverage.run]
 patch = ["subprocess"]
-data_file = "/tmp/xpdtools.coverage"
+data_file = "/tmp/xpd_tools.coverage"
 # branch = true
 
 [tool.coverage.paths]
@@ -166,7 +166,7 @@ convention = "numpy"
 # See https://github.com/DiamondLightSource/python-copier-template/issues/154
 # Remove this line to forbid private member access in tests
 "tests/**/*" = ["SLF001", "S101", "D"]
-"src/xpdtools/profiles/**" = ["F401"]
+"src/xpd_tools/profiles/**" = ["F401"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 # We often shorten "Annotated" to "A" for brevity
@@ -177,4 +177,4 @@ convention = "numpy"
 extend-ignore-names = ["RE"]
 
 [tool.importlinter]
-root_package = "xpdtools"
+root_package = "xpd_tools"
