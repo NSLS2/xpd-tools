@@ -49,4 +49,4 @@ jobs:
 
       - name: Verify installation
         run: |
-          python -m xpdtools --version
+          python -m xpd-tools --version
