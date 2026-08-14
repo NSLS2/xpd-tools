@@ -14,7 +14,7 @@ from xpdtools.motors import get_encoder_value_from_pos
     ],
 )
 def test_get_encoder_value_from_pos(
-    position, encoder_resolution, encoder_pos_at_zero, expected
+    position: float, encoder_resolution: float, encoder_pos_at_zero: int, expected: int
 ):
     actual = get_encoder_value_from_pos(
         position, encoder_resolution, encoder_pos_at_zero

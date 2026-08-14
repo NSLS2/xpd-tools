@@ -17,10 +17,10 @@ from ophyd_async.core import (
 from ophyd_async.epics.adcore import ADWriterFactory, NDStatsIO, PluginSignalDataLogic
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 from ophyd_async.fastcs.panda import HDFPanda
-from ophyd_async.plan_stubs import retrieve_settings, store_settings
+from ophyd_async.plan_stubs import store_settings
 from tiled.client import from_uri
 
-from xpdtools.detectors.panda import PackagedSettingsProvider
+from xpdtools.detectors.panda import switch_panda_configuration, PandAConfiguration
 from xpdtools.detectors.pilatus4 import Pilatus4Detector
 from xpdtools.motors import RotationMotor
 from xpdtools.plans import single_axis_flyscan
@@ -95,5 +95,3 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     pilatus1.add_detector_logics(
         PluginSignalDataLogic(pilatus1.driver, pilatus1.stats1.total)  # type: ignore
     )
-
-panda_settings = PackagedSettingsProvider()

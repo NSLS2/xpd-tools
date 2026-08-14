@@ -1,5 +1,9 @@
 """XPD beamline detector interfaces."""
 
+from .panda import (
+    PandAConfiguration,
+    switch_panda_configuration,
+)
 from .pilatus4 import (
     Pilatus4CompressionAlgo,
     Pilatus4DataSource,
@@ -12,6 +16,8 @@ from .pilatus4 import (
 )
 
 __all__ = [
+    "PandAConfiguration",
+    "switch_panda_configuration",
     "Pilatus4Detector",
     "Pilatus4CompressionAlgo",
     "Pilatus4DataSource",

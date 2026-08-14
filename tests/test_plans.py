@@ -81,24 +81,32 @@ def _setup_flyscan_coordination(panda, motor, pilatus, num_images: int):
     callback_on_mock_put(motor.user_setpoint, _on_motor_setpoint)
 
 
+class CalcBlock(Device):
+    def __init__(self):
+        self.out, _ = soft_signal_r_and_setter(int)
+        self.dataset = soft_signal_rw(str)
+        self.units = soft_signal_rw(str)
+        self.scale = soft_signal_rw(float)
+        self.offset = soft_signal_rw(float)
+        super().__init__(name="calc1")
+
+
+class HDFPandaWithCalc(HDFPanda):
+    def __init__(self, prefix: str, path_provider: StaticPathProvider):
+        super().__init__(prefix, path_provider)
+        self.calc = DeviceVector({1: CalcBlock()})
+
+
 @pytest.fixture
-async def devices(tmp_path: Path):
+async def devices(
+    tmp_path: Path,
+) -> tuple[Pilatus4Detector, HDFPandaWithCalc, RotationMotor]:
     path_provider = StaticPathProvider(
         UUIDFilenameProvider(), tmp_path, create_dir_depth=-2
     )
 
-    class CalcBlock(Device):
-        def __init__(self):
-            self.out, _ = soft_signal_r_and_setter(int)
-            self.dataset = soft_signal_rw(str)
-            self.units = soft_signal_rw(str)
-            self.scale = soft_signal_rw(float)
-            self.offset = soft_signal_rw(float)
-            super().__init__(name="calc1")
-
     async with init_devices(mock=True):
-        panda = HDFPanda("PANDA:", path_provider)
-        panda.calc = DeviceVector({1: CalcBlock()})
+        panda = HDFPandaWithCalc("PANDA:", path_provider)
         motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
             "DET1:",
@@ -122,7 +130,11 @@ async def devices(tmp_path: Path):
     "time_based",
     [True, False],
 )
-def test_single_axis_flyscan(RE: RunEngine, devices, time_based: bool):
+def test_single_axis_flyscan(
+    RE: RunEngine,
+    devices: tuple[Pilatus4Detector, HDFPandaWithCalc, RotationMotor],
+    time_based: bool,
+):
     """Test that single_axis_flyscan runs to completion and emits correct documents."""
     pilatus1, panda, motor = devices
     print(list(panda.children()))
