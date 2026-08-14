@@ -53,7 +53,9 @@ if not XPD_TOOLS_RUNNING_IN_CI:
 else:
     from tiled.client import simple
 
-    tiled_reading_client = tiled_writing_client = c = simple("/tmp/xpd_tools", api_key="xpd_tools", readable_storage="/tmp/xpd_tools")
+    tiled_reading_client = tiled_writing_client = c = simple(
+        "/tmp/xpd_tools", api_key="xpd_tools", readable_storage="/tmp/xpd_tools"
+    )
 
 # Setup writing to the database
 tw = TiledWriter(tiled_writing_client)
