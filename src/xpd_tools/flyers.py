@@ -88,11 +88,11 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
             )
         await asyncio.gather(*coros)
 
-    async def on_kickoff(self, ctx: None = None) -> None:
+    async def on_kickoff(self, ctx: None) -> None:
         await wait_for_value(self.panda.pcomp[1].active, True, timeout=1)
 
-    async def on_complete(self, ctx: None = None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=1)
+    async def on_complete(self, ctx: None) -> None:
+        await wait_for_value(self.panda.pcomp[1].active, False, timeout=None)
 
     async def on_stop(self):
         await wait_for_value(self.panda.pcomp[1].active, False, timeout=1)
