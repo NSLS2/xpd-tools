@@ -20,7 +20,7 @@ from ophyd_async.fastcs.panda import HDFPanda
 from ophyd_async.plan_stubs import store_settings
 from tiled.client import from_uri
 
-from xpdtools.detectors.panda import switch_panda_configuration, PandAConfiguration
+from xpdtools.detectors.panda import PandAConfiguration, switch_panda_configuration
 from xpdtools.detectors.pilatus4 import Pilatus4Detector
 from xpdtools.motors import RotationMotor
 from xpdtools.plans import single_axis_flyscan
