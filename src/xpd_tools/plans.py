@@ -3,7 +3,6 @@
 import bluesky.plan_stubs as bps
 from ophyd_async.core import (
     DetectorTrigger,
-    StandardFlyer,
     TriggerInfo,
 )
 from ophyd_async.epics.adcore import AreaDetector
@@ -13,7 +12,7 @@ from xpd_tools.detectors.utils import get_detector_acq_times
 from xpd_tools.flyers import get_zero_encoder_position
 
 from .flyers import (
-    SingleAxisFlyscanController,
+    SingleAxisFlyableLogic,
     construct_fly_info_models,
 )
 from .motors import RotationMotor
@@ -56,7 +55,7 @@ def single_axis_flyscan(
     all_detectors = [*detectors, panda]
 
     # Construct ephemeral flyer for the single axis flyscan
-    single_axis_panda_flyer = StandardFlyer(SingleAxisFlyscanController(panda))
+    single_axis_panda_flyer = SingleAxisFlyableLogic(panda).with_device()
     all_devices = [*all_detectors, single_axis_panda_flyer, motor]
 
     # Get the start position in encoder counts
