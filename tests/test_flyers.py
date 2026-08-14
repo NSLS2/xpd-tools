@@ -1,7 +1,7 @@
 import pytest
 from ophyd_async.core import FlyMotorInfo
 
-from xpdtools.flyers import (
+from xpd_tools.flyers import (
     PandaPcompDirection,
     SingleAxisFlyscanInfo,
     calculate_move_time_for_flyscan,

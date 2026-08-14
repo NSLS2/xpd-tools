@@ -1,4 +1,4 @@
-"""Utility functions for xpdtools detectors."""
+"""Utility functions for xpd_tools detectors."""
 
 from collections.abc import Generator
 from typing import Any

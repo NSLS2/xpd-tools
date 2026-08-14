@@ -11,7 +11,7 @@ from ophyd_async.core import YamlSettingsProvider
 from ophyd_async.fastcs.panda import HDFPanda, apply_panda_settings
 from ophyd_async.plan_stubs import apply_settings_if_different, retrieve_settings
 
-PANDA_CONFIG_PATH = Path(str(files("xpdtools.panda_configurations")))
+PANDA_CONFIG_PATH = Path(str(files("xpd_tools.panda_configurations")))
 
 # Built dynamically from the packaged yaml files, so member names are only known
 # at runtime. cast to type[Enum] so the checker treats it as a class (issubclass,

@@ -2,7 +2,7 @@ from enum import Enum
 
 import pytest
 
-from xpdtools.detectors.panda import (
+from xpd_tools.detectors.panda import (
     PandAConfiguration,
     PandASettingsProvider,
 )

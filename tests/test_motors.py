@@ -1,6 +1,6 @@
 import pytest
 
-from xpdtools.motors import get_encoder_value_from_pos
+from xpd_tools.motors import get_encoder_value_from_pos
 
 
 @pytest.mark.parametrize(

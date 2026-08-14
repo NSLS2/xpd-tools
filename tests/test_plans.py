@@ -22,9 +22,9 @@ from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
 from ophyd_async.epics.adcore import ADWriterFactory, NDFileHDF5IO
 from ophyd_async.fastcs.panda import DatasetTable, HDFPanda, PandaHdf5DatasetType
 
-from xpdtools.detectors.pilatus4 import Pilatus4Detector
-from xpdtools.motors import RotationMotor
-from xpdtools.plans import single_axis_flyscan
+from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+from xpd_tools.motors import RotationMotor
+from xpd_tools.plans import single_axis_flyscan
 
 NUM_IMAGES = 11
 SCAN_START = 0.0
