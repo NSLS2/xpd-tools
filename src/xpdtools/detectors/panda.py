@@ -1,38 +1,38 @@
 """PandA settings provider for XPD beamline flyscans."""
 
+from collections.abc import Generator
+from enum import Enum
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from bluesky import Msg
 from ophyd_async.core import YamlSettingsProvider
+from ophyd_async.fastcs.panda import HDFPanda, apply_panda_settings
+from ophyd_async.plan_stubs import apply_settings_if_different, retrieve_settings
+
+PANDA_CONFIG_PATH = Path(str(files("xpdtools.panda_configurations")))
+
+# Built dynamically from the packaged yaml files, so member names are only known
+# at runtime. cast to type[Enum] so the checker treats it as a class (issubclass,
+# subscript/call lookup); reference members via PandAConfiguration["NAME"].
+PandAConfiguration = cast(
+    type[Enum],
+    Enum(
+        "PandAConfiguration",
+        {p.stem.upper(): p.stem for p in PANDA_CONFIG_PATH.glob("*.yaml")},
+    ),
+)
 
 
-class PackagedSettingsProvider(YamlSettingsProvider):
+class PandASettingsProvider(YamlSettingsProvider):
     """A read-only YamlSettingsProvider backed by configs shipped with this package.
 
-    Subclasses :class:`ophyd_async.core.YamlSettingsProvider` and points at the
-    PandA configuration files bundled in the ``xpdtools.panda_configurations``
-    package directory.
-
-    Examples
-    --------
-    >>> provider = PackagedSettingsProvider()
-    >>> provider.available_configs()
-    ['single_axis_flyscan']
-    >>> import asyncio
-    >>> asyncio.run(provider.retrieve("single_axis_flyscan"))  # doctest: +SKIP
-    {...}
+    This provider is intended for use with the PandABox in XPD beamline flyscans.
     """
 
     def __init__(self) -> None:
-        directory = Path(str(files("xpdtools.panda_configurations")))
-        super().__init__(directory)
-
-    def available_configs(self) -> list[str]:
-        """List available PandA configuration names (without .yaml extension)."""
-        return sorted(
-            p.stem for p in self._directory.glob("*.yaml") if p.name != "__init__.yaml"
-        )
+        super().__init__(PANDA_CONFIG_PATH)
 
     async def store(self, name: str, data: dict[str, Any]) -> None:
         """Not supported for packaged configs.
@@ -46,3 +46,25 @@ class PackagedSettingsProvider(YamlSettingsProvider):
             "Cannot store settings in a packaged provider. "
             "Use ophyd_async.core.YamlSettingsProvider for writable configs."
         )
+
+
+def switch_panda_configuration(
+    panda: HDFPanda, configuration_name: str
+) -> Generator[Msg, None, None]:
+    """Switch the PandA configuration to a new one.
+
+    Parameters
+    ----------
+    panda : HDFPanda
+        The PandA device to configure.
+    configuration_name : str
+        The name of the configuration to apply (without .yaml extension).
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified configuration does not exist.
+    """
+    provider = PandASettingsProvider()
+    config_data = yield from retrieve_settings(provider, configuration_name, panda)
+    yield from apply_settings_if_different(config_data, apply_panda_settings)

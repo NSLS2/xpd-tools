@@ -11,30 +11,27 @@ from xpdtools.flyers import (
 
 
 @pytest.mark.parametrize(
-    "travel_distance, max_motor_velocity, num_images,"
-    " exposure_time, acq_time_overhead, expected_time",
+    "travel_distance, max_motor_velocity, num_images, acquire_period, expected_time",
     [
-        (10.0, 2.0, 3, 0.2, 0.001, 5.0),
-        (5.0, 1.0, 2, 0.1, 0.002, 5.0),
-        (20.0, 5.0, 3, 0.3, 0.003, 4.0),
-        (15.0, 3.0, 2, 0.25, 0.004, 5.0),
-        (8.0, 4.0, 10, 0.5, 0.005, 5.05),
+        (10.0, 2.0, 3, 0.2001, 5.0),
+        (5.0, 1.0, 2, 0.1002, 5.0),
+        (20.0, 5.0, 3, 0.3003, 4.0),
+        (15.0, 3.0, 2, 0.25004, 5.0),
+        (8.0, 4.0, 10, 0.5005, 5.005),
     ],
 )
 def test_calculate_move_time_for_flyscan(
-    travel_distance,
-    max_motor_velocity,
-    num_images,
-    exposure_time,
-    acq_time_overhead,
-    expected_time,
+    travel_distance: float,
+    max_motor_velocity: float,
+    num_images: int,
+    acquire_period: float,
+    expected_time: float,
 ):
     result = calculate_move_time_for_flyscan(
         travel_distance,
         max_motor_velocity,
         num_images,
-        exposure_time,
-        acq_time_overhead,
+        acquire_period,
     )
     assert pytest.approx(result, rel=1e-3) == expected_time
 
@@ -88,7 +85,7 @@ def test_calculate_move_time_for_flyscan(
             FlyMotorInfo(start_position=90.0, end_position=0.0, time_for_move=3.0),
         ),
         (
-            10,
+            11,
             0.1,
             0.0,
             50.0,
@@ -98,7 +95,7 @@ def test_calculate_move_time_for_flyscan(
             True,
             SingleAxisFlyscanInfo(
                 start=0,
-                num_pulses=10,
+                num_pulses=11,
                 direction=PandaPcompDirection.POSITIVE,
                 pulse_width=0.101,
                 pulse_step=0.2,
@@ -122,7 +119,7 @@ def test_calculate_move_time_for_flyscan(
                 num_pulses=1801,
                 direction=PandaPcompDirection.POSITIVE,
                 pulse_width=0.051,
-                pulse_step=0.051,
+                pulse_step=0.0510283,
                 time_based=True,
                 position_scale=360 / 70000,
                 position_offset=-39240 * (360 / 70000),
@@ -132,16 +129,16 @@ def test_calculate_move_time_for_flyscan(
     ],
 )
 def test_construct_fly_info_models(
-    num_pulses,
-    max_exposure_time,
-    start_position,
-    stop_position,
-    encoder_resolution,
-    max_motor_velocity,
-    encoder_pos_at_zero,
-    time_based,
-    expected_flyer_info,
-    expected_motor_info,
+    num_pulses: int,
+    max_exposure_time: float,
+    start_position: float,
+    stop_position: float,
+    encoder_resolution: float,
+    max_motor_velocity: float,
+    encoder_pos_at_zero: int,
+    time_based: bool,
+    expected_flyer_info: SingleAxisFlyscanInfo,
+    expected_motor_info: FlyMotorInfo,
 ):
     flyer_info, motor_info = construct_fly_info_models(
         num_pulses,
@@ -184,14 +181,14 @@ def test_construct_fly_info_models(
     ],
 )
 def test_construct_fly_info_models_raises(
-    num_pulses,
-    max_exposure_time,
-    start_position,
-    stop_position,
-    encoder_resolution,
-    max_motor_velocity,
-    encoder_pos_at_zero,
-    expected_match,
+    num_pulses: int,
+    max_exposure_time: float,
+    start_position: float,
+    stop_position: float,
+    encoder_resolution: float,
+    max_motor_velocity: float,
+    encoder_pos_at_zero: int,
+    expected_match: str,
 ):
     with pytest.raises(ValueError, match=expected_match):
         construct_fly_info_models(

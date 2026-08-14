@@ -6,8 +6,8 @@ from ophyd_async.core import (
     StandardFlyer,
     TriggerInfo,
 )
-from ophyd_async.epics.adcore import ADBaseIO, AreaDetector
-from ophyd_async.fastcs.panda import HDFPanda as PandABox
+from ophyd_async.epics.adcore import AreaDetector
+from ophyd_async.fastcs.panda import HDFPanda
 
 from xpdtools.detectors.utils import get_detector_acq_times
 from xpdtools.flyers import get_zero_encoder_position
@@ -20,8 +20,8 @@ from .motors import RotationMotor
 
 
 def single_axis_flyscan(
-    detectors: list[AreaDetector[ADBaseIO]],
-    panda: PandABox,
+    detectors: list[AreaDetector],
+    panda: HDFPanda,
     motor: RotationMotor,
     num_images: int = 1801,
     start: float = 0.0,
@@ -34,10 +34,10 @@ def single_axis_flyscan(
 
     Parameters
     ----------
-    detectors : list[AreaDetector[ADBaseIO]]
-        list of area detectors to use in the scan
-    panda : PandABox
-        PandABox to use for triggering the detectors and motor
+    detectors : list[AreaDetector]
+        list of standard detectors to use in the scan
+    panda : HDFPanda
+        HDFPanda to use for triggering the detectors and motor
     motor : RotationMotor
         RotationMotor to use for the scan
     num_images : int, optional
@@ -90,8 +90,8 @@ def single_axis_flyscan(
         max_exposure_time=max_acq_period,
         start_position=start,
         stop_position=stop,
-        encoder_resolution=encoder_res,
         max_motor_velocity=max_velocity,
+        encoder_resolution=encoder_res,
         encoder_pos_at_zero=panda_encoder_val_at_start,
         acq_time_overhead=acq_time_overhead,
         time_based=time_based,
