@@ -4,7 +4,7 @@ import asyncio
 
 from ophyd_async.core import (
     ConfinedModel,
-    FlyerController,
+    FlyableLogic,
     FlyMotorInfo,
     wait_for_value,
 )
@@ -44,13 +44,13 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     position_offset: float = 0.0
 
 
-class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
+class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
     """Controller for a single axis flyscan."""
 
     def __init__(self, panda: CommonPandaBlocks) -> None:
         self.panda = panda
 
-    async def prepare(self, value: SingleAxisFlyscanInfo):
+    async def on_prepare(self, value: SingleAxisFlyscanInfo):
         pcomp = self.panda.pcomp[1]
         pulse = self.panda.pulse[1]
         calc = self.panda.calc[1]  # type: ignore
@@ -88,13 +88,13 @@ class SingleAxisFlyscanController(FlyerController[SingleAxisFlyscanInfo]):
             )
         await asyncio.gather(*coros)
 
-    async def kickoff(self) -> None:
+    async def on_kickoff(self, ctx: None) -> None:
         await wait_for_value(self.panda.pcomp[1].active, True, timeout=1)
 
-    async def complete(self, timeout: float | None = None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=timeout)
+    async def on_complete(self, ctx: None) -> None:
+        await wait_for_value(self.panda.pcomp[1].active, False, timeout=None)
 
-    async def stop(self):
+    async def on_stop(self):
         await wait_for_value(self.panda.pcomp[1].active, False, timeout=1)
 
 
