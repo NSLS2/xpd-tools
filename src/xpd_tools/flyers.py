@@ -57,10 +57,10 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
         coros = [
             pcomp.dir.set(value.direction),
             pcomp.start.set(value.start),
-            calc.dataset.set(value.position_dataset_name),
-            calc.units.set(value.position_dataset_units),
-            calc.scale.set(value.position_scale),
-            calc.offset.set(value.position_offset),
+            calc.out_dataset.set(value.position_dataset_name),
+            calc.out_units.set(value.position_dataset_units),
+            calc.out_scale.set(value.position_scale),
+            calc.out_offset.set(value.position_offset),
         ]
         if not value.time_based:
             coros.extend(
