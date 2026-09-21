@@ -58,7 +58,8 @@ def single_axis_flyscan(
     single_axis_panda_flyer = SingleAxisFlyableLogic(panda).with_device()
     all_devices = [*all_detectors, single_axis_panda_flyer, motor]
 
-    # Get the start position in encoder counts
+    # Anchor the encoder scale: find the count that corresponds to 0 degrees,
+    # from wherever the motor happens to be sitting right now.
     encoder_res = yield from bps.rd(motor.encoder_resolution)
     current_motor_pos = yield from bps.rd(motor.user_readback)
     current_panda_encoder_value = yield from bps.rd(panda.calc[1].out)  # type: ignore

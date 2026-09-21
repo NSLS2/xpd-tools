@@ -190,7 +190,7 @@ def construct_fly_info_models(
     stop_position : float
         The stop position of the flyscan.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder, in degrees per count.
     max_motor_velocity : float
         The maximum velocity of the motor.
     encoder_pos_at_zero : int, default 0
