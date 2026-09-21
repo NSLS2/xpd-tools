@@ -62,9 +62,8 @@ def single_axis_flyscan(
     encoder_res = yield from bps.rd(motor.encoder_resolution)
     current_motor_pos = yield from bps.rd(motor.user_readback)
     current_panda_encoder_value = yield from bps.rd(panda.calc[1].out)  # type: ignore
-    panda_encoder_val_at_start = get_zero_encoder_position(
+    panda_encoder_val_at_zero = get_zero_encoder_position(
         current_position=current_motor_pos,
-        start_position=start,
         encoder_resolution=encoder_res,
         current_encoder_value=current_panda_encoder_value,
     )
@@ -91,7 +90,7 @@ def single_axis_flyscan(
         stop_position=stop,
         max_motor_velocity=max_velocity,
         encoder_resolution=encoder_res,
-        encoder_pos_at_zero=panda_encoder_val_at_start,
+        encoder_pos_at_zero=panda_encoder_val_at_zero,
         acq_time_overhead=acq_time_overhead,
         time_based=time_based,
     )

@@ -202,28 +202,31 @@ def test_construct_fly_info_models_raises(
         )
 
 
+# Every expectation here is current_encoder_value - current_position/resolution,
+# i.e. the count at ZERO degrees. Four of the six changed with the fix: they
+# previously encoded the count at the old start_position argument instead, which
+# is the defect this suite did not catch. The two that are unchanged are the ones
+# whose start_position was already 0, where the two readings coincide.
 @pytest.mark.parametrize(
-    "current_position, start_position, encoder_resolution, current_encoder_value,"
+    "current_position, encoder_resolution, current_encoder_value,"
     "expected_zero_encoder_position",
     [
-        (10.0, 0.0, 0.1, 100, 0),
-        (5.0, 2.0, 0.2, 50, 35),
-        (20.0, 10.0, 0.5, 200, 180),
-        (15.0, 5.0, 0.1, 150, 50),
-        (8.0, 4.0, 0.2, 80, 60),
-        (183, 0.0, 0.0009, 198353, -4980),
+        (10.0, 0.1, 100, 0),
+        (5.0, 0.2, 50, 25),  # was 35, the count at start_position=2.0
+        (20.0, 0.5, 200, 160),  # was 180, the count at start_position=10.0
+        (15.0, 0.1, 150, 0),  # was 50, the count at start_position=5.0
+        (8.0, 0.2, 80, 40),  # was 60, the count at start_position=4.0
+        (183, 0.0009, 198353, -4980),
     ],
 )
 def test_get_zero_encoder_position(
     current_position: float,
-    start_position: float,
     encoder_resolution: float,
     current_encoder_value: int,
     expected_zero_encoder_position: int,
 ):
     zero_encoder_position = get_zero_encoder_position(
         current_position=current_position,
-        start_position=start_position,
         encoder_resolution=encoder_resolution,
         current_encoder_value=current_encoder_value,
     )
@@ -265,7 +268,6 @@ def test_flyscan_arms_pcomp_where_the_encoder_actually_is(
     # The plan reads these live, with the motor parked at the scan start.
     anchor = get_zero_encoder_position(
         current_position=start_position,
-        start_position=start_position,
         encoder_resolution=ENCODER_RESOLUTION,
         current_encoder_value=_encoder_count_at(start_position),
     )
