@@ -228,3 +228,68 @@ def test_get_zero_encoder_position(
         current_encoder_value=current_encoder_value,
     )
     assert zero_encoder_position == expected_zero_encoder_position
+
+
+# Encoder scale and anchor used by the composition test below. The resolution is
+# the d-hutch spinner's, in degrees per count.
+ENCODER_RESOLUTION = 0.0009
+ENCODER_COUNT_AT_ZERO = 1_000_000
+RUN_UP_DEGREES = 18.0
+
+
+def _encoder_count_at(position: float) -> int:
+    """Ground truth: what the encoder reads at a given motor position."""
+    return int(position / ENCODER_RESOLUTION + ENCODER_COUNT_AT_ZERO)
+
+
+@pytest.mark.parametrize(
+    "start_position, stop_position",
+    [
+        (0.0, 360.0),  # ascending - passed before this test existed
+        (360.0, 0.0),  # descending - the case that fails at the beamline
+    ],
+)
+def test_flyscan_arms_pcomp_where_the_encoder_actually_is(
+    start_position: float, stop_position: float
+):
+    """The position compare must be armed at the encoder count of the scan start.
+
+    This composes get_zero_encoder_position with construct_fly_info_models the way
+    single_axis_flyscan does. Each is correct in isolation and each has its own
+    passing unit test; only in composition is the start offset applied twice, which
+    arms the pcomp at a count the axis never reaches and means no trigger ever fires.
+
+    Asserted against the swept range as well as the exact count, because "off by the
+    start offset" is only a bug when it puts the trigger outside the travel.
+    """
+    # The plan reads these live, with the motor parked at the scan start.
+    anchor = get_zero_encoder_position(
+        current_position=start_position,
+        start_position=start_position,
+        encoder_resolution=ENCODER_RESOLUTION,
+        current_encoder_value=_encoder_count_at(start_position),
+    )
+    assert anchor == ENCODER_COUNT_AT_ZERO, (
+        "the anchor must be the encoder count at ZERO degrees, not at the scan start"
+    )
+
+    flyer_info, _ = construct_fly_info_models(
+        num_pulses=101,
+        max_exposure_time=0.004,
+        start_position=start_position,
+        stop_position=stop_position,
+        encoder_resolution=ENCODER_RESOLUTION,
+        max_motor_velocity=147.0,
+        encoder_pos_at_zero=anchor,
+    )
+
+    assert flyer_info.start == _encoder_count_at(start_position)
+
+    low, high = sorted(
+        (_encoder_count_at(start_position), _encoder_count_at(stop_position))
+    )
+    run_up = int(RUN_UP_DEGREES / ENCODER_RESOLUTION)
+    assert low - run_up <= flyer_info.start <= high + run_up, (
+        f"pcomp armed at {flyer_info.start}, outside the swept encoder range "
+        f"[{low - run_up}..{high + run_up}] - no trigger can ever fire"
+    )
