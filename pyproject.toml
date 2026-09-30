@@ -36,44 +36,46 @@ dependencies = [
   "redis-json-dict>=0.2.2",
   "rich>=15.0.0",
   "tiled[client]>=0.2.12",
+  "scipy",
 ]
 
 [dependency-groups]
 dev = [
-    "ophyd-async[ca, pva, sim] @ git+https://github.com/bluesky/ophyd-async@main",
-    "inflection",
-    "import-linter",
-    "numpydoc",
-    "pickleshare",
-    "pipdeptree",
-    "pre-commit",
-    "pyright",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-faulthandler",
-    "pytest-mock",
-    "pytest-forked",
-    "pytest-insubprocess",
-    "pytest-rerunfailures",
-    "pytest-timeout",
-    "ruff",
-    "scanspec>=1.0a1",
-    "types-mock",
-    "types-pyyaml",
-    "tiled[client,server]>=0.2.9",
-    "bluesky-tiled-plugins>=2.0.2",
-    "h5py>=3.16.0",
-    "ty>=0.0.57",
+  "ophyd-async[ca, pva, sim] @ git+https://github.com/bluesky/ophyd-async@main",
+  "inflection",
+  "import-linter",
+  "numpydoc",
+  "pickleshare",
+  "pipdeptree",
+  "pre-commit",
+  "pyepics>=3.4.2",
+  "pyright",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-faulthandler",
+  "pytest-mock",
+  "pytest-forked",
+  "pytest-insubprocess",
+  "pytest-rerunfailures",
+  "pytest-timeout",
+  "ruff",
+  "scanspec>=1.0a1",
+  "types-mock",
+  "types-pyyaml",
+  "tiled[client,server]>=0.2.9",
+  "bluesky-tiled-plugins>=2.0.2",
+  "h5py>=3.16.0",
+  "ty>=0.0.57",
 ]
 docs = [
-    "pydata-sphinx-theme>=0.12",
-    "myst-parser",
-    "sphinx-autobuild",
-    "sphinx-autodoc2",
-    "sphinxcontrib-mermaid",
-    "sphinx-copybutton",
-    "sphinx-design",
+  "pydata-sphinx-theme>=0.12",
+  "myst-parser",
+  "sphinx-autobuild",
+  "sphinx-autodoc2",
+  "sphinxcontrib-mermaid",
+  "sphinx-copybutton",
+  "sphinx-design",
 ]
 
 [project.scripts]
@@ -86,10 +88,7 @@ Discussions = "https://github.com/NSLS2/xpdtools/discussions"
 Changelog = "https://github.com/NSLS2/xpdtools/releases"
 
 [project.optional-dependencies]
-profiles = [
-    "pyside6>=6.9,<6.10",
-    "qtpy>=2.4.3",
-]
+profiles = ["pyside6>=6.9,<6.10", "qtpy>=2.4.3"]
 
 [tool.setuptools.package-data]
 "xpd_tools.panda_configurations" = ["*.yaml"]
@@ -111,9 +110,9 @@ addopts = """
     """
 # https://iscinumpy.gitlab.io/post/bound-version-constraints/#watch-for-warnings
 filterwarnings = [
-    "error",
-    "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
-    "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
+  "error",
+  "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
+  "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
 testpaths = "docs src tests"
@@ -136,24 +135,24 @@ source = ["src", "**/site-packages/"]
 [tool.ruff]
 line-length = 88
 lint.select = [
-    "B",       # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
-    "C4",      # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
-    "E",       # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
-    "F",       # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
-    "N",       # pep8-naming - https://docs.astral.sh/ruff/rules/#pep8-naming-n
-    "W",       # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
-    "I",       # isort - https://docs.astral.sh/ruff/rules/#isort-i
-    "UP",      # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
-    "SLF",     # self - https://docs.astral.sh/ruff/settings/#lintflake8-self
-    "PLC2701", # private import - https://docs.astral.sh/ruff/rules/import-private-name/
-    "LOG015",  # root logger call - https://docs.astral.sh/ruff/rules/root-logger-call/
-    "S101",    # assert - https://docs.astral.sh/ruff/rules/assert/
-    "D",       # docstring - https://docs.astral.sh/ruff/rules/#pydocstyle-d
+  "B",       # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+  "C4",      # flake8-comprehensions - https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+  "E",       # pycodestyle errors - https://docs.astral.sh/ruff/rules/#error-e
+  "F",       # pyflakes rules - https://docs.astral.sh/ruff/rules/#pyflakes-f
+  "N",       # pep8-naming - https://docs.astral.sh/ruff/rules/#pep8-naming-n
+  "W",       # pycodestyle warnings - https://docs.astral.sh/ruff/rules/#warning-w
+  "I",       # isort - https://docs.astral.sh/ruff/rules/#isort-i
+  "UP",      # pyupgrade - https://docs.astral.sh/ruff/rules/#pyupgrade-up
+  "SLF",     # self - https://docs.astral.sh/ruff/settings/#lintflake8-self
+  "PLC2701", # private import - https://docs.astral.sh/ruff/rules/import-private-name/
+  "LOG015",  # root logger call - https://docs.astral.sh/ruff/rules/root-logger-call/
+  "S101",    # assert - https://docs.astral.sh/ruff/rules/assert/
+  "D",       # docstring - https://docs.astral.sh/ruff/rules/#pydocstyle-d
 ]
 lint.ignore = [
-    "B901", # Return in a generator is needed for plans
-    "D107", # We squash __init__ docstrings into the class docstring
-    "D102", # We don't need to override docstrings that are inherited from abstract methods
+  "B901", # Return in a generator is needed for plans
+  "D107", # We squash __init__ docstrings into the class docstring
+  "D102", # We don't need to override docstrings that are inherited from abstract methods
 ]
 lint.preview = true # so that preview mode PLC2701 is enabled
 
