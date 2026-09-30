@@ -16,7 +16,6 @@ from .pilatus4 import (
 )
 from .qepro import QEPro, QEProTEC
 
-
 __all__ = [
     "PandAConfiguration",
     "switch_panda_configuration",

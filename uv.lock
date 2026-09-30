@@ -3077,6 +3077,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pyepics"
+version = "3.5.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pyparsing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/69/57/29e1e9ef11ba2a3419f489946ae1d8190025a1e4f4e1c1686758bb2b6e0a/pyepics-3.5.10.tar.gz", hash = "sha256:f390cf9be40aba757b9528888114bc14d8db01086d0c93914720b1772460375b", size = 6150481, upload-time = "2026-05-20T18:44:36.336Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/36/e517fd83bd97d6bfe4105e0c6b322070c5cc36fb56a8fab2866e319f8804/pyepics-3.5.10-py3-none-any.whl", hash = "sha256:c9fac2c54f2b595268e66fc348cf5ec24e63718e7dbd07d73d1b37d4da6bfee1", size = 5332376, upload-time = "2026-05-20T18:44:34.242Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4788,6 +4801,7 @@ dev = [
     { name = "pickleshare" },
     { name = "pipdeptree" },
     { name = "pre-commit" },
+    { name = "pyepics" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -4842,6 +4856,7 @@ dev = [
     { name = "pickleshare" },
     { name = "pipdeptree" },
     { name = "pre-commit" },
+    { name = "pyepics", specifier = ">=3.4.2" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
