@@ -47,7 +47,6 @@ dev = [
     "pickleshare",
     "pipdeptree",
     "pre-commit",
-    "pyepics>=3.4.2",
     "pyright",
     "pytest",
     "pytest-asyncio",
