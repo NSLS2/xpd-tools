@@ -14,6 +14,7 @@ from .pilatus4 import (
     Pilatus4ROIMode,
     Pilatus4TriggerMode,
 )
+from .qepro import QEPro, QEProTEC
 
 __all__ = [
     "PandAConfiguration",
@@ -26,4 +27,6 @@ __all__ = [
     "Pilatus4TriggerMode",
     "Pilatus4HDF5Format",
     "Pilatus4DriverIO",
+    "QEPro",
+    "QEProTEC",
 ]
