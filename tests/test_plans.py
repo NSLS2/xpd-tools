@@ -84,10 +84,10 @@ def _setup_flyscan_coordination(panda, motor, pilatus, num_images: int):
 class CalcBlock(Device):
     def __init__(self):
         self.out, _ = soft_signal_r_and_setter(int)
-        self.dataset = soft_signal_rw(str)
-        self.units = soft_signal_rw(str)
-        self.scale = soft_signal_rw(float)
-        self.offset = soft_signal_rw(float)
+        self.out_dataset = soft_signal_rw(str)
+        self.out_units = soft_signal_rw(str)
+        self.out_scale = soft_signal_rw(float)
+        self.out_offset = soft_signal_rw(float)
         super().__init__(name="calc1")
 
 
@@ -175,8 +175,8 @@ def test_single_axis_flyscan(
 
     # --- Verify PandA position calc scale/offset ---
     # encoder_resolution=0.1, encoder_pos_at_zero resolves to 0 -> offset 0.0
-    assert asyncio.run(panda.calc[1].scale.get_value()) == pytest.approx(0.1)
-    assert asyncio.run(panda.calc[1].offset.get_value()) == pytest.approx(0.0)
+    assert asyncio.run(panda.calc[1].out_scale.get_value()) == pytest.approx(0.1)
+    assert asyncio.run(panda.calc[1].out_offset.get_value()) == pytest.approx(0.0)
 
     # --- Verify descriptor ---
     assert "descriptor" in docs
