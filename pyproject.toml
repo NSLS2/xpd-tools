@@ -88,7 +88,7 @@ Discussions = "https://github.com/NSLS2/xpdtools/discussions"
 Changelog = "https://github.com/NSLS2/xpdtools/releases"
 
 [project.optional-dependencies]
-profiles = ["pyside6>=6.9,<6.10", "qtpy>=2.4.3"]
+profiles = ["pyside6>=6.9,<6.12", "qtpy>=2.4.3"]
 
 [tool.setuptools.package-data]
 "xpd_tools.panda_configurations" = ["*.yaml"]
