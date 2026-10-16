@@ -41,7 +41,7 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - name: Run type checks
-        run: uv run --frozen pyright src tests
+        run: uv run --frozen ty check src tests
 
 
   test:
@@ -63,7 +63,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Run tests for given python version
-        run: uv run --frozen pytest --cov=src/xpdtools --cov-report=xml --cov-report=term
+        run: uv run --frozen pytest --cov=src/xpd_tools --cov-report=xml --cov-report=term
 
       # Uncomment once codecov is enabled.
       # - name: Upload coverage to Codecov
