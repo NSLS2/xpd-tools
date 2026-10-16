@@ -24,7 +24,7 @@ def get_encoder_value_from_pos(
     current_position : float
         The current position of the motor.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder, in degrees per count.
     encoder_pos_at_zero : int
         The encoder position corresponding to 0 degrees.
 
@@ -99,14 +99,18 @@ class RotationMotor(AsyncEpicsMotor):
         Parameters
         ----------
         encoder_resolution : float
-            The resolution of the encoder in counts per degree.
+            The resolution of the encoder, in degrees per count.
 
         Returns
         -------
         int
             The number of encoder counts per revolution.
         """
-        return int(360.0 * encoder_resolution)
+        # Counts per revolution is 360 degrees DIVIDED by the size of a count.
+        # This multiplied until 2026-09-21, which is dimensionally deg^2/count
+        # and truncates to 0 for any encoder finer than ~0.0028 deg/count -
+        # including the d-hutch spinner, where it returned 0 rather than 400000.
+        return int(360.0 / encoder_resolution)
 
     # async def get_encoder_value_from_angle(self, angle: float) -> int:
     #     """Calculate the encoder value from an angle.
