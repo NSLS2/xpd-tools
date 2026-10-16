@@ -133,20 +133,25 @@ def calculate_move_time_for_flyscan(
 
 def get_zero_encoder_position(
     current_position: float,
-    start_position: float,
     encoder_resolution: float,
     current_encoder_value: int,
 ):
     """Calculate the encoder position corresponding to 0 degrees.
 
+    This is the anchor every other position-to-count conversion is measured
+    from, so it must not depend on where a particular scan happens to start.
+    It previously also took a ``start_position`` and returned the count at the
+    SCAN START rather than at zero - the same value whenever a scan began at 0,
+    and wrong by the start offset otherwise. ``construct_fly_info_models`` then
+    applied that offset a second time, arming the position compare at a count
+    outside the travel.
+
     Parameters
     ----------
     current_position : float
         The current position of the motor.
-    start_position : float
-        The start position of the flyscan.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder, in degrees per count.
     current_encoder_value : int
         The current encoder value.
 
@@ -155,8 +160,8 @@ def get_zero_encoder_position(
     int
         The encoder position corresponding to 0 degrees.
     """
-    dist_to_start_in_cts = (current_position - start_position) / encoder_resolution
-    return int(current_encoder_value - dist_to_start_in_cts)
+    current_position_in_cts = current_position / encoder_resolution
+    return int(current_encoder_value - current_position_in_cts)
 
 
 def construct_fly_info_models(
@@ -185,7 +190,7 @@ def construct_fly_info_models(
     stop_position : float
         The stop position of the flyscan.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder, in degrees per count.
     max_motor_velocity : float
         The maximum velocity of the motor.
     encoder_pos_at_zero : int, default 0

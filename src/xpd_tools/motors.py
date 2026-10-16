@@ -24,7 +24,7 @@ def get_encoder_value_from_pos(
     current_position : float
         The current position of the motor.
     encoder_resolution : float
-        The resolution of the encoder in counts per degree.
+        The resolution of the encoder, in degrees per count.
     encoder_pos_at_zero : int
         The encoder position corresponding to 0 degrees.
 
@@ -99,7 +99,7 @@ class RotationMotor(AsyncEpicsMotor):
         Parameters
         ----------
         encoder_resolution : float
-            The resolution of the encoder in counts per degree.
+            The resolution of the encoder, in degrees per count.
 
         Returns
         -------
