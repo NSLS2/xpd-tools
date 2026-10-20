@@ -69,7 +69,7 @@ def test_build_simulated_tiled_clients_mixes_phase_pdfs(
     dof_for_phase = {"Wanted": "infusion_rate_CsPb", "Unwanted": "infusion_rate_Br"}
 
     tiled_client, sandbox_client = build_simulated_tiled_clients(
-        RE, phases=phases, dof_for_phase=dof_for_phase
+        RE, phases=phases, dof_for_phase=dof_for_phase, noise_level=0.0
     )
     mock_mp_user_cls.assert_called_once()
     call_kwargs = mock_mp_user_cls.call_args.kwargs
@@ -121,8 +121,8 @@ def test_build_simulated_tiled_clients_synthesizes_pl_peak_from_band_gap(
     plan_context_factory: Any,
 ) -> None:
     """The band-gap extension: tiled_client's fluorescence spectrum should
-    be a synthetic Gaussian at 1240/mixed_band_gap_eV, not whatever the
-    (zero-valued) simulated qepro actually produced.
+    be a synthetic Gaussian at 1240/band_gap_eV of the phase present, not
+    whatever the (zero-valued) simulated qepro actually produced.
     """
     r_ref = np.linspace(1.0, 25.0, 5)
     mock_mp_user_cls.return_value.load.return_value = (
@@ -141,7 +141,7 @@ def test_build_simulated_tiled_clients_synthesizes_pl_peak_from_band_gap(
     dof_for_phase = {"Wanted": "infusion_rate_CsPb", "Unwanted": "infusion_rate_Br"}
 
     tiled_client, _sandbox_client = build_simulated_tiled_clients(
-        RE, phases=phases, dof_for_phase=dof_for_phase
+        RE, phases=phases, dof_for_phase=dof_for_phase, noise_level=0.0
     )
 
     context = plan_context_factory(
@@ -164,7 +164,7 @@ def test_build_simulated_tiled_clients_synthesizes_pl_peak_from_band_gap(
     run_uid = result.plan_result
 
     # Only infusion_rate_CsPb was suggested -- Br's weight is 0, so the
-    # mixed band gap should be exactly "Wanted"'s (2.0 eV).
+    # spectrum should be "Wanted"'s own peak (2.0 eV) at full intensity.
     fl = tiled_client[run_uid]["fluorescence"].read()
     x_axis = fl["QEPro_x_axis"].values
     expected = _synthesize_pl_spectrum(x_axis, 1240.0 / 2.0, 20.0, 5000.0)
@@ -266,8 +266,8 @@ def test_build_simulated_tiled_clients_mixes_per_phase_fwhm_and_absorbance(
     RE: RunEngine,
     plan_context_factory: Any,
 ) -> None:
-    """pl_fwhm_nm/absorbance_value as {phase_name: value} mappings should
-    mix by the same weights as the band gap, not stay fixed constants.
+    """pl_fwhm_nm as a {phase_name: value} mapping gives each emitter its own
+    peak width; absorbance_value as a mapping mixes by the phase weights.
     """
     r_ref = np.linspace(1.0, 25.0, 5)
     mock_mp_user_cls.return_value.load.return_value = (
@@ -291,6 +291,7 @@ def test_build_simulated_tiled_clients_mixes_per_phase_fwhm_and_absorbance(
         dof_for_phase=dof_for_phase,
         pl_fwhm_nm={"Wanted": 10.0, "Unwanted": 30.0},
         absorbance_value={"Wanted": 0.2, "Unwanted": 0.6},
+        noise_level=0.0,
     )
 
     context = plan_context_factory(
@@ -314,11 +315,12 @@ def test_build_simulated_tiled_clients_mixes_per_phase_fwhm_and_absorbance(
     run_uid = result.plan_result
 
     fl = tiled_client[run_uid]["fluorescence"].read()
-    expected_fwhm = 0.5 * 10.0 + 0.5 * 30.0  # == 20.0
-    expected_peak_nm = 1240.0 / (0.5 * 2.0 + 0.5 * 4.0)
+    x_axis = fl["QEPro_x_axis"].values
+    # Both phases emit (no pl_phases): each its own peak at half intensity;
+    # Unwanted's 310 nm is clipped to peak_nm_range's 410 nm.
     expected_fl = _synthesize_pl_spectrum(
-        fl["QEPro_x_axis"].values, expected_peak_nm, expected_fwhm, 5000.0
-    )
+        x_axis, 1240.0 / 2.0, 10.0, 2500.0
+    ) + _synthesize_pl_spectrum(x_axis, 410.0, 30.0, 2500.0)
     np.testing.assert_allclose(fl["QEPro_output"].values, expected_fl)
 
     abs_ = tiled_client[run_uid]["absorbance"].read()
@@ -407,9 +409,9 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
     RE: RunEngine,
     plan_context_factory: Any,
 ) -> None:
-    """pl_phases=("Wanted",) should make PL depend only on Wanted's band
-    gap/FWHM, even though Wanted/Unwanted are 0.5/0.5 in the full mix
-    (used for absorbance, unaffected by pl_phases).
+    """pl_phases=("Wanted",): only Wanted emits, at its own band gap/FWHM;
+    Unwanted is dark, so at 0.5/0.5 it halves the PL instead of shifting it.
+    Absorbance still mixes over all phases.
     """
     r_ref = np.linspace(1.0, 25.0, 5)
     mock_mp_user_cls.return_value.load.return_value = (
@@ -434,6 +436,7 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
         pl_phases=("Wanted",),
         pl_fwhm_nm={"Wanted": 10.0, "Unwanted": 30.0},
         absorbance_value={"Wanted": 0.2, "Unwanted": 0.6},
+        noise_level=0.0,
     )
 
     context = plan_context_factory(
@@ -445,8 +448,8 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
             [
                 {
                     "_id": 1,
-                    # Equal weight -- would pull the peak far below classify_pl's
-                    # 400nm floor without pl_phases restricting the PL mix.
+                    # Equal weight -- Unwanted's 10 eV gap would emit at the
+                    # 410 nm clip if it weren't excluded by pl_phases.
                     "infusion_rate_CsPb": 10.0,
                     "infusion_rate_Br": 10.0,
                     "infusion_rate_I2": 0.0,
@@ -459,7 +462,7 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
 
     fl = tiled_client[run_uid]["fluorescence"].read()
     expected_fl = _synthesize_pl_spectrum(
-        fl["QEPro_x_axis"].values, 1240.0 / 2.0, 10.0, 5000.0
+        fl["QEPro_x_axis"].values, 1240.0 / 2.0, 10.0, 2500.0
     )
     np.testing.assert_allclose(fl["QEPro_output"].values, expected_fl)
 
@@ -471,7 +474,143 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
     np.testing.assert_allclose(abs_["QEPro_output"].values, expected_absorbance)
 
 
-def test_missing_mp_api_key_says_where_to_set_it(monkeypatch: pytest.MonkeyPatch) -> None:
+def _pl_peak_nm(
+    tiled_client: Any, RE: RunEngine, plan_context_factory: Any, rates: dict
+) -> float:
+    """Run one xray+uvvis point at these rates; return the PL maximum (nm)."""
+    context = plan_context_factory(
+        quality=QualityPolicy(enabled=False, absorbance_shots=1, fluorescence_shots=1)
+    )
+    run_uid = RE(create_xray_uvvis_plan(context)([{"_id": 1, **rates}], [])).plan_result
+    fl = tiled_client[run_uid]["fluorescence"].read()
+    x_axis = fl["QEPro_x_axis"].values.reshape(-1)
+    return float(x_axis[int(np.argmax(fl["QEPro_output"].values.reshape(-1)))])
+
+
+@patch("xpd_tools.optimization.simulation.tiled.MPAPIUser")
+def test_build_simulated_tiled_clients_pl_peak_follows_the_dominant_emitter(
+    mock_mp_user_cls: Any,
+    RE: RunEngine,
+    plan_context_factory: Any,
+) -> None:
+    """With two emitters, the PL maximum sits at whichever one the DOFs make
+    dominant -- each emits at its own band gap, so the peak moves between
+    their positions instead of averaging the gaps into one."""
+    mock_mp_user_cls.return_value.load.return_value = (
+        np.linspace(1.0, 25.0, 5),
+        np.column_stack([np.ones(5), np.ones(5)]),
+    )
+    mock_mp_user_cls.return_value.band_gaps.return_value = {"Red": 2.0, "Blue": 2.5}
+    phases = [
+        Phase(name="Red", gr="unused.gr", cif="unused.cif", minimize=False),
+        Phase(name="Blue", gr="unused.gr", cif="unused.cif", minimize=False),
+    ]
+    tiled_client, _ = build_simulated_tiled_clients(
+        RE,
+        phases=phases,
+        dof_for_phase={"Red": "infusion_rate_CsPb", "Blue": "infusion_rate_Br"},
+        noise_level=0.0,
+    )
+
+    red = _pl_peak_nm(
+        tiled_client,
+        RE,
+        plan_context_factory,
+        {"infusion_rate_CsPb": 30.0, "infusion_rate_Br": 10.0, "infusion_rate_I2": 0.0},
+    )
+    blue = _pl_peak_nm(
+        tiled_client,
+        RE,
+        plan_context_factory,
+        {"infusion_rate_CsPb": 10.0, "infusion_rate_Br": 30.0, "infusion_rate_I2": 0.0},
+    )
+    assert red == pytest.approx(620.0, abs=1.0)
+    assert blue == pytest.approx(496.0, abs=1.0)
+
+
+@patch("xpd_tools.optimization.simulation.tiled.MPAPIUser")
+def test_build_simulated_tiled_clients_pl_alloy_emits_one_interpolated_peak(
+    mock_mp_user_cls: Any,
+    RE: RunEngine,
+    plan_context_factory: Any,
+) -> None:
+    """pl_alloy phases are one solid solution (mixed-halide perovskite): a single
+    peak at the weight-averaged gap, moving continuously with the ratio, not two
+    end-member peaks."""
+    mock_mp_user_cls.return_value.load.return_value = (
+        np.linspace(1.0, 25.0, 5),
+        np.column_stack([np.ones(5), np.ones(5)]),
+    )
+    mock_mp_user_cls.return_value.band_gaps.return_value = {"Red": 2.0, "Blue": 2.5}
+    phases = [
+        Phase(name="Red", gr="unused.gr", cif="unused.cif", minimize=False),
+        Phase(name="Blue", gr="unused.gr", cif="unused.cif", minimize=False),
+    ]
+    tiled_client, _ = build_simulated_tiled_clients(
+        RE,
+        phases=phases,
+        dof_for_phase={"Red": "infusion_rate_CsPb", "Blue": "infusion_rate_Br"},
+        pl_alloy=("Red", "Blue"),
+        noise_level=0.0,
+    )
+
+    rates = {
+        "infusion_rate_CsPb": 30.0,
+        "infusion_rate_Br": 10.0,
+        "infusion_rate_I2": 0.0,
+    }
+    peak = _pl_peak_nm(tiled_client, RE, plan_context_factory, rates)
+    assert peak == pytest.approx(1240.0 / (0.75 * 2.0 + 0.25 * 2.5), abs=1.0)  # 584 nm
+
+
+@patch("xpd_tools.optimization.simulation.tiled.MPAPIUser")
+def test_build_simulated_tiled_clients_band_gap_ev_overrides_mp(
+    mock_mp_user_cls: Any,
+    RE: RunEngine,
+    plan_context_factory: Any,
+) -> None:
+    """band_gap_ev replaces MP's DFT gap for the phases it lists (here the
+    emitter: 2.8824 eV DFT -> 2.38 eV measured), and leaves the others."""
+    mock_mp_user_cls.return_value.load.return_value = (
+        np.linspace(1.0, 25.0, 5),
+        np.column_stack([np.ones(5), np.ones(5)]),
+    )
+    mock_mp_user_cls.return_value.band_gaps.return_value = {
+        "Wanted": 2.8824,
+        "Unwanted": 2.0,
+    }
+    phases = [
+        Phase(name="Wanted", gr="unused.gr", cif="unused.cif", minimize=False),
+        Phase(name="Unwanted", gr="unused.gr", cif="unused.cif", minimize=True),
+    ]
+    dof_for_phase = {"Wanted": "infusion_rate_CsPb", "Unwanted": "infusion_rate_Br"}
+    tiled_client, _ = build_simulated_tiled_clients(
+        RE,
+        phases=phases,
+        dof_for_phase=dof_for_phase,
+        band_gap_ev={"Wanted": 2.38},
+        noise_level=0.0,
+    )
+
+    wanted = _pl_peak_nm(
+        tiled_client,
+        RE,
+        plan_context_factory,
+        {"infusion_rate_CsPb": 30.0, "infusion_rate_Br": 0.0, "infusion_rate_I2": 0.0},
+    )
+    unwanted = _pl_peak_nm(
+        tiled_client,
+        RE,
+        plan_context_factory,
+        {"infusion_rate_CsPb": 0.0, "infusion_rate_Br": 30.0, "infusion_rate_I2": 0.0},
+    )
+    assert wanted == pytest.approx(1240.0 / 2.38, abs=1.0)  # 521 nm, not MP's 430
+    assert unwanted == pytest.approx(1240.0 / 2.0, abs=1.0)  # MP's own gap
+
+
+def test_missing_mp_api_key_says_where_to_set_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from xpd_tools.optimization.simulation.structures import MPAPIUser
 
     monkeypatch.delenv("MP_API_KEY", raising=False)

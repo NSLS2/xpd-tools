@@ -63,19 +63,6 @@ def _mix_or_constant(
     return value
 
 
-def _restrict_and_renormalize(
-    weights: Mapping[str, float], phases: Sequence[str] | None
-) -> Mapping[str, float]:
-    """Drop phases not in phases and renormalize the rest to sum to 1."""
-    if phases is None:
-        return weights
-    restricted = {name: weights[name] for name in phases if name in weights}
-    total = sum(restricted.values())
-    if total <= 0:
-        return {name: 1.0 / len(restricted) for name in restricted}
-    return {name: v / total for name, v in restricted.items()}
-
-
 def build_simulated_tiled_clients(
     RE: RunEngine,
     *,
@@ -89,6 +76,8 @@ def build_simulated_tiled_clients(
     pl_fwhm_nm: float | Mapping[str, float] = 20.0,
     pl_intensity: float = 5000.0,
     pl_phases: Sequence[str] | None = None,
+    band_gap_ev: Mapping[str, float] | None = None,
+    pl_alloy: Sequence[str] | None = None,
     peak_nm_range: tuple[float, float] = (410.0, 780.0),
     absorbance_value: float | Mapping[str, float] = 0.3,
     absorbance_edge_nm: float = 350.0,
@@ -107,9 +96,18 @@ def build_simulated_tiled_clients(
         - q: the range of q values to simulate.
         - r: the range of r values to simulate
         - qstep, rstep: interpolation step size for q/r values.
-        - pl_fwhm_nm, pl_intensity: shape of the synthesized PL peak.
-        - pl_phases: restrict the PL peak/FWHM mix to these phase names.
-        - peak_nm_range: clamp for the PL peak.
+        - pl_fwhm_nm, pl_intensity: each emitting phase's PL peak width (one value, or
+          per phase) and the height of a pure emitter's peak.
+        - pl_phases: the phases that emit (default: all). Each emits its own Gaussian
+          at 1240/band_gap nm, scaled by its fraction of the whole mixture, so the
+          other (dark) phases dim the PL instead of shifting it.
+        - band_gap_ev: per-phase band gaps (eV) that replace Materials Project's DFT
+          values, e.g. measured ones; phases not listed keep MP's.
+        - pl_alloy: emitters that form one solid solution (e.g. CsPbCl3, CsPbBr3,
+          CsPbI3 as mixed-halide CsPb(Cl/Br/I)3): they emit one peak at their
+          weight-averaged gap (Vegard), so it moves continuously with the halide
+          ratio instead of showing each end member's own peak.
+        - peak_nm_range: clamp for each emitter's PL peak.
         - absorbance_value: the plateau height of a synthesized sigmoid absorption edge.
         - absorbance_edge_nm, absorbance_edge_width_nm: shape of the sigmoid edge.
         - noise_level: stddev of Gaussian noise for the signal.
@@ -133,7 +131,7 @@ def build_simulated_tiled_clients(
     )
     r_ref, gs = mp_user.load()
     phase_grs = dict(zip((phase.name for phase in phases), gs.T, strict=True))
-    phase_band_gaps = mp_user.band_gaps()
+    phase_band_gaps = {**mp_user.band_gaps(), **(band_gap_ev or {})}
 
     documents: list[tuple[str, Mapping[str, Any]]] = []
 
@@ -169,32 +167,48 @@ def build_simulated_tiled_clients(
             )
 
         if "fluorescence" in run.streams:
-            """ Calculate the fluorscence and insert into sandbox client.
+            """ Calculate the fluorescence and insert into tiled client.
 
-                1) Take fluorscence from the scattering stream.
-                2) Sum over all phases corrected for phase weights to get
-                    the mixed gap ev.
+                1) Each emitting phase (pl_phases) adds a Gaussian at its own
+                    1240/band_gap nm (clipped to peak_nm_range), with height
+                    pl_intensity x its fraction of the whole mixture: dark
+                    phases dim the PL, they don't shift it. The pl_alloy
+                    phases emit as one, at their weight-averaged gap.
+                2) No emitters present gives a dark spectrum, which the PL fit
+                    scores as no PL.
                 3) Add any prescribed noise to disrupt the system.
             """
-            pl_weights = _restrict_and_renormalize(weights, pl_phases)
-            mixed_gap_ev = sum(
-                pl_weights[name] * phase_band_gaps[name] for name in pl_weights
+            x_axis = run.streams["fluorescence"].data["QEPro_x_axis"].values
+            emitters = {
+                name: weight
+                for name, weight in weights.items()
+                if (pl_phases is None or name in pl_phases)
+                and weight > 0
+                and phase_band_gaps[name] > 0
+            }
+            alloy = [name for name in emitters if name in (pl_alloy or ())]
+            groups = [[name] for name in emitters if name not in alloy]
+            groups += [alloy] if alloy else []
+            synthetic = np.zeros_like(x_axis, dtype=float)
+            for group in groups:
+                group_weights = {name: emitters[name] for name in group}
+                total = sum(group_weights.values())
+                mix = {name: w / total for name, w in group_weights.items()}
+                gap = _mix_or_constant(phase_band_gaps, mix)
+                peak_nm = float(np.clip(1240.0 / gap, *peak_nm_range))
+                synthetic = synthetic + _synthesize_pl_spectrum(
+                    x_axis,
+                    peak_nm,
+                    _mix_or_constant(pl_fwhm_nm, mix),
+                    pl_intensity * total,
+                )
+            if noise_level:
+                synthetic = synthetic + np.random.normal(
+                    0.0, noise_level, size=synthetic.shape
+                )
+            run.streams["fluorescence"] = FakeTiledStream(
+                {"QEPro_x_axis": x_axis, "QEPro_output": synthetic}
             )
-            if mixed_gap_ev > 0:
-                x_axis = run.streams["fluorescence"].data["QEPro_x_axis"].values
-                # clip to peak range
-                peak_nm = float(np.clip(1240.0 / mixed_gap_ev, *peak_nm_range))
-                mixed_fwhm_nm = _mix_or_constant(pl_fwhm_nm, pl_weights)
-                synthetic = _synthesize_pl_spectrum(
-                    x_axis, peak_nm, mixed_fwhm_nm, pl_intensity
-                )
-                if noise_level:
-                    synthetic = synthetic + np.random.normal(
-                        0.0, noise_level, size=synthetic.shape
-                    )
-                run.streams["fluorescence"] = FakeTiledStream(
-                    {"QEPro_x_axis": x_axis, "QEPro_output": synthetic}
-                )
 
         if "absorbance" in run.streams:
             """ Calculate the absorbance and insert into sandbox client.
