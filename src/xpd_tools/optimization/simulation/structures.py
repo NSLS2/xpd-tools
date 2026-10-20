@@ -1,15 +1,18 @@
 """Materials Project API user."""
 
 import os
+from dataclasses import dataclass
+
 import numpy as np
 from mp_api.client import MPRester
-from dataclasses import dataclass
-import ezpit.core.processing as ezproc
-from ezpit.core.elem_tables import get_aff_scattering_factors
-from ezpit.core.io import group_atoms
+
+GR_METHOD = "periodic"
+
 
 @dataclass
 class MPAPIUser:
+    """Materials Project API user class, including loading, parsing, etc."""
+
     q: tuple
     r: tuple
     rstep: float = .01
@@ -21,12 +24,13 @@ class MPAPIUser:
     key_name: str = "MP_API_KEY"
 
     def __post_init__(self):
+        """Read API Key from the environment."""
         if self.api_key is None:
             self.api_key = os.environ.get(self.key_name)
             if not self.api_key:
                 raise ValueError(
                     f"{self.key_name} isn't set: pass api_key, or add it to your "
-                    "environment (the autonomous GUI also reads the config folder's .env)"
+                    "environment .env"
                 )
         if self.material_ids is None and self.formulas is None:
             raise ValueError(
@@ -35,33 +39,57 @@ class MPAPIUser:
 
     def _pdf(self, structure):
         """Compute the PDF of a structure using the Debye equation."""
-        # Defense against modifying the input structure with supercell expansion
-        structure = structure.copy()
+        if GR_METHOD == "periodic":
+            from xpd_tools.optimization.utils.pdf_periodic import pdf_periodic
 
-        # Expand to a supercell that covers rmax first
-        n_repeats = [max(1, int(np.ceil(2 * self.r[1] / length)))
-                     for length in structure.lattice.abc]
-        structure.make_supercell(n_repeats)
+            r, gr = pdf_periodic(
+                structure,
+                rmin=self.r[0],
+                rmax=self.r[1],
+                rstep=self.rstep,
+                qdamp=self.qdamp,
+                u=0.04,
+                qmin=self.q[0],
+                qmax=self.q[1],
+                pad=10.0,
+                strain=None,
+            )
 
-        # Populate arrays from the supercell structure
-        atom_names = [site.specie.symbol for site in structure]
-        atom_positions = np.array([site.coords for site in structure])
-        atom_unique_names, _, atom_indices = group_atoms(atom_names)
-        scattering_factors = get_aff_scattering_factors(atom_unique_names)
-        atom_distance_matrix = ezproc.create_atom_distance_matrix(
-            atom_positions)
+        elif GR_METHOD == 'ezpit':
+            import ezpit.core.processing as ezproc
+            from ezpit.core.elem_tables import get_aff_scattering_factors
+            from ezpit.core.io import group_atoms
 
-        # Calculate Sq from the scattering factors and atom distance matrix
-        q, _, Sq, *_ = ezproc.cal_Sq(
-            atom_indices, scattering_factors, atom_distance_matrix,
-            qmin=self.q[0], qmax=self.q[1], qstep=self.qstep, return_Iq=True
-        )
+            # Defense against modifying the input structure with supercell expansion
+            structure = structure.copy()
 
-        # Calculate Gr from the Debye equation
-        r, Gr = ezproc.cal_Gr_integral(
-            q, Sq, rmin=self.r[0], rmax=self.r[1], rstep=self.rstep, qdamp=self.qdamp
-        )
-        return r, Gr
+            # Expand to a supercell that covers rmax first
+            n_repeats = [max(1, int(np.ceil(2 * self.r[1] / length)))
+                         for length in structure.lattice.abc]
+            structure.make_supercell(n_repeats)
+
+            # Populate arrays from the supercell structure
+            atom_names = [site.specie.symbol for site in structure]
+            atom_positions = np.array([site.coords for site in structure])
+            atom_unique_names, _, atom_indices = group_atoms(atom_names)
+            scattering_factors = get_aff_scattering_factors(atom_unique_names)
+            atom_distance_matrix = ezproc.create_atom_distance_matrix(
+                atom_positions)
+
+            # Calculate Sq from the scattering factors and atom distance matrix
+            q, _, sq, *_ = ezproc.cal_Sq(
+                atom_indices, scattering_factors, atom_distance_matrix,
+                qmin=self.q[0], qmax=self.q[1], qstep=self.qstep, return_Iq=True
+            )
+
+            # Calculate Gr from the Debye equation
+            r, gr = ezproc.cal_Gr_integral(
+                q, sq,
+                rmin=self.r[0], rmax=self.r[1],
+                rstep=self.rstep, qdamp=self.qdamp
+            )
+
+        return r, gr
 
     def _fetch(
         self,
@@ -95,10 +123,8 @@ class MPAPIUser:
     def band_gaps(self) -> dict[str, float]:
         """Look up each formula's DFT band gap (eV) from Materials Project.
 
-        A plain database field, not a local calculation -- cheap compared
-        to `load()`'s Debye PDF. Only supports `formulas` (not
-        `material_ids`) for now. Typically GGA/PBE-level, which tends to
-        underestimate real experimental band gaps.
+        Sorts and determines lowest energy above hull, and extracts band gap
+        of that materials project entry.
         """
         with MPRester(self.api_key) as mpr:
             gaps = {}
@@ -107,8 +133,6 @@ class MPAPIUser:
                     formula=formula,
                     fields=["material_id", "energy_above_hull", "band_gap"],
                 )
+                # Take the bandgap of the lowest energy above hull
                 gaps[formula] = min(docs, key=lambda d: d.energy_above_hull).band_gap
             return gaps
-
-class PyMatgenUser:
-    pass

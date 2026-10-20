@@ -2,6 +2,14 @@
 
 Run an autonomous campaign from a browser instead of a notebook.
 
+To use the GUI, the web page needs to be built and the python server installed.
+
+From xpd-tools/autonomous-gui/web
+```
+npm install 
+npm run build
+```
+
 1. Develop and validate the workflow in a notebook, then save it:
    `build_agent.to_config("configs/halide.json")`.
 2. Set how it runs with `build_agent.set_run(...)` before saving: `to_config()` writes it as the

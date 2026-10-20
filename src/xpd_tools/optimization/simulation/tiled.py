@@ -93,7 +93,7 @@ def build_simulated_tiled_clients(
     absorbance_value: float | Mapping[str, float] = 0.3,
     absorbance_edge_nm: float = 350.0,
     absorbance_edge_width_nm: float = 30.0,
-    noise_level: float = 0.0,
+    noise_level: float = 0.05,
     mp_api_key: str | None = None,
 ) -> tuple[FakeTiledCatalog, FakeTiledCatalog]:
     """
@@ -115,7 +115,8 @@ def build_simulated_tiled_clients(
         - noise_level: stddev of Gaussian noise for the signal.
         - mp_api_key: the Materials-Project API key to use for sandbox client.
 
-    Returns:
+    Returns
+    -------
         - tiled_client: the simulated tiled client catalog.
         - sandbox_client: the simulated sandbox client catalog.
     """
@@ -181,7 +182,10 @@ def build_simulated_tiled_clients(
             )
             if mixed_gap_ev > 0:
                 x_axis = run.streams["fluorescence"].data["QEPro_x_axis"].values
-                peak_nm = float(np.clip(1240.0 / mixed_gap_ev, *peak_nm_range))
+                # clip to peak range
+                # peak_nm = float( np.clip(1240.0 / mixed_gap_ev, *peak_nm_range))
+                # full range
+                peak_nm = float(1240.0 / mixed_gap_ev)
                 mixed_fwhm_nm = _mix_or_constant(pl_fwhm_nm, pl_weights)
                 synthetic = _synthesize_pl_spectrum(
                     x_axis, peak_nm, mixed_fwhm_nm, pl_intensity
@@ -197,7 +201,7 @@ def build_simulated_tiled_clients(
         if "absorbance" in run.streams:
             """ Calculate the absorbance and insert into sandbox client.
 
-                1) Take absorbace from the simulated qe pro.
+                1) Take absorbance from the simulated qe pro.
                 2) Sum over all phases corrected for phase weights to get
                     the mixed absorbance.
                 3) Simulate a synthetic edge to fake a baseline correction
