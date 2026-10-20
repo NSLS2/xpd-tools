@@ -183,9 +183,7 @@ def build_simulated_tiled_clients(
             if mixed_gap_ev > 0:
                 x_axis = run.streams["fluorescence"].data["QEPro_x_axis"].values
                 # clip to peak range
-                # peak_nm = float( np.clip(1240.0 / mixed_gap_ev, *peak_nm_range))
-                # full range
-                peak_nm = float(1240.0 / mixed_gap_ev)
+                peak_nm = float(np.clip(1240.0 / mixed_gap_ev, *peak_nm_range))
                 mixed_fwhm_nm = _mix_or_constant(pl_fwhm_nm, pl_weights)
                 synthetic = _synthesize_pl_spectrum(
                     x_axis, peak_nm, mixed_fwhm_nm, pl_intensity
