@@ -1,22 +1,20 @@
 import pytest
 
-from xpd_tools.motors import get_encoder_value_from_pos
+from xpd_tools.motors import RotationMotor
 
 
 @pytest.mark.parametrize(
-    "position, encoder_resolution, encoder_pos_at_zero, expected",
+    "encoder_resolution, expected",
     [
-        (0.0, 10.0, 1000, 1000),
-        (90.0, 10.0, 1000, 1009),
-        (180.0, 10.0, 1000, 1018),
-        (360.0, 10.0, 1000, 1036),
-        (-90.0, 10.0, 1000, 991),
+        (0.0009, 400_000),
+        (0.01, 36_000),
     ],
 )
-def test_get_encoder_value_from_pos(
-    position: float, encoder_resolution: float, encoder_pos_at_zero: int, expected: int
-):
-    actual = get_encoder_value_from_pos(
-        position, encoder_resolution, encoder_pos_at_zero
-    )
-    assert actual == expected, f"Expected {expected}, got {actual}"
+def test_get_encoder_counts_per_rev(encoder_resolution: float, expected: int):
+    motor = RotationMotor("MOT:")
+    assert motor.get_encoder_counts_per_rev(encoder_resolution) == expected
+
+
+def test_panda_encoder_defaults_to_axis_1():
+    assert RotationMotor("MOT:").panda_encoder == 1
+    assert RotationMotor("MOT:", panda_encoder=3).panda_encoder == 3

@@ -14,28 +14,6 @@ from ophyd_async.epics.core import epics_signal_r
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 
 
-def get_encoder_value_from_pos(
-    current_position: float, encoder_resolution: float, encoder_pos_at_zero: int
-) -> int:
-    """Calculate the encoder value from a motor position.
-
-    Parameters
-    ----------
-    current_position : float
-        The current position of the motor.
-    encoder_resolution : float
-        The resolution of the encoder in counts per degree.
-    encoder_pos_at_zero : int
-        The encoder position corresponding to 0 degrees.
-
-    Returns
-    -------
-    int
-        The encoder value corresponding to the given motor position.
-    """
-    return int(current_position / encoder_resolution + encoder_pos_at_zero)
-
-
 # TODO: Get this upstreamed to ophyd_async and remove it from here.
 # It is a general utility that is not specific to XPD.
 class VelocityRespectingMotorMock(DeviceMock[AsyncEpicsMotor]):
@@ -81,10 +59,22 @@ class RotationMotor(AsyncEpicsMotor):
     This class is a subclass of the AsyncEpicsMotor class and is used to represent
     a motor that can be used for rotation scans. It has additional attributes and
     methods that are specific to rotation scans.
+
+    Parameters
+    ----------
+    prefix : str
+        PV prefix of the motor record.
+    name : str, optional
+        Name of the device.
+    panda_encoder : int, default 1
+        PandA encoder axis this motor's encoder is wired to. Flyscans use the
+        INENC, CALC and PCOMP blocks with this number, and the shared PULSE1
+        block to drive the capture.
     """
 
-    def __init__(self, prefix: str, name: str = ""):
+    def __init__(self, prefix: str, name: str = "", *, panda_encoder: int = 1):
         super().__init__(prefix, name=name)
+        self.panda_encoder = panda_encoder
         self.encoder_counts_per_rev = derived_signal_r(
             self.get_encoder_counts_per_rev,
             derived_units="counts",
@@ -99,31 +89,11 @@ class RotationMotor(AsyncEpicsMotor):
         Parameters
         ----------
         encoder_resolution : float
-            The resolution of the encoder in counts per degree.
+            The resolution of the encoder in degrees per count.
 
         Returns
         -------
         int
             The number of encoder counts per revolution.
         """
-        return int(360.0 * encoder_resolution)
-
-    # async def get_encoder_value_from_angle(self, angle: float) -> int:
-    #     """Calculate the encoder value from an angle.
-
-    #     Parameters
-    #     ----------
-    #     angle : float
-    #         The angle in degrees.
-
-    #     Returns
-    #     -------
-    #     int
-    #         The encoder value corresponding to the given angle.
-    #     """
-    #     encoder_resolution = await self.encoder_resolution.get_value()
-    #     return get_encoder_value_from_pos(
-    #         current_position=angle,
-    #         encoder_resolution=encoder_resolution,
-    #         encoder_pos_at_zero=self.encoder_pos_at_zero,
-    #     )
+        return round(360.0 / encoder_resolution)
