@@ -81,6 +81,6 @@ path_provider = NSLS2PathProvider(RE.md, beamline_tla="xpd", beamline_tla_suffix
 
 with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
     qepro = QEPro(
-        prefix=f"XF:28ID2-ES{QEPro:Spec-1}:",
+        prefix="XF:28ID2-ES{QEPro:Spec-1}:",
         name="qepro"
     )
