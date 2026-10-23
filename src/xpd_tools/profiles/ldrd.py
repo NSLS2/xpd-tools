@@ -21,7 +21,7 @@ from ophyd_async.fastcs.panda import HDFPanda
 from ophyd_async.plan_stubs import store_settings
 from tiled.client import from_uri
 
-from src.xpd_tools.detectors.qepro import QEPro
+from xpd_tools.detectors.qepro import QEPro
 from xpd_tools.detectors.panda import PandAConfiguration, switch_panda_configuration
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
