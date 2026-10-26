@@ -97,11 +97,11 @@ pump_prefix = "XF:28IDC-ES:1"
 with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
 
     phud1 = UltraSyringePump(
-        prefix = pump_prefix + "{Pump:Syrng-Ultra:1}",
+        prefix = pump_prefix + "{Pump:Syrng-Ultra:1}:",
         name = ""
     )
     phud2 = UltraSyringePump(
-        prefix = pump_prefix + "{Pump:Syrng-Ultra:2}",
+        prefix = pump_prefix + "{Pump:Syrng-Ultra:2}:",
         name = ""
     )
 
