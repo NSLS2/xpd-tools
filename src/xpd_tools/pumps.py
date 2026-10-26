@@ -79,7 +79,7 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
     pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUME:EGU"), Format.CONFIG_SIGNAL]
-    read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_vol: A[SignalR[str], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUME:RBV:EGU"), Format.UNCACHED_SIGNAL
     ]
@@ -140,7 +140,7 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
     # TODO: make lowercase
     LIM: A[SignalRW[str], PvSuffix("IRATE-LIM:ENABLE"), Format.CONFIG_SIGNAL]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
-    read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_time: A[SignalR[str], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
     read_force: A[SignalR[float], PvSuffix("FORCE:RBV"), Format.UNCACHED_SIGNAL]
     read_force_unit: A[SignalR[str], PvSuffix("FORCE:RBV:EGU"), Format.UNCACHED_SIGNAL]
@@ -244,7 +244,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
     pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUMEUNITS"), Format.CONFIG_SIGNAL]
-    read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_vol: A[SignalR[str], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUMEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
@@ -273,7 +273,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
         SignalR[str], PvSuffix("WRATEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
-    read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_time: A[SignalR[str], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
     read_force: A[SignalR[float], PvSuffix("FORCE:RBV"), Format.UNCACHED_SIGNAL]
     diameter: A[SignalR[float], PvSuffix("DIAMETER"), Format.CONFIG_SIGNAL]
