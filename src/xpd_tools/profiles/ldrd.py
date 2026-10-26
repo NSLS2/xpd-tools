@@ -1,3 +1,8 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
+
 """XPD Bluesky profile for the 28-ID-2 beamline at NSLS-II."""
 
 import os

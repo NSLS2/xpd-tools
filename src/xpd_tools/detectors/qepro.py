@@ -1,8 +1,3 @@
-# /// script
-# requires-python = ">=3.13"
-# dependencies = []
-# ///
-
 """Ophyd-async interface for QEPro spectrometers."""
 
 import asyncio
@@ -10,7 +5,6 @@ from typing import Annotated as A
 
 import numpy as np
 from ophyd_async.core import (
-    Array1D,
     AsyncStatus,
     DeviceConnector,
     DeviceMock,
@@ -130,12 +124,12 @@ class QEPro(StandardReadable, EpicsDevice):
     """Ophyd-async device interface for a QEPro spectrometer."""
 
     # Device information
-    serial: A[SignalR[str], PvSuffix("SERIAL")]
-    model: A[SignalR[str], PvSuffix("MODEL")]
+    serial: A[SignalRW[str], PvSuffix("SERIAL")]
+    model: A[SignalRW[str], PvSuffix("MODEL")]
 
     # Device status
-    status: A[SignalR[str], PvSuffix("STATUS")]
-    status_msg: A[SignalR[str], PvSuffix("STATUS_MSG")]
+    status: A[SignalRW[int], PvSuffix("STATUS")]
+    status_msg: A[SignalRW[str], PvSuffix("STATUS_MSG")]
     device_connected: A[SignalR[bool], PvSuffix("CONNECTED_RBV")]
     check_status: A[SignalRW[bool], PvSuffix("CHECK_STATUS")]
     features: A[SignalR[int], PvSuffix("FEATURES_RBV")]
@@ -174,14 +168,14 @@ class QEPro(StandardReadable, EpicsDevice):
     buff_element_count: A[SignalR[int], PvSuffix("BUFF_ELEMENT_COUNT_RBV")]
 
     # Formatted spectra
-    output: A[SignalRW[Array1D[np.float64]], PvSuffix("OUTPUT"), Format.UNCACHED_SIGNAL]
-    sample: A[SignalRW[Array1D[np.float64]], PvSuffix("SAMPLE"), Format.UNCACHED_SIGNAL]
-    dark: A[SignalRW[Array1D[np.float64]], PvSuffix("DARK"), Format.UNCACHED_SIGNAL]
-    reference: A[SignalRW[Array1D[np.float64]], PvSuffix("REFERENCE"), Format.UNCACHED_SIGNAL]
+    output: A[SignalRW[np.ndarray], PvSuffix("OUTPUT"), Format.UNCACHED_SIGNAL]
+    sample: A[SignalRW[np.ndarray], PvSuffix("SAMPLE"), Format.UNCACHED_SIGNAL]
+    dark: A[SignalRW[np.ndarray], PvSuffix("DARK"), Format.UNCACHED_SIGNAL]
+    reference: A[SignalRW[np.ndarray], PvSuffix("REFERENCE"), Format.UNCACHED_SIGNAL]
     formatted_spectrum_len: A[SignalR[int], PvSuffix("FORMATTED_SPECTRUM_LEN_RBV")]
 
     # X-axis settings
-    x_axis: A[SignalRW[Array1D[np.float64]], PvSuffix("X_AXIS"), Format.UNCACHED_SIGNAL]
+    x_axis: A[SignalRW[np.ndarray], PvSuffix("X_AXIS"), Format.UNCACHED_SIGNAL]
     x_axis_format: A[SignalRW[str], PvSuffix.rbv("X_AXIS_FORMAT")]
 
     # Dark/reference availability
