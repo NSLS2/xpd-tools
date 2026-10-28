@@ -1,3 +1,8 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
+
 """EPICS syringe-pump interfaces and syringe/rate policy."""
 
 from __future__ import annotations
@@ -74,17 +79,17 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
     """
 
     status: A[SignalR[str], PvSuffix("STATUS"), Format.UNCACHED_SIGNAL]
-    pump_infuse: A[TriggerableCommand, PvSuffix("IRUN")]
-    pump_withdraw: A[TriggerableCommand, PvSuffix("WRUN")]
-    pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
+    pump_infuse: A[TriggerableCommand, PvSuffix("IRUN.PROC")]
+    pump_withdraw: A[TriggerableCommand, PvSuffix("WRUN.PROC")]
+    pump_stop: A[TriggerableCommand, PvSuffix("STOP.PROC")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUME:EGU"), Format.CONFIG_SIGNAL]
     read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUME:RBV:EGU"), Format.UNCACHED_SIGNAL
     ]
-    clear_infused: A[TriggerableCommand, PvSuffix("CIVOLUME")]
-    clear_withdrawn: A[TriggerableCommand, PvSuffix("CWVOLUME")]
+    clear_infused: A[TriggerableCommand, PvSuffix("CIVOLUME.PROC")]
+    clear_withdrawn: A[TriggerableCommand, PvSuffix("CWVOLUME.PROC")]
     read_infused: A[SignalR[float], PvSuffix("IVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_withdrawn: A[SignalR[float], PvSuffix("WVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_infused_unit: A[
@@ -138,7 +143,7 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
         SignalR[str], PvSuffix("WRATE:MIN:RBV:EGU"), Format.UNCACHED_SIGNAL
     ]
     # TODO: make lowercase
-    LIM: A[SignalRW[str], PvSuffix("IRATE-LIM:ENABLE"), Format.CONFIG_SIGNAL]
+    LIM: A[SignalRW[float], PvSuffix("IRATE-LIM:ENABLE"), Format.CONFIG_SIGNAL]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
     read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
@@ -244,7 +249,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
     pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUMEUNITS"), Format.CONFIG_SIGNAL]
-    read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_vol: A[SignalR[str], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUMEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
@@ -273,7 +278,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
         SignalR[str], PvSuffix("WRATEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
-    read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_time: A[SignalR[str], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
     read_force: A[SignalR[float], PvSuffix("FORCE:RBV"), Format.UNCACHED_SIGNAL]
     diameter: A[SignalR[float], PvSuffix("DIAMETER"), Format.CONFIG_SIGNAL]
