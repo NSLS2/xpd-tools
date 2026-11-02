@@ -192,16 +192,16 @@ _EPICS_STAT: dict[int, str] = {
     21: "WRITE_ACCESS",
 }
 
-# Readback attributes to probe for alarm severity on pump devices.
-# Empirically: DDS axes go INVALID on read_infused (STAT=COMM);
-# Ultra pumps go INVALID on read_infuse_rate (STAT=COMM).
-# Checking all four catches whichever one the IOC uses.
-_PUMP_LIVENESS_SIGNALS = (
-    "read_infused",
-    "read_withdrawn",
-    "read_infuse_rate",
-    "read_withdraw_rate",
-)
+# The pump liveness signal is the ``status`` record (run-state string such as
+# ``'Idle'`` / ``'Infusing'``).  The IOC refreshes this continuously while the
+# controller is communicating; it goes INVALID/COMM when the serial link drops.
+#
+# The four ``read_*`` readbacks (read_infused, read_withdrawn, read_infuse_rate,
+# read_withdraw_rate) were tried first but are permanently dirty on this IOC:
+# they sit in INVALID/COMM, INVALID/CALC, or INVALID/UDF even on healthy,
+# connected pumps (the record simply never processes for an idle direction).
+# Keying liveness off those records produces spurious ⚠ on every connected pump.
+_PUMP_LIVENESS_SIGNAL = "status"
 
 # Devices where no device-backed readback exists that reflects hardware liveness.
 # Command/output PVs stay NO_ALARM regardless of hardware state.
@@ -257,14 +257,22 @@ def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
     Probe strategy
     --------------
     Pumps (DDS + Ultra):
-        Read alarm_severity on the four readback PVs that are device-backed
-        (read_infused, read_withdrawn, read_infuse_rate, read_withdraw_rate).
-        Empirically: INVALID / COMM when hardware is detached; NO_ALARM when live.
-        Any INVALID (SEVR == 3) → not alive.
+        Read ``alarm_severity`` on the ``status`` record (run-state string,
+        e.g. ``'Idle'``).  The IOC refreshes this continuously while the
+        controller is communicating; it goes ``INVALID/COMM`` when the serial
+        link drops.  ``SEVR == INVALID (3)`` → not alive.
+
+        The four ``read_*`` readbacks were tried first but are permanently in
+        alarm on this IOC even when the controller is healthy (INVALID/CALC for
+        idle directions, INVALID/UDF for never-processed records).  They cannot
+        distinguish "connected" from "detached" and are not used for liveness.
 
     QEPro:
-        Read device_connected (CONNECTED_RBV).  Falsy → not alive.
-        This is a reliable USB-device-level readback from the areaDetector driver.
+        Read ``device_connected`` (``CONNECTED_RBV``).  Falsy → not alive.
+        Note: empirically ``CONNECTED_RBV`` stays 1 even when the spectrometer
+        is physically unplugged on this beamline — passive liveness is not fully
+        provable for the QEPro.  The ``✓`` means the IOC sees the areaDetector
+        driver; a real acquisition is the only definitive test.
 
     LED / uv_shutter / fast_shutter:
         No liveness probe possible.  alive = None.
@@ -274,32 +282,30 @@ def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
 
     try:
         if key in _PUMP_KEYS:
-            invalid_pvs: list[str] = []
-            probed: list[str] = []
-
-            for attr in _PUMP_LIVENESS_SIGNALS:
-                sig = getattr(device, attr, None)
-                if sig is None:
-                    continue
+            sig = getattr(device, _PUMP_LIVENESS_SIGNAL, None)
+            if sig is None:
+                report.alive = None
+                report.liveness_detail = f"{_PUMP_LIVENESS_SIGNAL!r} attribute not found"
+            else:
                 sevr = _epics_sevr(sig)
                 if sevr is None:
-                    continue
-                stat = _epics_stat(sig)
-                stat_name = _EPICS_STAT.get(stat, str(stat)) if stat is not None else "?"
-                probed.append(f"{attr}:SEVR={sevr}")
-                if sevr == 3:  # INVALID
-                    invalid_pvs.append(f"{attr}({stat_name})")
-
-            if not probed:
-                # Alarm fields not available on these signals — can't probe
-                report.alive = None
-                report.liveness_detail = "alarm_severity unavailable on readbacks"
-            elif invalid_pvs:
-                report.alive = False
-                report.liveness_detail = "INVALID: " + ", ".join(invalid_pvs)
-            else:
-                report.alive = True
-                report.liveness_detail = "all readbacks NO_ALARM"
+                    report.alive = None
+                    report.liveness_detail = f"{_PUMP_LIVENESS_SIGNAL}: alarm_severity unavailable"
+                else:
+                    stat = _epics_stat(sig)
+                    stat_name = _EPICS_STAT.get(stat, str(stat)) if stat is not None else "?"
+                    try:
+                        val = sig.get()
+                    except Exception:
+                        val = "?"
+                    if sevr == 3:  # INVALID
+                        report.alive = False
+                        report.liveness_detail = (
+                            f"status INVALID/{stat_name} — controller not responding"
+                        )
+                    else:
+                        report.alive = True
+                        report.liveness_detail = f"status={val!r} (NO_ALARM)"
 
         elif key == "qepro":
             connected_val = device.device_connected.get()
@@ -347,11 +353,9 @@ def check_halide_connections(
     3. **Device liveness** — device-specific probe that checks whether the
        physical hardware behind the IOC is actually responding:
 
-       * Pumps (DDS + Ultra) → ``alarm_severity`` on the four device-backed
-         readback PVs (``read_infused``, ``read_withdrawn``, ``read_infuse_rate``,
-         ``read_withdraw_rate``).  Any ``INVALID`` (SEVR=3) → not alive.
-         Empirically: DDS goes INVALID/COMM on ``read_infused``;
-         Ultra goes INVALID/COMM on ``read_infuse_rate``.
+       * Pumps (DDS + Ultra) → ``alarm_severity`` on the ``status`` record.
+         The IOC refreshes ``status`` continuously while the controller
+         communicates; ``INVALID/COMM`` when the serial link drops → not alive.
        * QEPro → ``device_connected`` (``CONNECTED_RBV``); falsy → not alive.
        * LED / shutters → ``alive = None``; command/output PVs have no
          device-backed readback so liveness cannot be probed.

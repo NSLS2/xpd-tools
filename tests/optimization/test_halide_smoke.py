@@ -247,18 +247,26 @@ class TestCheckHalideConnectionsLiveness:
         sig.alarm_status = sta_mock
         return sig
 
-    def _pump(self, *, read_infused_sevr: int = 0, read_infuse_rate_sevr: int = 0) -> MagicMock:
-        """Mock pump device (DDS axis or Ultra) with the four liveness readbacks."""
+    def _pump(self, *, status_sevr: int = 0, status_stat: int = 0) -> MagicMock:
+        """Mock pump device (DDS axis or Ultra).
+
+        ``status_sevr`` drives the liveness verdict:
+          * 0 (NO_ALARM) → alive=True
+          * 3 (INVALID)  → alive=False
+        The four ``read_*`` readbacks are included with INVALID/COMM to confirm
+        they are no longer consulted by the liveness probe.
+        """
         device = MagicMock()
         device.wait_for_connection.return_value = None
+        # Liveness signal (tier 3) — what the probe actually reads
+        device.status = self._alarm_sig("Idle", sevr=status_sevr, stat=status_stat)
         # Plan-critical signals (tier 2)
-        device.status = self._alarm_sig("Idle")
-        device.read_infuse_rate = self._alarm_sig(25.0, sevr=read_infuse_rate_sevr, stat=9 if read_infuse_rate_sevr == 3 else 0)
+        device.read_infuse_rate = self._alarm_sig(25.0)
         device.read_infuse_rate_unit = self._alarm_sig("ul/min")
-        # Liveness readbacks (tier 3)
-        device.read_infused = self._alarm_sig(0.0, sevr=read_infused_sevr, stat=9 if read_infused_sevr == 3 else 0)
-        device.read_withdrawn = self._alarm_sig(0.0)
-        device.read_withdraw_rate = self._alarm_sig(0.0)
+        # Deliberately INVALID — confirm these are ignored by the new probe
+        device.read_infused = self._alarm_sig(0.0, sevr=3, stat=9)
+        device.read_withdrawn = self._alarm_sig(0.0, sevr=3, stat=9)
+        device.read_withdraw_rate = self._alarm_sig(0.0, sevr=3, stat=12)
         return device
 
     def _qepro(self, *, connected: int = 1) -> MagicMock:
@@ -283,42 +291,53 @@ class TestCheckHalideConnectionsLiveness:
 
     # ── Pump liveness tests ──────────────────────────────────────────────────
 
-    def test_dds_all_readbacks_ok_is_alive(self):
-        """All readbacks NO_ALARM → alive."""
-        devices = {"dds2_p1": self._pump(read_infused_sevr=0, read_infuse_rate_sevr=0)}
+    def test_pump_status_no_alarm_is_alive(self):
+        """status NO_ALARM → alive=True even though read_* are INVALID."""
+        devices = {"dds2_p1": self._pump(status_sevr=0)}
         reports = check_halide_connections(devices, timeout=1.0)
         r = reports["dds2_p1"]
         assert r.alive is True
         assert "NO_ALARM" in r.liveness_detail
 
-    def test_dds_read_infused_invalid_not_alive(self):
-        """DDS axis: read_infused INVALID/COMM → not alive (matches real beamline data)."""
-        devices = {"dds2_p1": self._pump(read_infused_sevr=3)}
+    def test_pump_status_invalid_comm_not_alive(self):
+        """status INVALID/COMM (controller serial dropped) → alive=False."""
+        devices = {"dds2_p1": self._pump(status_sevr=3, status_stat=9)}
         reports = check_halide_connections(devices, timeout=1.0)
         r = reports["dds2_p1"]
         assert r.alive is False
-        assert "read_infused" in r.liveness_detail
+        assert "INVALID" in r.liveness_detail
         assert "COMM" in r.liveness_detail
 
-    def test_ultra_read_infuse_rate_invalid_not_alive(self):
-        """Ultra: read_infuse_rate INVALID/COMM → not alive (matches real beamline data)."""
-        devices = {"ultra1": self._pump(read_infuse_rate_sevr=3)}
-        reports = check_halide_connections(devices, timeout=1.0)
-        r = reports["ultra1"]
-        assert r.alive is False
-        assert "read_infuse_rate" in r.liveness_detail
-        assert "COMM" in r.liveness_detail
+    def test_pump_read_pvs_ignored_when_status_ok(self):
+        """read_infused/read_infuse_rate INVALID does NOT trip liveness when status is OK.
 
-    def test_any_invalid_readback_fails_liveness(self):
-        """Any one INVALID readback is enough to mark not alive."""
-        devices = {"dds3_p2": self._pump(read_infused_sevr=3, read_infuse_rate_sevr=0)}
+        This is the core regression guard: the four read_* records sit permanently
+        in INVALID/COMM or INVALID/CALC on this IOC even on healthy pumps.  The
+        mock wires them to INVALID to confirm they are not consulted.
+        """
+        # _pump() always sets read_infused/read_withdrawn/read_withdraw_rate to INVALID
+        devices = {"ultra1": self._pump(status_sevr=0)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["dds3_p2"].alive is False
+        assert reports["ultra1"].alive is True, (
+            "read_* INVALID should be ignored; only status SEVR matters"
+        )
 
-    def test_all_pump_keys_checked(self):
-        """Every pump key goes through the liveness probe."""
-        pump_keys = ["dds1_p1", "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2", "ultra1", "ultra2"]
-        devices = {k: self._pump() for k in pump_keys}
+    def test_pump_status_missing_gives_none(self):
+        """If the status attribute is absent, alive=None (can't probe)."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        device.read_infuse_rate = self._alarm_sig(25.0)
+        device.read_infuse_rate_unit = self._alarm_sig("ul/min")
+        del device.status   # simulate missing attribute
+        devices = {"dds2_p1": device}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["dds2_p1"].alive is None
+
+    def test_all_pump_keys_alive_when_status_ok(self):
+        """Every pump key reports alive=True when status is NO_ALARM."""
+        pump_keys = ["dds1_p1", "dds1_p2", "dds2_p1", "dds2_p2",
+                     "dds3_p1", "dds3_p2", "ultra1", "ultra2"]
+        devices = {k: self._pump(status_sevr=0) for k in pump_keys}
         reports = check_halide_connections(devices, timeout=1.0)
         for k in pump_keys:
             assert reports[k].alive is True, f"{k} should be alive"
@@ -553,28 +572,31 @@ class TestDiagnoseConnections:
         """reports=None triggers an internal check_halide_connections call."""
         from xpd_tools.optimization.devices import diagnose_connections
 
-        # Pump with INVALID read_infused → will show ⚠
+        # Pump with INVALID status → will show ⚠ under the new status-based probe
         pump = MagicMock()
         pump.wait_for_connection.return_value = None
-        for attr in ("status", "read_infuse_rate", "read_infuse_rate_unit"):
+
+        # status: INVALID/COMM → liveness fails → device appears in diagnose output
+        status_sig = MagicMock()
+        status_sig.get.return_value = "?"
+        sev = MagicMock(); sev.get.return_value = 3   # INVALID
+        sta = MagicMock(); sta.get.return_value = 9   # COMM
+        status_sig.alarm_severity = sev
+        status_sig.alarm_status = sta
+        status_sig.timestamp = None
+        pump.status = status_sig
+
+        for attr in ("read_infuse_rate", "read_infuse_rate_unit"):
             sig = MagicMock(); sig.get.return_value = 0.0
             sig.alarm_severity = MagicMock(); sig.alarm_severity.get.return_value = 0
             sig.alarm_status   = MagicMock(); sig.alarm_status.get.return_value = 0
-            sig.timestamp = None
-            setattr(pump, attr, sig)
-        for attr in ("read_infused", "read_withdrawn",
-                     "read_withdraw_rate", "read_target_vol"):
-            sig = MagicMock(); sig.get.return_value = 0.0
-            sev = MagicMock(); sev.get.return_value = 3   # INVALID
-            sta = MagicMock(); sta.get.return_value = 9   # COMM
-            sig.alarm_severity = sev; sig.alarm_status = sta
             sig.timestamp = None
             setattr(pump, attr, sig)
 
         diagnose_connections({"dds2_p1": pump}, reports=None, timeout=1.0)
         out = capsys.readouterr().out
         assert "dds2_p1" in out
-        assert "read_infused" in out
+        assert "status" in out
 
 
 class TestRealDeviceClasses:
