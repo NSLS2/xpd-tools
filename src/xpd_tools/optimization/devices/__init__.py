@@ -155,65 +155,169 @@ class ConnectionReport:
         return f"<ConnectionReport {self.name}: {status}{detail}>"
 
 
-# Keys whose comms signal lives on the parent SyrngDDS, not on the axis itself
-_DDS_AXIS_KEYS = {"dds1_p1", "dds1_p2", "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
-# Keys that are SyrngUltra (comms signal on the device itself)
-_ULTRA_KEYS = {"ultra1", "ultra2"}
-# Pump keys = DDS axes + Ultra
-_PUMP_KEYS = _DDS_AXIS_KEYS | _ULTRA_KEYS
+# Pump device keys — both DDS axes and Ultra pumps share the same readback
+# attribute names (read_infused, read_withdrawn, read_infuse_rate, read_withdraw_rate).
+_PUMP_KEYS = {
+    "dds1_p1", "dds1_p2",
+    "dds2_p1", "dds2_p2",
+    "dds3_p1", "dds3_p2",
+    "ultra1",  "ultra2",
+}
+
+# EPICS alarm status code → human-readable name (subset most relevant to device comms)
+_EPICS_STAT: dict[int, str] = {
+    0:  "NO_ALARM",
+    1:  "READ",
+    2:  "WRITE",
+    3:  "HIHI",
+    4:  "HIGH",
+    5:  "LOLO",
+    6:  "LOW",
+    7:  "STATE",
+    8:  "COS",
+    9:  "COMM",
+    10: "TIMEOUT",
+    11: "HW_LIMIT",
+    12: "CALC",
+    13: "SCAN",
+    14: "LINK",
+    15: "SOFT",
+    16: "BAD_SUB",
+    17: "UDF",
+    18: "DISABLE",
+    19: "SIMM",
+    20: "READ_ACCESS",
+    21: "WRITE_ACCESS",
+}
+
+# Readback attributes to probe for alarm severity on pump devices.
+# Empirically: DDS axes go INVALID on read_infused (STAT=COMM);
+# Ultra pumps go INVALID on read_infuse_rate (STAT=COMM).
+# Checking all four catches whichever one the IOC uses.
+_PUMP_LIVENESS_SIGNALS = (
+    "read_infused",
+    "read_withdrawn",
+    "read_infuse_rate",
+    "read_withdraw_rate",
+)
+
+# Devices where no device-backed readback exists that reflects hardware liveness.
+# Command/output PVs stay NO_ALARM regardless of hardware state.
+# alive is set to None → shown as ✓ if connected, never fails overall-OK.
+_NO_LIVENESS_SIGNAL_KEYS = {"led", "uv_shutter", "fast_shutter"}
+
+
+def _epics_sevr(signal: Any) -> int | None:
+    """Return the EPICS alarm severity integer for *signal*, or None if unavailable."""
+    sev_attr = getattr(signal, "alarm_severity", None)
+    if sev_attr is None:
+        return None
+    # ophyd may expose alarm_severity as an EpicsSignalRO-like object or a plain int
+    if hasattr(sev_attr, "get"):
+        try:
+            return int(sev_attr.get())
+        except Exception:
+            return None
+    try:
+        return int(sev_attr)
+    except (TypeError, ValueError):
+        return None
+
+
+def _epics_stat(signal: Any) -> int | None:
+    """Return the EPICS alarm status integer for *signal*, or None if unavailable."""
+    stat_attr = getattr(signal, "alarm_status", None)
+    if stat_attr is None:
+        return None
+    if hasattr(stat_attr, "get"):
+        try:
+            return int(stat_attr.get())
+        except Exception:
+            return None
+    try:
+        return int(stat_attr)
+    except (TypeError, ValueError):
+        return None
 
 
 def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
     """Populate report.alive and report.liveness_detail for *device*.
 
-    Probes are device-role-specific:
-    - DDS axes: read ``device.parent.communication``; ``"Disabled"`` → not alive.
-    - Ultra pumps: read ``device.communication``; ``"Disabled"`` → not alive.
-    - QEPro: read ``device.device_connected``; falsy → not alive.
-    - Everything else (LEDs, shutters): read alarm_severity on the primary
-      signal; INVALID (severity >= 2) → not alive.
+    Liveness semantics:
+
+    * ``True``  — probe ran, hardware is responding.
+    * ``False`` — probe ran, hardware is **not** responding (INVALID alarm or
+      device_connected == 0).  Results in ``⚠`` in the report.
+    * ``None``  — no device-backed liveness signal exists for this role
+      (LEDs, shutters).  IOC reachability (tier 1) and PV readability (tier 2)
+      are still verified; liveness is simply not provable.
+
+    Probe strategy
+    --------------
+    Pumps (DDS + Ultra):
+        Read alarm_severity on the four readback PVs that are device-backed
+        (read_infused, read_withdrawn, read_infuse_rate, read_withdraw_rate).
+        Empirically: INVALID / COMM when hardware is detached; NO_ALARM when live.
+        Any INVALID (SEVR == 3) → not alive.
+
+    QEPro:
+        Read device_connected (CONNECTED_RBV).  Falsy → not alive.
+        This is a reliable USB-device-level readback from the areaDetector driver.
+
+    LED / uv_shutter / fast_shutter:
+        No liveness probe possible.  alive = None.
     """
     import logging
     logger = logging.getLogger(__name__)
 
     try:
-        if key in _DDS_AXIS_KEYS:
-            comms = device.parent.communication.get()
-            report.alive = str(comms).lower() != "disabled"
-            report.liveness_detail = f"comms={comms}"
+        if key in _PUMP_KEYS:
+            invalid_pvs: list[str] = []
+            probed: list[str] = []
 
-        elif key in _ULTRA_KEYS:
-            comms = device.communication.get()
-            report.alive = str(comms).lower() != "disabled"
-            report.liveness_detail = f"comms={comms}"
+            for attr in _PUMP_LIVENESS_SIGNALS:
+                sig = getattr(device, attr, None)
+                if sig is None:
+                    continue
+                sevr = _epics_sevr(sig)
+                if sevr is None:
+                    continue
+                stat = _epics_stat(sig)
+                stat_name = _EPICS_STAT.get(stat, str(stat)) if stat is not None else "?"
+                probed.append(f"{attr}:SEVR={sevr}")
+                if sevr == 3:  # INVALID
+                    invalid_pvs.append(f"{attr}({stat_name})")
+
+            if not probed:
+                # Alarm fields not available on these signals — can't probe
+                report.alive = None
+                report.liveness_detail = "alarm_severity unavailable on readbacks"
+            elif invalid_pvs:
+                report.alive = False
+                report.liveness_detail = "INVALID: " + ", ".join(invalid_pvs)
+            else:
+                report.alive = True
+                report.liveness_detail = "all readbacks NO_ALARM"
 
         elif key == "qepro":
             connected_val = device.device_connected.get()
             report.alive = bool(connected_val)
             report.liveness_detail = f"CONNECTED_RBV={connected_val}"
 
-        else:
-            # Generic: check alarm severity on the device itself (bare EpicsSignal)
-            # or fall back to its primary sub-signal.
-            # ophyd EpicsSignal severity: 0=NO_ALARM, 1=MINOR, 2=MAJOR, 3=INVALID.
-            severity = getattr(device, "alarm_severity", None)
-            if severity is None:
-                # Try a named sub-signal (e.g. motor .status)
-                for attr in ("status",):
-                    sub = getattr(device, attr, None)
-                    if sub is not None:
-                        severity = getattr(sub, "alarm_severity", None)
-                        if severity is not None:
-                            break
+        elif key in _NO_LIVENESS_SIGNAL_KEYS:
+            # Command/output PVs — no hardware readback; liveness not provable.
+            report.alive = None
+            report.liveness_detail = "no device-backed liveness signal"
 
-            if severity is not None:
-                sev_val = severity.get() if hasattr(severity, "get") else int(severity)
-                report.alive = int(sev_val) < 3  # INVALID == 3
-                report.liveness_detail = f"alarm_severity={sev_val}"
+        else:
+            # Unknown device type — best-effort alarm check on the device itself.
+            sevr = _epics_sevr(device)
+            if sevr is not None:
+                report.alive = sevr < 3
+                report.liveness_detail = f"alarm_severity={sevr}"
             else:
-                # No severity info available; assume alive if connected.
-                report.alive = True
-                report.liveness_detail = "alarm_severity=unavailable"
+                report.alive = None
+                report.liveness_detail = "alarm_severity unavailable"
 
     except Exception as exc:
         report.alive = False
@@ -241,10 +345,14 @@ def check_halide_connections(
     3. **Device liveness** — device-specific probe that checks whether the
        physical hardware behind the IOC is actually responding:
 
-       * DDS axes → ``parent.communication`` (``"Enabled"`` / ``"Disabled"``)
-       * Ultra pumps → ``communication`` (same semantics)
-       * QEPro → ``device_connected`` (``CONNECTED_RBV``)
-       * Others → alarm severity on the primary signal (``INVALID`` = not alive)
+       * Pumps (DDS + Ultra) → ``alarm_severity`` on the four device-backed
+         readback PVs (``read_infused``, ``read_withdrawn``, ``read_infuse_rate``,
+         ``read_withdraw_rate``).  Any ``INVALID`` (SEVR=3) → not alive.
+         Empirically: DDS goes INVALID/COMM on ``read_infused``;
+         Ultra goes INVALID/COMM on ``read_infuse_rate``.
+       * QEPro → ``device_connected`` (``CONNECTED_RBV``); falsy → not alive.
+       * LED / shutters → ``alive = None``; command/output PVs have no
+         device-backed readback so liveness cannot be probed.
 
     Parameters
     ----------

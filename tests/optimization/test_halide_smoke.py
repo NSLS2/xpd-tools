@@ -235,147 +235,197 @@ class TestCheckHalideConnectionsLiveness:
     # ── Mock builders ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _sig(value, *, alarm_severity: int = 0):
-        """Return a mock that behaves like an EpicsSignalRO with .get()."""
-        m = MagicMock()
-        m.get.return_value = value
-        sev = MagicMock()
-        sev.get.return_value = alarm_severity
-        m.alarm_severity = sev
-        return m
+    def _alarm_sig(value: object = 0, *, sevr: int = 0, stat: int = 0) -> MagicMock:
+        """Return a mock EpicsSignalRO with .get(), .alarm_severity, .alarm_status."""
+        sig = MagicMock()
+        sig.get.return_value = value
+        sev_mock = MagicMock()
+        sev_mock.get.return_value = sevr
+        sig.alarm_severity = sev_mock
+        sta_mock = MagicMock()
+        sta_mock.get.return_value = stat
+        sig.alarm_status = sta_mock
+        return sig
 
-    def _dds_axis(self, comms: str = "Enabled"):
-        """Mock SyrngDDSAxis: has parent.communication, status, read_infuse_rate."""
+    def _pump(self, *, read_infused_sevr: int = 0, read_infuse_rate_sevr: int = 0) -> MagicMock:
+        """Mock pump device (DDS axis or Ultra) with the four liveness readbacks."""
         device = MagicMock()
         device.wait_for_connection.return_value = None
-        device.status = self._sig("Infusing")
-        device.read_infuse_rate = self._sig(25.0)
-        device.read_infuse_rate_unit = self._sig("ul/min")
-        device.parent.communication.get.return_value = comms
+        # Plan-critical signals (tier 2)
+        device.status = self._alarm_sig("Idle")
+        device.read_infuse_rate = self._alarm_sig(25.0, sevr=read_infuse_rate_sevr, stat=9 if read_infuse_rate_sevr == 3 else 0)
+        device.read_infuse_rate_unit = self._alarm_sig("ul/min")
+        # Liveness readbacks (tier 3)
+        device.read_infused = self._alarm_sig(0.0, sevr=read_infused_sevr, stat=9 if read_infused_sevr == 3 else 0)
+        device.read_withdrawn = self._alarm_sig(0.0)
+        device.read_withdraw_rate = self._alarm_sig(0.0)
         return device
 
-    def _ultra(self, comms: str = "Enabled"):
-        """Mock SyrngUltra: has communication, status, read_infuse_rate."""
+    def _qepro(self, *, connected: int = 1) -> MagicMock:
+        """Mock QEPro with device_connected and plan-critical signals."""
         device = MagicMock()
         device.wait_for_connection.return_value = None
-        device.status = self._sig("Idle")
-        device.read_infuse_rate = self._sig(10.0)
-        device.read_infuse_rate_unit = self._sig("ul/min")
-        device.communication.get.return_value = comms
-        return device
-
-    def _qepro(self, *, connected: int = 1):
-        """Mock QEPro: has device_connected, x_axis, output, etc."""
-        device = MagicMock()
-        device.wait_for_connection.return_value = None
-        device.x_axis = self._sig([400.0, 800.0])
-        device.output = self._sig(0.5)
-        device.spectrum_type = self._sig("Corrected Sample")
-        device.correction = self._sig(1)
+        device.x_axis = self._alarm_sig([400.0, 800.0])
+        device.output = self._alarm_sig(0.5)
+        device.spectrum_type = self._alarm_sig("Corrected Sample")
+        device.correction = self._alarm_sig(1)
         device.device_connected.get.return_value = connected
         return device
 
-    def _shutter(self, *, alarm_severity: int = 0):
-        """Mock EpicsSignal shutter: bare .get() + alarm_severity."""
+    def _shutter(self) -> MagicMock:
+        """Mock LED/shutter: bare .get(), no alarm fields (command PV)."""
         device = MagicMock()
         device.wait_for_connection.return_value = None
         device.get.return_value = 0
-        sev = MagicMock()
-        sev.get.return_value = alarm_severity
-        device.alarm_severity = sev
-        # No 'status' attr so the generic branch uses the device's alarm_severity
-        del device.status
+        # No alarm_severity on command PVs
+        del device.alarm_severity
         return device
 
-    # ── Tests ────────────────────────────────────────────────────────────────
+    # ── Pump liveness tests ──────────────────────────────────────────────────
 
-    def test_dds_enabled_is_alive(self):
-        devices = {"dds2_p1": self._dds_axis(comms="Enabled")}
+    def test_dds_all_readbacks_ok_is_alive(self):
+        """All readbacks NO_ALARM → alive."""
+        devices = {"dds2_p1": self._pump(read_infused_sevr=0, read_infuse_rate_sevr=0)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["dds2_p1"].alive is True
-        assert "Enabled" in reports["dds2_p1"].liveness_detail
+        r = reports["dds2_p1"]
+        assert r.alive is True
+        assert "NO_ALARM" in r.liveness_detail
 
-    def test_dds_disabled_not_alive(self):
-        devices = {"dds2_p1": self._dds_axis(comms="Disabled")}
+    def test_dds_read_infused_invalid_not_alive(self):
+        """DDS axis: read_infused INVALID/COMM → not alive (matches real beamline data)."""
+        devices = {"dds2_p1": self._pump(read_infused_sevr=3)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["dds2_p1"].alive is False
-        assert "Disabled" in reports["dds2_p1"].liveness_detail
+        r = reports["dds2_p1"]
+        assert r.alive is False
+        assert "read_infused" in r.liveness_detail
+        assert "COMM" in r.liveness_detail
 
-    def test_ultra_enabled_is_alive(self):
-        devices = {"ultra1": self._ultra(comms="Enabled")}
+    def test_ultra_read_infuse_rate_invalid_not_alive(self):
+        """Ultra: read_infuse_rate INVALID/COMM → not alive (matches real beamline data)."""
+        devices = {"ultra1": self._pump(read_infuse_rate_sevr=3)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["ultra1"].alive is True
+        r = reports["ultra1"]
+        assert r.alive is False
+        assert "read_infuse_rate" in r.liveness_detail
+        assert "COMM" in r.liveness_detail
 
-    def test_ultra_disabled_not_alive(self):
-        devices = {"ultra2": self._ultra(comms="Disabled")}
+    def test_any_invalid_readback_fails_liveness(self):
+        """Any one INVALID readback is enough to mark not alive."""
+        devices = {"dds3_p2": self._pump(read_infused_sevr=3, read_infuse_rate_sevr=0)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["ultra2"].alive is False
+        assert reports["dds3_p2"].alive is False
+
+    def test_all_pump_keys_checked(self):
+        """Every pump key goes through the liveness probe."""
+        pump_keys = ["dds1_p1", "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2", "ultra1", "ultra2"]
+        devices = {k: self._pump() for k in pump_keys}
+        reports = check_halide_connections(devices, timeout=1.0)
+        for k in pump_keys:
+            assert reports[k].alive is True, f"{k} should be alive"
+
+    # ── QEPro liveness tests ─────────────────────────────────────────────────
 
     def test_qepro_connected_is_alive(self):
         devices = {"qepro": self._qepro(connected=1)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["qepro"].alive is True
-        assert "CONNECTED_RBV=1" in reports["qepro"].liveness_detail
+        r = reports["qepro"]
+        assert r.alive is True
+        assert "CONNECTED_RBV=1" in r.liveness_detail
 
     def test_qepro_disconnected_not_alive(self):
         devices = {"qepro": self._qepro(connected=0)}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["qepro"].alive is False
-        assert "CONNECTED_RBV=0" in reports["qepro"].liveness_detail
+        r = reports["qepro"]
+        assert r.alive is False
+        assert "CONNECTED_RBV=0" in r.liveness_detail
 
-    def test_shutter_valid_alarm_is_alive(self):
-        devices = {"led": self._shutter(alarm_severity=0)}
-        reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["led"].alive is True
+    # ── LED / shutter — no liveness signal ──────────────────────────────────
 
-    def test_shutter_invalid_alarm_not_alive(self):
-        devices = {"led": self._shutter(alarm_severity=3)}
+    def test_led_alive_is_none(self):
+        """LED is a command PV — no liveness probe, alive stays None."""
+        devices = {"led": self._shutter()}
         reports = check_halide_connections(devices, timeout=1.0)
-        assert reports["led"].alive is False
+        assert reports["led"].alive is None
+        assert "no device-backed" in reports["led"].liveness_detail
+
+    def test_uv_shutter_alive_is_none(self):
+        devices = {"uv_shutter": self._shutter()}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["uv_shutter"].alive is None
+
+    def test_fast_shutter_alive_is_none(self):
+        devices = {"fast_shutter": self._shutter()}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["fast_shutter"].alive is None
+
+    # ── print_connection_report three-state output ───────────────────────────
 
     def test_print_report_three_state(self, capsys):
         """print_connection_report emits ✓ / ⚠ / ✗ correctly."""
         from xpd_tools.optimization.devices import ConnectionReport
 
-        alive_r = ConnectionReport("good")
+        alive_r = ConnectionReport("pump_ok")
         alive_r.connected = True
         alive_r.alive = True
-        alive_r.liveness_detail = "comms=Enabled"
+        alive_r.liveness_detail = "all readbacks NO_ALARM"
 
-        warn_r = ConnectionReport("ioc_only")
+        warn_r = ConnectionReport("pump_dead")
         warn_r.connected = True
         warn_r.alive = False
-        warn_r.liveness_detail = "comms=Disabled"
+        warn_r.liveness_detail = "INVALID: read_infused(COMM)"
 
-        fail_r = ConnectionReport("dead")
+        no_probe_r = ConnectionReport("led")
+        no_probe_r.connected = True
+        no_probe_r.alive = None
+        no_probe_r.liveness_detail = "no device-backed liveness signal"
+
+        fail_r = ConnectionReport("ioc_down")
         fail_r.connected = False
         fail_r.error = "timeout"
 
-        reports = {"good": alive_r, "ioc_only": warn_r, "dead": fail_r,
-                   "_require_alive": True}
+        reports = {
+            "pump_ok": alive_r,
+            "pump_dead": warn_r,
+            "led": no_probe_r,
+            "ioc_down": fail_r,
+            "_require_alive": True,
+        }
         result = print_connection_report(reports)
-
         out = capsys.readouterr().out
-        assert "✓" in out
-        assert "⚠" in out
-        assert "✗" in out
-        assert result is False  # dead + not-alive with require_alive=True
+
+        assert "✓" in out   # pump_ok and led (alive=None → ✓)
+        assert "⚠" in out   # pump_dead
+        assert "✗" in out   # ioc_down
+        assert result is False  # pump_dead (require_alive) + ioc_down
 
     def test_require_alive_false_warns_not_fails(self, capsys):
-        """require_alive=False downgrades ⚠ to a non-failing warning."""
+        """require_alive=False downgrades ⚠ to a warning; overall-OK stays True."""
         from xpd_tools.optimization.devices import ConnectionReport
 
-        warn_r = ConnectionReport("ioc_only")
+        warn_r = ConnectionReport("pump_dead")
         warn_r.connected = True
         warn_r.alive = False
-        warn_r.liveness_detail = "comms=Disabled"
+        warn_r.liveness_detail = "INVALID: read_infused(COMM)"
 
-        reports = {"ioc_only": warn_r, "_require_alive": False}
+        reports = {"pump_dead": warn_r, "_require_alive": False}
         result = print_connection_report(reports)
-
         out = capsys.readouterr().out
+
         assert "⚠" in out
-        assert result is True  # not-alive is only a warning here
+        assert result is True  # liveness is only a warning
+
+    def test_alive_none_does_not_fail(self, capsys):
+        """alive=None (no liveness signal) never fails overall-OK."""
+        from xpd_tools.optimization.devices import ConnectionReport
+
+        r = ConnectionReport("led")
+        r.connected = True
+        r.alive = None
+        r.liveness_detail = "no device-backed liveness signal"
+
+        reports = {"led": r, "_require_alive": True}
+        result = print_connection_report(reports)
+        assert result is True
 
     def test_ca_fail_short_circuits_liveness(self):
         """A CA connect failure skips the liveness probe (alive stays None)."""
