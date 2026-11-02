@@ -19,6 +19,7 @@ from xpd_tools.optimization.devices.pumps import SyrngDDS, SyrngDDSAxis, SyrngUl
 from xpd_tools.optimization.devices.qepro import QEPro
 
 __all__ = [
+    "ConnectionReport",
     "FastShutter",
     "LED",
     "QEPro",
@@ -28,6 +29,7 @@ __all__ = [
     "UVShutter",
     "build_halide_devices",
     "check_halide_connections",
+    "diagnose_connections",
     "print_connection_report",
 ]
 
@@ -470,3 +472,169 @@ def print_connection_report(
             print(f"  ✓  {key:<15}{live_note}")
 
     return all_ok
+
+
+# EPICS severity integer → label
+_EPICS_SEVR: dict[int, str] = {
+    0: "NO_ALARM",
+    1: "MINOR",
+    2: "MAJOR",
+    3: "INVALID",
+}
+
+# Diagnostic PV attributes per device role — broader than the liveness probe.
+# These are read for the per-PV triage table only, never written.
+_DIAG_SIGNALS: dict[str, list[str]] = {
+    "dds1_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "dds1_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "dds2_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "dds2_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "dds3_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "dds3_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "ultra1":     ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "ultra2":     ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
+    "qepro":      ["device_connected", "status", "status_msg", "x_axis", "output"],
+    "led":        [],   # bare EpicsSignal — handled separately
+    "uv_shutter": [],
+    "fast_shutter": [],
+}
+
+
+def _diag_one_signal(name: str, sig: Any) -> None:
+    """Print one row of the per-PV diagnostic table."""
+    import time as _time
+
+    try:
+        val = sig.get()
+    except Exception as exc:
+        print(f"      {name:<28}  ERROR: {exc}")
+        return
+
+    # Severity
+    sevr_int = _epics_sevr(sig)
+    sevr_str = _EPICS_SEVR.get(sevr_int, str(sevr_int)) if sevr_int is not None else "n/a"
+
+    # Status
+    stat_int = _epics_stat(sig)
+    stat_str = _EPICS_STAT.get(stat_int, str(stat_int)) if stat_int is not None else "n/a"
+
+    # Timestamp age
+    ts = getattr(sig, "timestamp", None)
+    if ts and hasattr(ts, "__float__"):
+        try:
+            age = f"{_time.time() - float(ts):.1f}s ago"
+        except Exception:
+            age = "n/a"
+    else:
+        age = "n/a"
+
+    # Truncate long values (arrays etc.)
+    val_repr = repr(val)
+    if len(val_repr) > 40:
+        val_repr = val_repr[:37] + "..."
+
+    flag = "  ← INVALID" if sevr_int == 3 else ""
+    print(f"      {name:<28}  val={val_repr:<42}  SEVR={sevr_str:<8}  STAT={stat_str:<10}  {age}{flag}")
+
+
+def diagnose_connections(
+    devices: dict[str, Any],
+    reports: dict[str, ConnectionReport] | None = None,
+    *,
+    only_failures: bool = True,
+    timeout: float = 5.0,
+) -> None:
+    """Print a detailed per-PV diagnostic table for failed or all devices.
+
+    Intended as a follow-up to ``print_connection_report`` when something shows
+    ``⚠`` or ``✗``.  For each selected device it prints every diagnostic PV
+    with its current value, decoded alarm severity (``NO_ALARM`` / ``MINOR`` /
+    ``MAJOR`` / ``INVALID``), decoded alarm status (``COMM``, ``TIMEOUT``, …),
+    and timestamp age.
+
+    Parameters
+    ----------
+    devices:
+        Dict as returned by ``build_halide_devices()``.
+    reports:
+        Existing ``ConnectionReport`` dict from a prior
+        ``check_halide_connections`` call.  If ``None``, a fresh check is run
+        automatically (using *timeout*).
+    only_failures:
+        When ``True`` (default) only print devices that are ``✗`` (not connected
+        or failed signals) or ``⚠`` (``alive is False``).  Pass ``False`` to
+        dump every device.
+    timeout:
+        Timeout used when *reports* is ``None`` and a fresh check is needed.
+
+    Example
+    -------
+    ::
+
+        from xpd_tools.optimization.devices import (
+            build_halide_devices, check_halide_connections,
+            print_connection_report, diagnose_connections,
+        )
+
+        devices = build_halide_devices()
+        reports = check_halide_connections(devices, timeout=10.0)
+        print_connection_report(reports)
+
+        # Deep-dive on anything that failed:
+        diagnose_connections(devices, reports)
+    """
+    # If reports were already consumed by print_connection_report (which pops
+    # _require_alive) we need a fresh check.  Run one if reports is None or empty.
+    if reports is None:
+        reports = check_halide_connections(devices, timeout=timeout)
+        # pop the sentinel so iteration below is clean
+        reports.pop("_require_alive", None)  # type: ignore[arg-type]
+    else:
+        # Defensive: pop in case caller hasn't called print_connection_report yet
+        reports.pop("_require_alive", None)  # type: ignore[arg-type]
+
+    # Select which device keys to diagnose
+    if only_failures:
+        targets = {
+            key for key, r in reports.items()
+            if isinstance(r, ConnectionReport) and (
+                not r.connected
+                or bool(r.failed_signals)
+                or r.alive is False
+            )
+        }
+    else:
+        targets = {key for key in reports if isinstance(reports[key], ConnectionReport)}
+
+    if not targets:
+        print("  ✓  All devices healthy — nothing to diagnose.")
+        return
+
+    print(f"  Diagnosing {len(targets)} device(s): {sorted(targets)}\n")
+
+    for key in sorted(targets):
+        r = reports[key]
+        device = devices.get(key)
+        if device is None:
+            print(f"  [{key}]  device not found in devices dict")
+            continue
+
+        glyph = "✗" if (not r.connected or r.failed_signals) else "⚠"
+        print(f"  {glyph}  {key}  —  {r.liveness_detail or r.error or ''}")
+        print(f"      {'signal':<28}  {'value':<44}  {'SEVR':<12}  {'STAT':<12}  age")
+        print(f"      {'-'*28}  {'-'*44}  {'-'*12}  {'-'*12}  {'-'*12}")
+
+        sig_names = _DIAG_SIGNALS.get(key, [])
+
+        if sig_names:
+            for name in sig_names:
+                sig = getattr(device, name, None)
+                if sig is None:
+                    print(f"      {name:<28}  (attribute not found)")
+                    continue
+                _diag_one_signal(name, sig)
+        else:
+            # Bare EpicsSignal (led, shutters) or unknown — probe device directly
+            _diag_one_signal(f"({key})", device)
+
+        print()

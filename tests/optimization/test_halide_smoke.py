@@ -437,6 +437,146 @@ class TestCheckHalideConnectionsLiveness:
         assert r.alive is None
 
 
+class TestDiagnoseConnections:
+    """Offline tests for diagnose_connections."""
+
+    @staticmethod
+    def _alive_report(name: str) -> "ConnectionReport":
+        from xpd_tools.optimization.devices import ConnectionReport
+        r = ConnectionReport(name)
+        r.connected = True
+        r.alive = True
+        r.liveness_detail = "all readbacks NO_ALARM"
+        return r
+
+    @staticmethod
+    def _dead_report(name: str) -> "ConnectionReport":
+        from xpd_tools.optimization.devices import ConnectionReport
+        r = ConnectionReport(name)
+        r.connected = True
+        r.alive = False
+        r.liveness_detail = "INVALID: read_infused(COMM)"
+        return r
+
+    @staticmethod
+    def _disconnected_report(name: str) -> "ConnectionReport":
+        from xpd_tools.optimization.devices import ConnectionReport
+        r = ConnectionReport(name)
+        r.connected = False
+        r.error = "timeout"
+        return r
+
+    @staticmethod
+    def _mock_pump() -> MagicMock:
+        """Pump device mock with all diagnostic signal attributes."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        for attr in ("status", "read_infuse_rate", "read_infused",
+                     "read_withdrawn", "read_withdraw_rate", "read_target_vol"):
+            sig = MagicMock()
+            sig.get.return_value = 0.0
+            sev = MagicMock(); sev.get.return_value = 0
+            sig.alarm_severity = sev
+            sta = MagicMock(); sta.get.return_value = 0
+            sig.alarm_status = sta
+            sig.timestamp = None
+            setattr(device, attr, sig)
+        return device
+
+    def test_only_failures_skips_healthy_devices(self, capsys):
+        """only_failures=True: healthy devices produce no output."""
+        from xpd_tools.optimization.devices import diagnose_connections
+
+        devices = {"dds2_p1": self._mock_pump()}
+        reports = {"dds2_p1": self._alive_report("dds2_p1")}
+
+        diagnose_connections(devices, reports, only_failures=True)
+        out = capsys.readouterr().out
+        assert "All devices healthy" in out
+        assert "dds2_p1" not in out.split("All")[1]  # not in the table body
+
+    def test_only_failures_prints_dead_device(self, capsys):
+        """only_failures=True: ⚠ device gets a PV table."""
+        from xpd_tools.optimization.devices import diagnose_connections
+
+        devices = {"dds2_p1": self._mock_pump()}
+        reports = {"dds2_p1": self._dead_report("dds2_p1")}
+
+        diagnose_connections(devices, reports, only_failures=True)
+        out = capsys.readouterr().out
+        assert "dds2_p1" in out
+        assert "read_infused" in out    # diagnostic signal present
+        assert "SEVR" in out
+
+    def test_only_failures_prints_disconnected_device(self, capsys):
+        """only_failures=True: ✗ (not connected) device gets a PV table."""
+        from xpd_tools.optimization.devices import diagnose_connections
+
+        # Device that fails wait_for_connection
+        dead_dev = MagicMock()
+        dead_dev.wait_for_connection.side_effect = TimeoutError("no ioc")
+        for attr in ("status", "read_infuse_rate", "read_infused",
+                     "read_withdrawn", "read_withdraw_rate", "read_target_vol"):
+            sig = MagicMock()
+            sig.get.return_value = 0.0
+            sig.alarm_severity = MagicMock(); sig.alarm_severity.get.return_value = 0
+            sig.alarm_status  = MagicMock(); sig.alarm_status.get.return_value = 0
+            sig.timestamp = None
+            setattr(dead_dev, attr, sig)
+
+        devices = {"dds2_p1": dead_dev}
+        reports = {"dds2_p1": self._disconnected_report("dds2_p1")}
+
+        diagnose_connections(devices, reports, only_failures=True)
+        out = capsys.readouterr().out
+        assert "dds2_p1" in out
+
+    def test_only_failures_false_dumps_all(self, capsys):
+        """only_failures=False: healthy devices are also printed."""
+        from xpd_tools.optimization.devices import diagnose_connections
+
+        devices = {
+            "dds2_p1": self._mock_pump(),
+            "ultra1":  self._mock_pump(),
+        }
+        reports = {
+            "dds2_p1": self._alive_report("dds2_p1"),
+            "ultra1":  self._dead_report("ultra1"),
+        }
+
+        diagnose_connections(devices, reports, only_failures=False)
+        out = capsys.readouterr().out
+        assert "dds2_p1" in out   # healthy — still printed
+        assert "ultra1" in out    # failed — printed
+
+    def test_reports_none_runs_fresh_check(self, capsys):
+        """reports=None triggers an internal check_halide_connections call."""
+        from xpd_tools.optimization.devices import diagnose_connections
+
+        # Pump with INVALID read_infused → will show ⚠
+        pump = MagicMock()
+        pump.wait_for_connection.return_value = None
+        for attr in ("status", "read_infuse_rate", "read_infuse_rate_unit"):
+            sig = MagicMock(); sig.get.return_value = 0.0
+            sig.alarm_severity = MagicMock(); sig.alarm_severity.get.return_value = 0
+            sig.alarm_status   = MagicMock(); sig.alarm_status.get.return_value = 0
+            sig.timestamp = None
+            setattr(pump, attr, sig)
+        for attr in ("read_infused", "read_withdrawn",
+                     "read_withdraw_rate", "read_target_vol"):
+            sig = MagicMock(); sig.get.return_value = 0.0
+            sev = MagicMock(); sev.get.return_value = 3   # INVALID
+            sta = MagicMock(); sta.get.return_value = 9   # COMM
+            sig.alarm_severity = sev; sig.alarm_status = sta
+            sig.timestamp = None
+            setattr(pump, attr, sig)
+
+        diagnose_connections({"dds2_p1": pump}, reports=None, timeout=1.0)
+        out = capsys.readouterr().out
+        assert "dds2_p1" in out
+        assert "read_infused" in out
+
+
 class TestRealDeviceClasses:
     """Instantiate real device classes in isolation (no EPICS, just construction)."""
 
