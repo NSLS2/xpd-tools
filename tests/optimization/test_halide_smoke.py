@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -223,6 +224,169 @@ class TestConfigRoundTrip:
         assert source_pumps == {"dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
 
 
+class TestCheckHalideConnectionsLiveness:
+    """Offline tests for the three-tier liveness logic in check_halide_connections.
+
+    Uses lightweight mock objects that mimic the signal-attribute shape of the
+    real devices without touching EPICS.  Each test targets one specific tier
+    or edge case of the liveness verdict.
+    """
+
+    # ── Mock builders ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sig(value, *, alarm_severity: int = 0):
+        """Return a mock that behaves like an EpicsSignalRO with .get()."""
+        m = MagicMock()
+        m.get.return_value = value
+        sev = MagicMock()
+        sev.get.return_value = alarm_severity
+        m.alarm_severity = sev
+        return m
+
+    def _dds_axis(self, comms: str = "Enabled"):
+        """Mock SyrngDDSAxis: has parent.communication, status, read_infuse_rate."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        device.status = self._sig("Infusing")
+        device.read_infuse_rate = self._sig(25.0)
+        device.read_infuse_rate_unit = self._sig("ul/min")
+        device.parent.communication.get.return_value = comms
+        return device
+
+    def _ultra(self, comms: str = "Enabled"):
+        """Mock SyrngUltra: has communication, status, read_infuse_rate."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        device.status = self._sig("Idle")
+        device.read_infuse_rate = self._sig(10.0)
+        device.read_infuse_rate_unit = self._sig("ul/min")
+        device.communication.get.return_value = comms
+        return device
+
+    def _qepro(self, *, connected: int = 1):
+        """Mock QEPro: has device_connected, x_axis, output, etc."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        device.x_axis = self._sig([400.0, 800.0])
+        device.output = self._sig(0.5)
+        device.spectrum_type = self._sig("Corrected Sample")
+        device.correction = self._sig(1)
+        device.device_connected.get.return_value = connected
+        return device
+
+    def _shutter(self, *, alarm_severity: int = 0):
+        """Mock EpicsSignal shutter: bare .get() + alarm_severity."""
+        device = MagicMock()
+        device.wait_for_connection.return_value = None
+        device.get.return_value = 0
+        sev = MagicMock()
+        sev.get.return_value = alarm_severity
+        device.alarm_severity = sev
+        # No 'status' attr so the generic branch uses the device's alarm_severity
+        del device.status
+        return device
+
+    # ── Tests ────────────────────────────────────────────────────────────────
+
+    def test_dds_enabled_is_alive(self):
+        devices = {"dds2_p1": self._dds_axis(comms="Enabled")}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["dds2_p1"].alive is True
+        assert "Enabled" in reports["dds2_p1"].liveness_detail
+
+    def test_dds_disabled_not_alive(self):
+        devices = {"dds2_p1": self._dds_axis(comms="Disabled")}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["dds2_p1"].alive is False
+        assert "Disabled" in reports["dds2_p1"].liveness_detail
+
+    def test_ultra_enabled_is_alive(self):
+        devices = {"ultra1": self._ultra(comms="Enabled")}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["ultra1"].alive is True
+
+    def test_ultra_disabled_not_alive(self):
+        devices = {"ultra2": self._ultra(comms="Disabled")}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["ultra2"].alive is False
+
+    def test_qepro_connected_is_alive(self):
+        devices = {"qepro": self._qepro(connected=1)}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["qepro"].alive is True
+        assert "CONNECTED_RBV=1" in reports["qepro"].liveness_detail
+
+    def test_qepro_disconnected_not_alive(self):
+        devices = {"qepro": self._qepro(connected=0)}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["qepro"].alive is False
+        assert "CONNECTED_RBV=0" in reports["qepro"].liveness_detail
+
+    def test_shutter_valid_alarm_is_alive(self):
+        devices = {"led": self._shutter(alarm_severity=0)}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["led"].alive is True
+
+    def test_shutter_invalid_alarm_not_alive(self):
+        devices = {"led": self._shutter(alarm_severity=3)}
+        reports = check_halide_connections(devices, timeout=1.0)
+        assert reports["led"].alive is False
+
+    def test_print_report_three_state(self, capsys):
+        """print_connection_report emits ✓ / ⚠ / ✗ correctly."""
+        from xpd_tools.optimization.devices import ConnectionReport
+
+        alive_r = ConnectionReport("good")
+        alive_r.connected = True
+        alive_r.alive = True
+        alive_r.liveness_detail = "comms=Enabled"
+
+        warn_r = ConnectionReport("ioc_only")
+        warn_r.connected = True
+        warn_r.alive = False
+        warn_r.liveness_detail = "comms=Disabled"
+
+        fail_r = ConnectionReport("dead")
+        fail_r.connected = False
+        fail_r.error = "timeout"
+
+        reports = {"good": alive_r, "ioc_only": warn_r, "dead": fail_r,
+                   "_require_alive": True}
+        result = print_connection_report(reports)
+
+        out = capsys.readouterr().out
+        assert "✓" in out
+        assert "⚠" in out
+        assert "✗" in out
+        assert result is False  # dead + not-alive with require_alive=True
+
+    def test_require_alive_false_warns_not_fails(self, capsys):
+        """require_alive=False downgrades ⚠ to a non-failing warning."""
+        from xpd_tools.optimization.devices import ConnectionReport
+
+        warn_r = ConnectionReport("ioc_only")
+        warn_r.connected = True
+        warn_r.alive = False
+        warn_r.liveness_detail = "comms=Disabled"
+
+        reports = {"ioc_only": warn_r, "_require_alive": False}
+        result = print_connection_report(reports)
+
+        out = capsys.readouterr().out
+        assert "⚠" in out
+        assert result is True  # not-alive is only a warning here
+
+    def test_ca_fail_short_circuits_liveness(self):
+        """A CA connect failure skips the liveness probe (alive stays None)."""
+        device = MagicMock()
+        device.wait_for_connection.side_effect = TimeoutError("no ioc")
+        reports = check_halide_connections({"dds2_p1": device}, timeout=0.1)
+        r = reports["dds2_p1"]
+        assert r.connected is False
+        assert r.alive is None
+
+
 class TestRealDeviceClasses:
     """Instantiate real device classes in isolation (no EPICS, just construction)."""
 
@@ -310,6 +474,9 @@ class TestHalideDeviceConnections:
         r = connection_report["qepro"]
         assert r.connected, f"QEPro not connected: {r.error}"
         assert not r.failed_signals, f"QEPro signal failures: {r.failed_signals}"
+        assert r.alive is not False, (
+            f"QEPro IOC up but device not alive: {r.liveness_detail}"
+        )
 
     def test_led_connected(self, connection_report):
         r = connection_report["led"]
@@ -332,4 +499,7 @@ class TestHalideDeviceConnections:
         assert r.connected, f"{pump_key} not connected: {r.error}"
         assert not r.failed_signals, (
             f"{pump_key} signal failures: {r.failed_signals}"
+        )
+        assert r.alive is not False, (
+            f"{pump_key} IOC up but device not alive: {r.liveness_detail}"
         )

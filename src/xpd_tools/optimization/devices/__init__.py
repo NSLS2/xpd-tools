@@ -116,7 +116,18 @@ def build_halide_devices(*, mock: bool = False) -> dict[str, Any]:
 
 
 class ConnectionReport:
-    """Result of a single-device connection check."""
+    """Result of a single-device connection check.
+
+    Three tiers are recorded separately so callers can distinguish them:
+
+    * ``connected`` — EPICS channel-access handshake succeeded (IOC is up).
+    * ``failed_signals`` — plan-critical PVs that could not be read (IOC up,
+      but record broken or missing).
+    * ``alive`` / ``liveness_detail`` — device-level liveness verdict.
+      ``None`` means the liveness probe was not run.  ``False`` means the
+      IOC is serving the PV but the underlying hardware is not responding
+      (comms disabled, spectrometer unplugged, alarm INVALID, etc.).
+    """
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -124,27 +135,116 @@ class ConnectionReport:
         self.readable_signals: list[str] = []
         self.failed_signals: list[str] = []
         self.error: str | None = None
+        self.alive: bool | None = None
+        self.liveness_detail: str = ""
 
     def __repr__(self) -> str:
-        status = "OK" if self.connected else "FAIL"
+        if not self.connected:
+            status = "FAIL"
+        elif self.alive is False:
+            status = "IOC-only"
+        else:
+            status = "OK"
         detail = ""
         if self.failed_signals:
-            detail = f", failed PVs: {self.failed_signals}"
+            detail += f", failed PVs: {self.failed_signals}"
+        if self.liveness_detail:
+            detail += f", liveness: {self.liveness_detail}"
         if self.error:
             detail += f", error: {self.error}"
         return f"<ConnectionReport {self.name}: {status}{detail}>"
+
+
+# Keys whose comms signal lives on the parent SyrngDDS, not on the axis itself
+_DDS_AXIS_KEYS = {"dds1_p1", "dds1_p2", "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
+# Keys that are SyrngUltra (comms signal on the device itself)
+_ULTRA_KEYS = {"ultra1", "ultra2"}
+# Pump keys = DDS axes + Ultra
+_PUMP_KEYS = _DDS_AXIS_KEYS | _ULTRA_KEYS
+
+
+def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
+    """Populate report.alive and report.liveness_detail for *device*.
+
+    Probes are device-role-specific:
+    - DDS axes: read ``device.parent.communication``; ``"Disabled"`` → not alive.
+    - Ultra pumps: read ``device.communication``; ``"Disabled"`` → not alive.
+    - QEPro: read ``device.device_connected``; falsy → not alive.
+    - Everything else (LEDs, shutters): read alarm_severity on the primary
+      signal; INVALID (severity >= 2) → not alive.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        if key in _DDS_AXIS_KEYS:
+            comms = device.parent.communication.get()
+            report.alive = str(comms).lower() != "disabled"
+            report.liveness_detail = f"comms={comms}"
+
+        elif key in _ULTRA_KEYS:
+            comms = device.communication.get()
+            report.alive = str(comms).lower() != "disabled"
+            report.liveness_detail = f"comms={comms}"
+
+        elif key == "qepro":
+            connected_val = device.device_connected.get()
+            report.alive = bool(connected_val)
+            report.liveness_detail = f"CONNECTED_RBV={connected_val}"
+
+        else:
+            # Generic: check alarm severity on the device itself (bare EpicsSignal)
+            # or fall back to its primary sub-signal.
+            # ophyd EpicsSignal severity: 0=NO_ALARM, 1=MINOR, 2=MAJOR, 3=INVALID.
+            severity = getattr(device, "alarm_severity", None)
+            if severity is None:
+                # Try a named sub-signal (e.g. motor .status)
+                for attr in ("status",):
+                    sub = getattr(device, attr, None)
+                    if sub is not None:
+                        severity = getattr(sub, "alarm_severity", None)
+                        if severity is not None:
+                            break
+
+            if severity is not None:
+                sev_val = severity.get() if hasattr(severity, "get") else int(severity)
+                report.alive = int(sev_val) < 3  # INVALID == 3
+                report.liveness_detail = f"alarm_severity={sev_val}"
+            else:
+                # No severity info available; assume alive if connected.
+                report.alive = True
+                report.liveness_detail = "alarm_severity=unavailable"
+
+    except Exception as exc:
+        report.alive = False
+        report.liveness_detail = f"liveness probe error: {exc}"
+        logger.warning("Device %s liveness probe failed: %s", key, exc)
 
 
 def check_halide_connections(
     devices: dict[str, Any],
     *,
     timeout: float = 10.0,
+    require_alive: bool = True,
 ) -> dict[str, ConnectionReport]:
     """Validate EPICS connectivity for every device in *devices*.
 
     Performs **read-only** probes only — no set, no trigger, no plan execution.
-    Calls ``wait_for_connection`` on each device then does a ``.get()`` on the
-    signals the acquisition plans actually depend on.
+    Three tiers are checked in order:
+
+    1. **CA connect** — ``wait_for_connection``.  Confirms the IOC is up and
+       serving the PV.  A failure here means the IOC itself is unreachable.
+
+    2. **Signal readability** — ``.get()`` on the PVs the acquisition plans
+       depend on.  Catches broken or missing records.
+
+    3. **Device liveness** — device-specific probe that checks whether the
+       physical hardware behind the IOC is actually responding:
+
+       * DDS axes → ``parent.communication`` (``"Enabled"`` / ``"Disabled"``)
+       * Ultra pumps → ``communication`` (same semantics)
+       * QEPro → ``device_connected`` (``CONNECTED_RBV``)
+       * Others → alarm severity on the primary signal (``INVALID`` = not alive)
 
     Parameters
     ----------
@@ -152,32 +252,34 @@ def check_halide_connections(
         Dict as returned by ``build_halide_devices()``.
     timeout:
         Per-device connection timeout in seconds.
+    require_alive:
+        When ``True`` (default) the overall-OK verdict from
+        ``print_connection_report`` is ``False`` if any device is not alive
+        (IOC up but hardware detached).  Set ``False`` to downgrade liveness
+        to a warning (⚠) that doesn't affect overall-OK — useful when testing
+        against IOCs with no hardware attached.
 
     Returns
     -------
-    dict mapping device key → ConnectionReport.  A non-empty ``.failed_signals``
-    or a False ``.connected`` indicates a problem.
+    dict mapping device key → ``ConnectionReport``.
     """
     import logging
 
     logger = logging.getLogger(__name__)
 
-    # Signals each device role must expose for the plans to work
+    # Plan-critical signals per device role
     _required_signals: dict[str, list[str]] = {
-        # pump keys (DDS and Ultra share the same interface)
         "dds1_p1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds1_p2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds2_p1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds2_p2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds3_p1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds3_p2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        "ultra1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        "ultra2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        # spectrometer
-        "qepro": ["x_axis", "output", "spectrum_type", "correction"],
-        # lights / shutters -- EpicsSignal; just get() them
-        "led": [],
-        "uv_shutter": [],
+        "ultra1":  ["status", "read_infuse_rate", "read_infuse_rate_unit"],
+        "ultra2":  ["status", "read_infuse_rate", "read_infuse_rate_unit"],
+        "qepro":   ["x_axis", "output", "spectrum_type", "correction"],
+        "led":     [],
+        "uv_shutter":   [],
         "fast_shutter": [],
     }
 
@@ -187,7 +289,7 @@ def check_halide_connections(
         report = ConnectionReport(key)
         reports[key] = report
 
-        # 1. Connection handshake
+        # ── Tier 1: CA connect ───────────────────────────────────────────────
         try:
             device.wait_for_connection(timeout=timeout)
             report.connected = True
@@ -197,20 +299,17 @@ def check_halide_connections(
             logger.warning("Device %s failed to connect: %s", key, exc)
             continue
 
-        # 2. Read-only probe of plan-critical signals
+        # ── Tier 2: plan-critical signal readability ─────────────────────────
         required = _required_signals.get(key, [])
         for sig_name in required:
             try:
-                sig = getattr(device, sig_name)
-                sig.get()
+                getattr(device, sig_name).get()
                 report.readable_signals.append(sig_name)
             except Exception as exc:
                 report.failed_signals.append(sig_name)
-                logger.warning(
-                    "Device %s signal %s unreadable: %s", key, sig_name, exc
-                )
+                logger.warning("Device %s signal %s unreadable: %s", key, sig_name, exc)
 
-        # For plain EpicsSignal devices (led, uv_shutter) try a bare .get()
+        # Bare .get() for plain EpicsSignal devices (led, shutters)
         if not required:
             try:
                 device.get()
@@ -219,21 +318,47 @@ def check_halide_connections(
                 report.failed_signals.append("(value)")
                 logger.warning("Device %s unreadable: %s", key, exc)
 
+        # ── Tier 3: device liveness ──────────────────────────────────────────
+        _check_liveness(key, device, report)
+
+    # Attach the policy so print_connection_report can apply it
+    reports["_require_alive"] = require_alive  # type: ignore[assignment]
     return reports
 
 
-def print_connection_report(reports: dict[str, ConnectionReport]) -> bool:
-    """Print a human-readable connection report and return True if all OK."""
+def print_connection_report(
+    reports: dict[str, ConnectionReport],
+) -> bool:
+    """Print a three-state connection report and return True if all OK.
+
+    Glyphs:
+
+    * ``✓`` — connected, all signals readable, device alive.
+    * ``⚠`` — IOC reachable and PVs served, but device is **not alive**
+      (hardware detached or comms disabled).  Fails overall-OK when
+      ``require_alive=True`` was passed to ``check_halide_connections``.
+    * ``✗`` — CA connect failed or a plan-critical signal is unreadable.
+    """
+    require_alive: bool = reports.pop("_require_alive", True)  # type: ignore[arg-type]
+
     all_ok = True
     for key, r in reports.items():
-        if r.connected and not r.failed_signals:
-            print(f"  ✓  {key}")
-        else:
+        if not r.connected or r.failed_signals:
             all_ok = False
-            status = "not connected" if not r.connected else "partial"
-            print(f"  ✗  {key} [{status}]")
+            status = "not connected" if not r.connected else "signal failure"
+            print(f"  ✗  {key:<15}  [{status}]")
             if r.error:
-                print(f"       error: {r.error}")
+                print(f"       error          : {r.error}")
             for sig in r.failed_signals:
-                print(f"       failed signal: {sig}")
+                print(f"       failed signal  : {sig}")
+
+        elif r.alive is False:
+            if require_alive:
+                all_ok = False
+            print(f"  ⚠  {key:<15}  [IOC up — device not alive]  {r.liveness_detail}")
+
+        else:
+            live_note = f"  ({r.liveness_detail})" if r.liveness_detail else ""
+            print(f"  ✓  {key:<15}{live_note}")
+
     return all_ok
