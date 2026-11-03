@@ -276,6 +276,7 @@ class TestSingleTrialAcquisition:
     """
 
     @pytest.fixture(scope="class")
+    @classmethod
     def build_agent(self):
         """Load the campaign config — build fresh or reload an archived JSON."""
         config_path = os.environ.get(
@@ -285,6 +286,7 @@ class TestSingleTrialAcquisition:
         return load_campaign_config(config_path)
 
     @pytest.fixture(scope="class")
+    @classmethod
     def run_agent(self, build_agent):
         """Build the QueueserverAgent from the loaded config."""
         agent = build_agent.build()

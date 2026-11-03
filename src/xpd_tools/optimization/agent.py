@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import tempfile
 import warnings
@@ -23,6 +24,7 @@ from tiled.client import from_profile, from_uri
 from xpd_tools.optimization import plugins
 from xpd_tools.optimization.cli import (
     DEFAULT_SANDBOX_URI,
+    DEFAULT_TILED_CATALOG_PATH,
     DEFAULT_TILED_PROFILE,
     SANDBOX_CATALOG,
 )
@@ -283,6 +285,12 @@ class BuildAgent:
                 # Tiled (tiled_uri takes precedence over tiled_profile when set)
                 tiled_profile: str | None = None,
                 tiled_uri: str | None = None,
+                # Catalog path to index into after from_profile/from_uri,
+                # e.g. ("xpd", "raw") for the NSLS-II raw-data node.
+                tiled_catalog_path: tuple[str, ...] | list[str] | None = None,
+                # API key for authenticated Tiled writes (never serialised to JSON).
+                # Defaults to the TILED_BLUESKY_WRITING_API_KEY_XPD env var.
+                tiled_api_key: str | None = None,
                 # Tiled sandbox catalog where pdfstream writes analysis results
                 sandbox_uri: str = DEFAULT_SANDBOX_URI,
                 # PDF correlation mode:
@@ -315,6 +323,12 @@ class BuildAgent:
         # Tiled
         self.tiled_profile = tiled_profile
         self.tiled_uri = tiled_uri
+        self.tiled_catalog_path: tuple[str, ...] = tuple(
+            tiled_catalog_path if tiled_catalog_path is not None
+            else DEFAULT_TILED_CATALOG_PATH
+        )
+        # Resolved lazily so the env var is read at connection time, not import.
+        self._tiled_api_key_override = tiled_api_key
         self.sandbox_uri = sandbox_uri
         # Optimizer checkpoint
         self.checkpoint_path = checkpoint_path
@@ -785,11 +799,33 @@ class BuildAgent:
                 stacklevel=3,
             )
 
+    @property
+    def tiled_api_key(self) -> str | None:
+        """API key for Tiled writes; env var fallback resolved at access time."""
+        if self._tiled_api_key_override is not None:
+            return self._tiled_api_key_override
+        return os.environ.get("TILED_BLUESKY_WRITING_API_KEY_XPD")
+
     def _tiled_client(self) -> Any:
-        """Resolve the raw-data Tiled client; `tiled_uri` wins when set."""
+        """Resolve the raw-data Tiled client.
+
+        Uses ``tiled_uri`` when set, otherwise ``tiled_profile`` (default
+        ``"nsls2"``).  In both cases the result is indexed into
+        ``tiled_catalog_path`` (default ``("xpd", "raw")``), authenticated
+        with ``tiled_api_key``, and tagged with the NSLS-II acquisition
+        QoS header so reads are deprioritised relative to writes.
+        """
+        key = self.tiled_api_key
         if self.tiled_uri:
-            return from_uri(self.tiled_uri)
-        return from_profile(self.tiled_profile or DEFAULT_TILED_PROFILE)
+            client = from_uri(self.tiled_uri, api_key=key)
+        else:
+            client = from_profile(
+                self.tiled_profile or DEFAULT_TILED_PROFILE, api_key=key
+            )
+        for segment in self.tiled_catalog_path:
+            client = client[segment]
+        client.context.http_client.headers["tiled-qos"] = "acquisition"
+        return client
 
     def _sandbox_client(self) -> Any:
         """Resolve the pdfstream sandbox catalog client."""
@@ -1318,6 +1354,7 @@ class BuildAgent:
                 "zmq_consumer_address": self.zmq_consumer_address,
                 "tiled_profile": self.tiled_profile,
                 "tiled_uri": self.tiled_uri,
+                "tiled_catalog_path": list(self.tiled_catalog_path),
                 "sandbox_uri": self.sandbox_uri,
             },
             "evaluation_method": self.evaluation_method,
@@ -1401,7 +1438,11 @@ class BuildAgent:
 
     @classmethod
     def from_config(
-        cls, config: Mapping[str, Any], *, http_api_key: str | None = None
+        cls,
+        config: Mapping[str, Any],
+        *,
+        http_api_key: str | None = None,
+        tiled_api_key: str | None = None,
     ) -> "BuildAgent":
         """Rebuild a `BuildAgent` from a `to_config()`-shaped dict.
 
@@ -1413,9 +1454,10 @@ class BuildAgent:
         configured e.g. UV-Vis round-trips back to the same unconfigured
         state, not a spuriously-defaulted one.
 
-        `http_api_key` is never read from `config` (see `to_config`) --
-        pass it here directly (e.g. from an environment variable) if the
-        rebuilt agent needs one.
+        ``http_api_key`` and ``tiled_api_key`` are never read from ``config``
+        (secrets are not serialised) -- pass them here directly or let them
+        resolve from environment variables (``XPD_HTTP_API_KEY`` /
+        ``TILED_BLUESKY_WRITING_API_KEY_XPD``).
         """
         connection = config["connection"]
         agent = cls(
@@ -1425,6 +1467,10 @@ class BuildAgent:
             zmq_consumer_address=connection["zmq_consumer_address"],
             tiled_profile=connection["tiled_profile"],
             tiled_uri=connection["tiled_uri"],
+            tiled_catalog_path=connection.get(
+                "tiled_catalog_path", list(DEFAULT_TILED_CATALOG_PATH)
+            ),
+            tiled_api_key=tiled_api_key,
             sandbox_uri=connection["sandbox_uri"],
             pdf_mode=config["pdf_mode"],
             evaluation_method=config["evaluation_method"],
