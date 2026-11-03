@@ -16,8 +16,7 @@ from tiled.client import from_profile, from_uri
 from xpd_tools.optimization.plugins import XrayUvvisEvaluation
 
 logger = logging.getLogger(__name__)
-DEFAULT_TILED_PROFILE = "nsls2"
-DEFAULT_TILED_CATALOG_PATH = ("xpd", "raw")
+DEFAULT_TILED_PROFILE = "xpd"
 DEFAULT_SANDBOX_URI = "https://tiled.nsls2.bnl.gov"
 SANDBOX_CATALOG = "xpd/sandbox"
 
