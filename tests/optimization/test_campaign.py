@@ -187,14 +187,42 @@ class TestLoadCampaignConfig:
         rebuilt = load_campaign_config(tmp_path / "rt.json")
         assert rebuilt.evaluation_method == "uvvis"
 
+    def test_reload_carries_api_key_from_env(self, tmp_path, monkeypatch):
+        """Reloaded agent must have http_api_key injected from env.
+
+        Without this, build() sends anonymous requests → 401 (write:queue:control).
+        The key is never serialized to JSON (kept out of files intentionally),
+        so load_campaign_config() re-injects it from QSERVER_HTTP_SERVER_API_KEY.
+        """
+        agent = _make_uvvis_agent()
+        path = save_campaign_config(agent, "rt", directory=tmp_path)
+
+        monkeypatch.setenv("QSERVER_HTTP_SERVER_API_KEY", "test-key-abc123")
+        rebuilt = load_campaign_config(path)
+        assert rebuilt.http_api_key == "test-key-abc123"
+
+    def test_reload_without_env_key_has_no_api_key(self, tmp_path, monkeypatch):
+        """If the env var is unset the reloaded agent has no key (not an error,
+        but a warning is emitted and build() will warn before attempting writes)."""
+        agent = _make_uvvis_agent()
+        path = save_campaign_config(agent, "rt", directory=tmp_path)
+
+        monkeypatch.delenv("QSERVER_HTTP_SERVER_API_KEY", raising=False)
+        rebuilt = load_campaign_config(path)
+        assert rebuilt.http_api_key is None
+
 
 class TestAssertPlanRegistered:
     """Test the logic of assert_plan_registered against a mock RE Manager."""
 
     def _make_mock_agent(self, plan_names: list[str]) -> MagicMock:
-        """Build a mock QueueserverAgent whose client returns *plan_names*."""
+        """Build a mock QueueserverAgent whose client returns *plan_names*.
+
+        Uses the correct blop attribute path: ``_runner._client._rm``
+        (blop stores REManagerAPI as ``_rm``, not ``_re_manager_api``).
+        """
         agent = MagicMock()
-        api = agent._runner._client._re_manager_api
+        api = agent._runner._client._rm
         api.plans_allowed.return_value = {
             "plans_allowed": {name: {} for name in plan_names}
         }
@@ -211,7 +239,7 @@ class TestAssertPlanRegistered:
 
     def test_raises_on_api_error(self):
         agent = MagicMock()
-        agent._runner._client._re_manager_api.plans_allowed.side_effect = (
+        agent._runner._client._rm.plans_allowed.side_effect = (
             ConnectionError("unreachable")
         )
         with pytest.raises(RuntimeError, match="Could not query"):

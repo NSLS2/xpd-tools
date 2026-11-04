@@ -1188,6 +1188,34 @@ class BuildAgent:
         re_manager_api = REManagerAPI(http_server_uri=self.http_server_uri)
         if self.http_api_key:
             re_manager_api.set_authorization_key(api_key=self.http_api_key)
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "build(): no HTTP API key set.  "
+                "QSERVER_HTTP_SERVER_API_KEY is unset or was not forwarded by "
+                "load_campaign_config().  Requests will be sent anonymously and "
+                "will likely receive a 401 (needs write:queue:control scope)."
+            )
+        # Preflight: verify the key actually carries write:queue:control so the
+        # caller gets a clear message instead of a cryptic 401 deep inside blop.
+        # This is best-effort: if api_scopes() is unavailable (older server,
+        # network hiccup, or mocked in tests) the check is skipped and the real
+        # error surfaces at the first queue operation.
+        if self.http_api_key:
+            try:
+                scopes_response = re_manager_api.api_scopes()
+                scopes: list[str] = scopes_response.get("scopes", [])
+                if scopes and "write:queue:control" not in scopes:
+                    raise PermissionError(
+                        f"The API key has scopes {scopes} but needs "
+                        "'write:queue:control'.\n"
+                        "Check that QSERVER_HTTP_SERVER_API_KEY is a "
+                        "queue-control key, not a read-only monitoring key."
+                    )
+            except PermissionError:
+                raise
+            except Exception:
+                pass
         document_dispatcher = RemoteDispatcher(self.zmq_consumer_address)
 
         constraints = self._outcome_constraints(needs_plqy)
