@@ -113,6 +113,7 @@ optimization = [
     "pymatgen>=2025.6",
     "scipy>=1.14",
     "torch",
+    "bluesky_queueserver_api"
 ]
 
 [tool.uv.sources]
@@ -147,9 +148,18 @@ filterwarnings = [
     "error",
     "ignore:tagMap is deprecated:DeprecationWarning:ldap3",
     "ignore:typeMap is deprecated:DeprecationWarning:ldap3",
-    "ignore:`torch\\.jit\\.script` is deprecated.*:FutureWarning",
+    "ignore:`torch\\.jit\\.script`.*:FutureWarning",
     "ignore:ax\\.service\\..* has been moved.*:DeprecationWarning",
     "ignore:add_tracking_metric is deprecated.*:DeprecationWarning",
+    # caproto uses ctypes._pack_ without _layout_, deprecated in Python 3.14
+    "ignore:Due to '_pack_'.*:DeprecationWarning:caproto",
+    # ax/BoTorch uses asyncio.iscoroutinefunction, deprecated in Python 3.14
+    "ignore:'asyncio\\.iscoroutinefunction' is deprecated.*:DeprecationWarning",
+    # ophyd background CA thread exceptions during offline tests (no IOC available)
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
+    # pytest-timeout registers 'timeout' only when installed; suppress the config
+    # warning when running in environments that don't have it.
+    "ignore:Unknown config option.*timeout:pytest.PytestConfigWarning",
 ]
 # Doctest python code in docs, python code in src docstrings, test functions in tests
 testpaths = "docs src tests"
@@ -157,7 +167,6 @@ log_format = "%(asctime)s,%(msecs)03d %(levelname)s (%(threadName)s) %(message)s
 log_date_format = "%H:%M:%S"
 
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
 timeout = 60
 
 [tool.coverage.run]
