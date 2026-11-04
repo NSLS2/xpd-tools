@@ -93,6 +93,12 @@ def save_campaign_config(
 def load_campaign_config(path: str | Path) -> BuildAgent:
     """Rebuild a ``BuildAgent`` from a JSON config saved by ``save_campaign_config``.
 
+    The HTTP API key is never written to the JSON config (to keep secrets out of
+    files).  This function re-injects it from the ``QSERVER_HTTP_SERVER_API_KEY``
+    environment variable so that ``build()`` can attach it to every request.
+    Without this, reloaded agents would send anonymous requests and receive
+    a 401 from the queue server even when the same key works on fresh builds.
+
     Parameters
     ----------
     path:
@@ -112,6 +118,8 @@ def load_campaign_config(path: str | Path) -> BuildAgent:
         from xpd_tools.optimization.campaign import load_campaign_config
         build_agent = load_campaign_config("configs/halide_beamline.json")
     """
+    import os
+
     from xpd_tools.optimization.agent import BuildAgent
 
     path = Path(path).expanduser().resolve()
@@ -121,9 +129,20 @@ def load_campaign_config(path: str | Path) -> BuildAgent:
     with open(path, encoding="utf-8") as f:
         config = json.load(f)
 
-    build_agent = BuildAgent.from_config(config)
+    # Re-inject the API key from the environment -- it is intentionally absent
+    # from the JSON (secrets must not be persisted to disk).
+    http_api_key = os.environ.get("QSERVER_HTTP_SERVER_API_KEY") or None
+
+    build_agent = BuildAgent.from_config(config, http_api_key=http_api_key)
     logger.info("Campaign config loaded from %s", path)
     print(f"Config loaded ← {path}")
+    if http_api_key:
+        print("  API key       : injected from QSERVER_HTTP_SERVER_API_KEY")
+    else:
+        logger.warning(
+            "QSERVER_HTTP_SERVER_API_KEY is not set; build() will send "
+            "unauthenticated requests and may receive 401 errors."
+        )
     return build_agent
 
 
@@ -165,10 +184,12 @@ def assert_plan_registered(
         from xpd_tools.optimization.campaign import assert_plan_registered
         assert_plan_registered(run_agent, "uvvis_acquire")
     """
-    # Access the underlying RE Manager API via the runner's client
+    # Access the underlying RE Manager API via the runner's client.
+    # blop stores the REManagerAPI instance as QueueserverClient._rm (not
+    # _re_manager_api -- that name never existed in blop's public API).
     try:
-        client = run_agent._runner._client._re_manager_api
-        response = client.plans_allowed(user_group="admin")
+        rm = run_agent._runner._client._rm
+        response = rm.plans_allowed()
         available: dict = response.get("plans_allowed", {})
     except Exception as exc:
         raise RuntimeError(

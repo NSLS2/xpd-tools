@@ -345,6 +345,11 @@ class BuildAgent:
         self.sources: list[FlowSource] | None = None
         self.dilutions: list[DilutionStage] | None = None
         self.wash_cycles: list[WashCycle] | None = None
+        # Flow-geometry settings submitted with every queueserver plan call.
+        # Defaults mirror DEFAULT_FLOW_CONFIG in the beamline startup files.
+        self.rate_unit: str = "ul/min"
+        self.mixer_lengths_cm: tuple[float, ...] = (30.0,)
+        self.residence_time_ratio: float = 1.0
         self.phases: list[Phase] | None = None
         self.plqy: PlqyReference | None = None
         self.fit_settings: SpectraFitSettings | None = None
@@ -723,6 +728,10 @@ class BuildAgent:
         sources: Sequence[FlowSource] | None = None,
         dilutions: Sequence[DilutionStage] | None = None,
         wash_cycles: Sequence[WashCycle] | None = None,
+        *,
+        rate_unit: str | None = None,
+        mixer_lengths_cm: tuple[float, ...] | list[float] | None = None,
+        residence_time_ratio: float | None = None,
     ) -> None:
         # Normalized to lists regardless of what sequence type the caller
         # passed in -- see set_dofs's comment on why this matters for
@@ -730,6 +739,12 @@ class BuildAgent:
         self.sources = None if sources is None else list(sources)
         self.dilutions = None if dilutions is None else list(dilutions)
         self.wash_cycles = None if wash_cycles is None else list(wash_cycles)
+        if rate_unit is not None:
+            self.rate_unit = rate_unit
+        if mixer_lengths_cm is not None:
+            self.mixer_lengths_cm = tuple(mixer_lengths_cm)
+        if residence_time_ratio is not None:
+            self.residence_time_ratio = residence_time_ratio
         self._check_dof_source_alignment()
 
     def _metric_prefix(self) -> str:
@@ -1068,6 +1083,93 @@ class BuildAgent:
 
         agent._optimizer.suggest = _guarded_suggest
 
+    def _acquisition_plan_kwargs(self) -> dict[str, Any]:
+        """Build the config dicts the queueserver acquisition plans expect.
+
+        Returns a dict suitable for passing as ``acquisition_plan_kwargs`` to
+        ``QueueserverAgent``.  Each sub-dict is merged with the plan's own
+        ``DEFAULT_*`` config inside the worker, so only keys the agent
+        authoritatively owns are emitted here.
+
+        The four dicts correspond to the ``FlowConfig``, ``WashConfig``,
+        ``QualityConfig``, and ``XrayConfig`` TypedDicts defined in
+        ``97-xray_uvvis.py``.
+        """
+        sources = self.sources or []
+        dilutions = self.dilutions or []
+        wash_cycles = self.wash_cycles or []
+
+        # ------------------------------------------------------------------
+        # flow_config — per-source pump/syringe geometry plus mixer settings
+        # ------------------------------------------------------------------
+        flow_config: dict[str, Any] = {
+            "syringe_list": [s.syringe_ml for s in sources],
+            "syringe_mater_list": [s.material for s in sources],
+            "target_vol_list": [f"{int(s.target_ml)} ml" for s in sources],
+            "set_target_list": [s.set_target for s in sources],
+            "rate_unit": self.rate_unit,
+            "mixer_lengths_cm": list(self.mixer_lengths_cm),
+            "resident_t_ratio": self.residence_time_ratio,
+            "precursor_list": [s.precursor for s in sources],
+            "precursor_prefix_list": [s.sample_label for s in sources],
+            "dof_to_pump": {s.dof: str(s.pump) for s in sources},
+            "post_dilute": bool(dilutions),
+            "post_dilute_ratio": [d.ratio for d in dilutions] or [1.0],
+            "post_dilute_wait_sec": dilutions[-1].wait_sec if dilutions else 0.0,
+            "dilute_pump_name": [str(d.pump) for d in dilutions],
+        }
+
+        # ------------------------------------------------------------------
+        # wash_config — wash-loop pump/syringe settings
+        # ------------------------------------------------------------------
+        wash_config: dict[str, Any] = {
+            "do_wash": bool(wash_cycles),
+            "pump_names": [str(c.pump) for c in wash_cycles],
+            "syringe_list": [c.syringe_ml for c in wash_cycles],
+            # Rate formatted as "NNN ul/min" to match the string the plan passes
+            # to set_group_infuse2 — same unit as self.rate_unit.
+            "rate_list": [f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles],
+            # All cycles share the same duration; the queueserver WashConfig
+            # has a single duration_sec scalar. Use the first cycle's value.
+            "duration_sec": wash_cycles[0].duration_sec if wash_cycles else 60.0,
+            "syringe_mater_list": [c.material for c in wash_cycles],
+            "target_vol_list": [f"{int(c.target_ml)} ml" for c in wash_cycles],
+            "set_target_list": [c.set_target for c in wash_cycles],
+        }
+
+        # ------------------------------------------------------------------
+        # quality_config — PL quality gate and shot counts
+        # ------------------------------------------------------------------
+        qp = self.quality_policy
+        quality_config: dict[str, Any] = {
+            "use_good_bad": qp.enabled if qp is not None else False,
+            "good_target": qp.good_batches if qp is not None else 3,
+            "max_bad": qp.max_bad_batches if qp is not None else 3,
+            "num_abs": qp.absorbance_shots if qp is not None else 10,
+            "num_flu": qp.fluorescence_shots if qp is not None else 10,
+        }
+
+        kwargs: dict[str, Any] = {
+            "flow_config": flow_config,
+            "wash_config": wash_config,
+            "quality_config": quality_config,
+        }
+
+        # ------------------------------------------------------------------
+        # xray_config — only for plans that touch the area detector
+        # ------------------------------------------------------------------
+        xray_plans = {"xray_acquire", "xray_screened_acquire", "xray_uvvis_acquire"}
+        if self._acquisition_plan_name() in xray_plans and self.xray_settings is not None:
+            xs = self.xray_settings
+            kwargs["xray_config"] = {
+                "exposure": xs.exposure,
+                "frame_acq_time": xs.frame_acq_time,
+                "stream_name": xs.stream_name,
+                "no_dark": xs.no_dark,
+            }
+
+        return kwargs
+
     def build(self, ) -> None:
         """Build the agent for use in a queueserver environment.
 
@@ -1086,6 +1188,34 @@ class BuildAgent:
         re_manager_api = REManagerAPI(http_server_uri=self.http_server_uri)
         if self.http_api_key:
             re_manager_api.set_authorization_key(api_key=self.http_api_key)
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "build(): no HTTP API key set.  "
+                "QSERVER_HTTP_SERVER_API_KEY is unset or was not forwarded by "
+                "load_campaign_config().  Requests will be sent anonymously and "
+                "will likely receive a 401 (needs write:queue:control scope)."
+            )
+        # Preflight: verify the key actually carries write:queue:control so the
+        # caller gets a clear message instead of a cryptic 401 deep inside blop.
+        # This is best-effort: if api_scopes() is unavailable (older server,
+        # network hiccup, or mocked in tests) the check is skipped and the real
+        # error surfaces at the first queue operation.
+        if self.http_api_key:
+            try:
+                scopes_response = re_manager_api.api_scopes()
+                scopes: list[str] = scopes_response.get("scopes", [])
+                if scopes and "write:queue:control" not in scopes:
+                    raise PermissionError(
+                        f"The API key has scopes {scopes} but needs "
+                        "'write:queue:control'.\n"
+                        "Check that QSERVER_HTTP_SERVER_API_KEY is a "
+                        "queue-control key, not a read-only monitoring key."
+                    )
+            except PermissionError:
+                raise
+            except Exception:
+                pass
         document_dispatcher = RemoteDispatcher(self.zmq_consumer_address)
 
         constraints = self._outcome_constraints(needs_plqy)
@@ -1097,6 +1227,7 @@ class BuildAgent:
             objectives=self.objectives,
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
+            acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)
@@ -1349,6 +1480,9 @@ class BuildAgent:
                     if self.wash_cycles is None
                     else [asdict(cycle) for cycle in self.wash_cycles]
                 ),
+                "rate_unit": self.rate_unit,
+                "mixer_lengths_cm": list(self.mixer_lengths_cm),
+                "residence_time_ratio": self.residence_time_ratio,
             },
             "xray": {
                 "max_retries": self.xray_max_retries,
@@ -1468,6 +1602,10 @@ class BuildAgent:
                 if experiment["wash_cycles"] is None
                 else [WashCycle(**cycle) for cycle in experiment["wash_cycles"]]
             ),
+            # Older configs lack these keys; fall back to the defaults set in __init__.
+            rate_unit=experiment.get("rate_unit"),
+            mixer_lengths_cm=experiment.get("mixer_lengths_cm"),
+            residence_time_ratio=experiment.get("residence_time_ratio"),
         )
 
         xray = config["xray"]

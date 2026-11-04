@@ -1053,3 +1053,226 @@ def test_extra_initialization_trials_must_be_a_whole_number(extra: Any) -> None:
 def test_pump_bounds_must_be_an_increasing_pair_of_rates(bounds: Any) -> None:
     with pytest.raises(ValueError, match="bounds must be"):
         Pump(name="Br", id="dds2_p2", bounds=bounds)
+
+
+# ---------------------------------------------------------------------------
+# _acquisition_plan_kwargs
+# ---------------------------------------------------------------------------
+
+
+def _wash_cycle(pump: str = "ultra1") -> WashCycle:
+    return WashCycle(
+        pump=pump,
+        rate_ul_min=500.0,
+        duration_sec=90.0,
+        syringe_ml=50.0,
+        material="steel",
+        target_ml=30.0,
+        set_target=False,
+    )
+
+
+def _dilution(pump: str = "dds1_p1") -> DilutionStage:
+    return DilutionStage(
+        pump=pump,
+        ratio=1.0,
+        position="before_equilibrium",
+        syringe_ml=20.0,
+        material="plastic_BD",
+        target_ml=20.0,
+        wait_sec=30.0,
+    )
+
+
+class TestAcquisitionPlanKwargs:
+    """_acquisition_plan_kwargs() must produce correct dicts for every plan type."""
+
+    def _uvvis_agent_full(self) -> BuildAgent:
+        from xpd_tools.optimization.helpers.qepro import QualityPolicy
+
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump("CsPb"), _pump("Br", bounds=(10, 300))])
+        agent.experiment(
+            sources=[_source("CsPb"), _source("Br")],
+            wash_cycles=[_wash_cycle("ultra1")],
+            rate_unit="ul/min",
+            mixer_lengths_cm=(25.0,),
+            residence_time_ratio=0.9,
+        )
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+        agent.quality_policy = QualityPolicy(
+            enabled=True, good_batches=5, max_bad_batches=2,
+            absorbance_shots=8, fluorescence_shots=12,
+        )
+        return agent
+
+    def test_flow_config_keys_and_values(self) -> None:
+        agent = self._uvvis_agent_full()
+        kwargs = agent._acquisition_plan_kwargs()
+        fc = kwargs["flow_config"]
+
+        assert fc["syringe_list"] == [50.0, 50.0]
+        assert fc["syringe_mater_list"] == ["steel", "steel"]
+        assert fc["target_vol_list"] == ["30 ml", "30 ml"]
+        assert fc["set_target_list"] == [True, True]
+        assert fc["rate_unit"] == "ul/min"
+        assert fc["mixer_lengths_cm"] == [25.0]
+        assert fc["resident_t_ratio"] == 0.9
+        assert fc["precursor_list"] == ["precursor-CsPb", "precursor-Br"]
+        assert fc["precursor_prefix_list"] == ["CsPb", "Br"]
+        assert fc["dof_to_pump"] == {
+            "infusion_rate_CsPb": "dds-CsPb",
+            "infusion_rate_Br": "dds-Br",
+        }
+        assert fc["post_dilute"] is False
+        assert fc["dilute_pump_name"] == []
+
+    def test_wash_config_populated_when_cycles_present(self) -> None:
+        agent = self._uvvis_agent_full()
+        kwargs = agent._acquisition_plan_kwargs()
+        wc = kwargs["wash_config"]
+
+        assert wc["do_wash"] is True
+        assert wc["pump_names"] == ["ultra1"]
+        assert wc["syringe_list"] == [50.0]
+        assert wc["rate_list"] == ["500 ul/min"]
+        assert wc["duration_sec"] == 90.0
+        assert wc["syringe_mater_list"] == ["steel"]
+        assert wc["target_vol_list"] == ["30 ml"]
+        assert wc["set_target_list"] == [False]
+
+    def test_quality_config_from_quality_policy(self) -> None:
+        agent = self._uvvis_agent_full()
+        kwargs = agent._acquisition_plan_kwargs()
+        qc = kwargs["quality_config"]
+
+        assert qc["use_good_bad"] is True
+        assert qc["good_target"] == 5
+        assert qc["max_bad"] == 2
+        assert qc["num_abs"] == 8
+        assert qc["num_flu"] == 12
+
+    def test_no_xray_config_for_uvvis_plan(self) -> None:
+        agent = self._uvvis_agent_full()
+        assert "xray_config" not in agent._acquisition_plan_kwargs()
+
+    def test_xray_config_emitted_for_xray_plan(self, phase_factory: Callable[..., Phase]) -> None:
+        agent = BuildAgent(evaluation_method="xray", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()])
+        agent.set_xray_objectives(
+            exposure=300.0, frame_acq_time=1.5, no_dark=True,
+            stream_name="scattering", screening="unscreened",
+            phases=[phase_factory()],
+        )
+        xc = agent._acquisition_plan_kwargs()["xray_config"]
+        assert xc["exposure"] == 300.0
+        assert xc["frame_acq_time"] == 1.5
+        assert xc["no_dark"] is True
+        assert xc["stream_name"] == "scattering"
+
+    def test_do_wash_false_when_no_wash_cycles(self) -> None:
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()], wash_cycles=[])
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+        wc = agent._acquisition_plan_kwargs()["wash_config"]
+        assert wc["do_wash"] is False
+        assert wc["pump_names"] == []
+
+    def test_post_dilute_true_when_dilutions_present(self) -> None:
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()], dilutions=[_dilution("dds1_p1")])
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+        fc = agent._acquisition_plan_kwargs()["flow_config"]
+        assert fc["post_dilute"] is True
+        assert fc["dilute_pump_name"] == ["dds1_p1"]
+        assert fc["post_dilute_ratio"] == [1.0]
+        assert fc["post_dilute_wait_sec"] == 30.0
+
+    def test_quality_config_disabled_when_no_quality_policy(self) -> None:
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()])
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+        agent.quality_policy = None
+        qc = agent._acquisition_plan_kwargs()["quality_config"]
+        assert qc["use_good_bad"] is False
+
+    def test_flow_geometry_fields_round_trip_through_config(self) -> None:
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(
+            sources=[_source()],
+            rate_unit="ml/min",
+            mixer_lengths_cm=(15.0, 25.0),
+            residence_time_ratio=0.75,
+        )
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        config = agent.to_config()
+        assert config["experiment"]["rate_unit"] == "ml/min"
+        assert config["experiment"]["mixer_lengths_cm"] == [15.0, 25.0]
+        assert config["experiment"]["residence_time_ratio"] == 0.75
+
+        rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.rate_unit == "ml/min"
+        assert rebuilt.mixer_lengths_cm == (15.0, 25.0)
+        assert rebuilt.residence_time_ratio == 0.75
+
+        fc = rebuilt._acquisition_plan_kwargs()["flow_config"]
+        assert fc["rate_unit"] == "ml/min"
+        assert fc["mixer_lengths_cm"] == [15.0, 25.0]
+        assert fc["resident_t_ratio"] == 0.75
+
+    def test_old_config_without_flow_geometry_loads_with_defaults(self) -> None:
+        """Configs saved before rate_unit/mixer_lengths_cm/residence_time_ratio existed
+        must still load and produce the DEFAULT_FLOW_CONFIG-compatible defaults."""
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()])
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        config = agent.to_config()
+        # Simulate an old config that lacks these keys.
+        del config["experiment"]["rate_unit"]
+        del config["experiment"]["mixer_lengths_cm"]
+        del config["experiment"]["residence_time_ratio"]
+
+        rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.rate_unit == "ul/min"
+        assert rebuilt.mixer_lengths_cm == (30.0,)
+        assert rebuilt.residence_time_ratio == 1.0
+
+    def test_build_passes_plan_kwargs_to_queueserver_agent(
+        self, mocked_queueserver: None
+    ) -> None:
+        """build() must pass acquisition_plan_kwargs to QueueserverAgent.
+
+        Uses the mocked_queueserver fixture (which patches QueueserverAgent among
+        other network calls) and captures the constructor kwargs via a secondary
+        patch that wraps the already-mocked class.
+        """
+        from unittest.mock import patch
+
+        agent = self._uvvis_agent_full()
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        captured: list[dict] = []
+
+        import xpd_tools.optimization.agent as _agent_mod
+        original_cls = _agent_mod.QueueserverAgent  # already a Mock from fixture
+
+        def _capturing_init(*args: Any, **kwargs: Any) -> Any:
+            captured.append(kwargs)
+            return original_cls(*args, **kwargs)
+
+        with patch("xpd_tools.optimization.agent.QueueserverAgent", side_effect=_capturing_init):
+            agent.build()
+
+        assert captured, "QueueserverAgent was never called"
+        plan_kwargs = captured[0].get("acquisition_plan_kwargs", {})
+        assert "flow_config" in plan_kwargs
+        assert "wash_config" in plan_kwargs
+        assert "quality_config" in plan_kwargs
