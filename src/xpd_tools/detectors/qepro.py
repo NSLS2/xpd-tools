@@ -69,7 +69,7 @@ class QEProMock(DeviceMock["QEPro"]):
 
         set_mock_value(device.serial, "SIM-QEPRO")
         set_mock_value(device.model, "QEPro")
-        set_mock_value(device.status, 0)
+        set_mock_value(device.status, "No Error")
         set_mock_value(device.status_msg, "Idle")
         set_mock_value(device.device_connected, True)
         set_mock_value(device.check_status, False)
@@ -177,7 +177,9 @@ class QEPro(StandardReadable, EpicsDevice):
     output: A[SignalRW[Array1D[np.float64]], PvSuffix("OUTPUT"), Format.UNCACHED_SIGNAL]
     sample: A[SignalRW[Array1D[np.float64]], PvSuffix("SAMPLE"), Format.UNCACHED_SIGNAL]
     dark: A[SignalRW[Array1D[np.float64]], PvSuffix("DARK"), Format.UNCACHED_SIGNAL]
-    reference: A[SignalRW[Array1D[np.float64]], PvSuffix("REFERENCE"), Format.UNCACHED_SIGNAL]
+    reference: A[
+        SignalRW[Array1D[np.float64]], PvSuffix("REFERENCE"), Format.UNCACHED_SIGNAL
+    ]
     formatted_spectrum_len: A[SignalR[int], PvSuffix("FORMATTED_SPECTRUM_LEN_RBV")]
 
     # X-axis settings
