@@ -1,17 +1,22 @@
 """Behavioral tests for reusable QEPro plan primitives."""
 
+from collections import Counter
 from collections.abc import Callable, Generator
 from typing import Any, cast
 
 import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
 import pytest
 from bluesky import Msg
 from bluesky.run_engine import RunEngine
 from ophyd_async.core import callback_on_mock_put, init_devices
 
 from xpd_tools.detectors import QEPro
+from xpd_tools.light_path import UVVisLightPath
 from xpd_tools.qepro_plans import (
     configure_qepro,
+    measure_absorbance,
+    measure_fluorescence,
     set_qepro_temperature,
     take_qepro_dark_frame,
     take_qepro_reference_frame,
@@ -91,3 +96,32 @@ def test_set_qepro_temperature_waits_for_tec_convergence(
 
     assert _read_value(RE, qepro.tec_device.tec_temp) == 23.5
     assert _read_value(RE, qepro.tec_device.curr_tec_temp) == 23.5
+
+
+def test_measurements_switch_optics_only_when_needed(
+    RE: RunEngine, qepro: QEPro, light_path: UVVisLightPath, sleeps: list[float]
+) -> None:
+    spectrum_type_writes: list[str] = []
+    callback_on_mock_put(qepro.spectrum_type, spectrum_type_writes.append)
+    streams: dict[str, str] = {}
+    events: Counter[str] = Counter()
+
+    def collect(name: str, doc: dict[str, Any]) -> None:
+        if name == "descriptor":
+            streams[doc["uid"]] = doc["name"]
+        elif name == "event":
+            events[streams[doc["descriptor"]]] += 1
+
+    def measurements():
+        yield from measure_fluorescence(qepro, light_path, 2)
+        yield from measure_fluorescence(qepro, light_path, 1)
+        yield from measure_absorbance(qepro, light_path, 3)
+
+    RE.subscribe(collect)
+    RE(bpp.run_wrapper(measurements()))
+
+    assert spectrum_type_writes == ["Corrected Sample", "Absorbtion"]
+    assert sleeps == [2.0, 2.0]
+    assert dict(events) == {"fluorescence": 3, "absorbance": 3}
+    assert _read_value(RE, light_path.led) == "Low"
+    assert _read_value(RE, light_path.uv_shutter) == "High"

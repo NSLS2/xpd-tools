@@ -16,12 +16,16 @@ with warnings.catch_warnings():
 from collections.abc import Generator
 
 import pytest
+from bluesky import Msg
 from bluesky._vendor.super_state_machine.errors import TransitionError  # noqa: PLC2701
 from bluesky.run_engine import RunEngine
+from ophyd_async.core import init_devices
 from pytest import FixtureRequest
 from tiled.client import from_uri
 from tiled.client.container import Container
 from tiled.server import SimpleTiledServer
+
+from xpd_tools.light_path import UVVisLightPath
 
 _ALLOWED_PYTEST_TASKS = {"async_finalizer", "async_setup", "async_teardown"}
 
@@ -131,6 +135,25 @@ def RE(cycle_string: str, request: FixtureRequest) -> RunEngine:
 
 
 # ==================================================================================
+
+
+@pytest.fixture
+def sleeps(RE: RunEngine) -> list[float]:
+    """Record plan sleeps instead of waiting, giving tests a virtual clock."""
+    recorded: list[float] = []
+
+    async def record(msg: Msg) -> None:
+        recorded.append(msg.args[0])
+
+    RE.register_command("sleep", record)
+    return recorded
+
+
+@pytest.fixture
+async def light_path() -> UVVisLightPath:
+    async with init_devices(mock=True):
+        light_path = UVVisLightPath("SIM:LIGHT:")
+    return light_path
 
 
 @pytest.fixture
