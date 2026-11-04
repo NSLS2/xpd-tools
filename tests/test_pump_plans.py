@@ -40,57 +40,15 @@ async def pumps():
         other_dds = DDSSyringeController("DDS:2", name="DDS2")
         ultra = UltraSyringePump("Ultra:1}:", name="Pump_Ultra1")
 
-    axis_pumps = (dds.p1, dds.p2, other_dds.p1, other_dds.p2)
     for controller in (dds, other_dds):
         set_mock_value(controller.communication, "Disabled")
         set_mock_value(controller.update_pump, "1 second")
     set_mock_value(ultra.communication, "Disabled")
     set_mock_value(ultra.update_pump, "Passive")
 
-    for pump in (*axis_pumps, ultra):
-        set_mock_value(pump.status, "Idle")
-        set_mock_value(pump.read_infuse_rate, 0)
-        set_mock_value(pump.read_infuse_rate_unit, "")
-        set_mock_value(pump.read_withdraw_rate, 0)
-        set_mock_value(pump.read_withdraw_rate_unit, "")
+    for pump in (dds.p1, dds.p2, other_dds.p1, other_dds.p2, ultra):
         set_mock_value(pump.read_infused, 1)
         set_mock_value(pump.read_withdrawn, 2)
-        for direction in ("infuse", "withdraw"):
-            callback_on_mock_put(
-                getattr(pump, f"{direction}_rate"),
-                lambda value, pump=pump, direction=direction: set_mock_value(
-                    getattr(pump, f"read_{direction}_rate"), value
-                ),
-            )
-            callback_on_mock_put(
-                getattr(pump, f"{direction}_rate_unit"),
-                lambda value, pump=pump, direction=direction: set_mock_value(
-                    getattr(pump, f"read_{direction}_rate_unit"), value
-                ),
-            )
-        callback_on_mock_execute(
-            pump.pump_infuse, lambda pump=pump: set_mock_value(pump.status, "Infusing")
-        )
-        callback_on_mock_execute(
-            pump.pump_withdraw,
-            lambda pump=pump: set_mock_value(pump.status, "Withdrawing"),
-        )
-        callback_on_mock_execute(
-            pump.pump_stop, lambda pump=pump: set_mock_value(pump.status, "Idle")
-        )
-        callback_on_mock_execute(
-            pump.clear_infused, lambda pump=pump: set_mock_value(pump.read_infused, 0)
-        )
-        callback_on_mock_execute(
-            pump.clear_withdrawn,
-            lambda pump=pump: set_mock_value(pump.read_withdrawn, 0),
-        )
-    for pump in axis_pumps:
-        for direction in ("infuse", "withdraw"):
-            set_mock_value(getattr(pump, f"read_min_{direction}"), 78.69)
-            set_mock_value(getattr(pump, f"read_min_{direction}_unit"), "nl/min")
-            set_mock_value(getattr(pump, f"read_max_{direction}"), 81.72)
-            set_mock_value(getattr(pump, f"read_max_{direction}_unit"), "ml/min")
     return PumpSet(dds, other_dds, ultra)
 
 

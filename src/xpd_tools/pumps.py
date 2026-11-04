@@ -7,11 +7,83 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Annotated as A
 
-from ophyd_async.core import SignalR, SignalRW, StandardReadable, TriggerableCommand
+from ophyd_async.core import (
+    DeviceMock,
+    SignalR,
+    SignalRW,
+    StandardReadable,
+    TriggerableCommand,
+    callback_on_mock_execute,
+    callback_on_mock_put,
+    default_mock_class,
+    set_mock_value,
+)
 from ophyd_async.core import StandardReadableFormat as Format
 from ophyd_async.epics.core import EpicsDevice, PvSuffix
 
 
+def _connect_flow_mock(pump: DDSSyringeAxis | UltraSyringePump) -> None:
+    """Make mocked flow commands and rate setpoints update their readbacks."""
+    set_mock_value(pump.status, "Idle")
+    for direction in ("infuse", "withdraw"):
+        callback_on_mock_put(
+            getattr(pump, f"{direction}_rate"),
+            lambda value, direction=direction: set_mock_value(
+                getattr(pump, f"read_{direction}_rate"), value
+            ),
+        )
+        callback_on_mock_put(
+            getattr(pump, f"{direction}_rate_unit"),
+            lambda value, direction=direction: set_mock_value(
+                getattr(pump, f"read_{direction}_rate_unit"), value
+            ),
+        )
+    callback_on_mock_execute(
+        pump.pump_infuse, lambda: set_mock_value(pump.status, "Infusing")
+    )
+    callback_on_mock_execute(
+        pump.pump_withdraw, lambda: set_mock_value(pump.status, "Withdrawing")
+    )
+    callback_on_mock_execute(
+        pump.pump_stop, lambda: set_mock_value(pump.status, "Idle")
+    )
+    callback_on_mock_execute(
+        pump.clear_infused, lambda: set_mock_value(pump.read_infused, 0)
+    )
+    callback_on_mock_execute(
+        pump.clear_withdrawn, lambda: set_mock_value(pump.read_withdrawn, 0)
+    )
+
+
+class DDSSyringeAxisMock(DeviceMock["DDSSyringeAxis"]):
+    """Mock-mode DDS axis that follows flow commands and rate setpoints.
+
+    Notes
+    -----
+    The mock reports a 50 mL steel syringe selected on the controller panel:
+    its rate-limit readbacks match that syringe's entry in the DDS table.
+    """
+
+    async def connect(self, device: DDSSyringeAxis) -> None:
+        """Initialize an idle axis with 50 mL steel syringe limits."""
+        _connect_flow_mock(device)
+        minimum, maximum = _DDS_RANGES["steel"][50]
+        for direction in ("infuse", "withdraw"):
+            set_mock_value(getattr(device, f"read_min_{direction}"), minimum)
+            set_mock_value(getattr(device, f"read_min_{direction}_unit"), "nl/min")
+            set_mock_value(getattr(device, f"read_max_{direction}"), maximum)
+            set_mock_value(getattr(device, f"read_max_{direction}_unit"), "ml/min")
+
+
+class UltraSyringePumpMock(DeviceMock["UltraSyringePump"]):
+    """Mock-mode Ultra pump that follows flow commands and rate setpoints."""
+
+    async def connect(self, device: UltraSyringePump) -> None:
+        """Initialize an idle pump with flow and counter callbacks."""
+        _connect_flow_mock(device)
+
+
+@default_mock_class(DDSSyringeAxisMock)
 class DDSSyringeAxis(StandardReadable, EpicsDevice):
     """Represent one DDS pump axis with axis-local commands and readbacks.
 
@@ -187,6 +259,7 @@ class DDSSyringeController(EpicsDevice):
     show_condition: A[SignalR[str], PvSuffix("}CONDITION:RBV")]
 
 
+@default_mock_class(UltraSyringePumpMock)
 class UltraSyringePump(StandardReadable, EpicsDevice):
     """Represent an Ultra pump with per-pump communication and flow control.
 
