@@ -1,0 +1,87 @@
+[workspace]
+requires-pixi = ">=0.82.1"
+channels = ["conda-forge"]
+name = "xpd-tools"
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.11,<3.14"
+ipython = ">=9.16.1,<10"
+tiled-client = ">=0.2.14,<0.3"
+bluesky-tiled-plugins = ">=2.0.9,<3"
+redis-json-dict = ">=0.2.2,<0.3"
+rich = ">=15.0.0,<16"
+scipy = ">=1.17.1,<2"
+
+[pypi-dependencies]
+xpd-tools = { path = ".", editable = true }
+# From PyPI, not conda-forge: their conda builds pull in conda epics-base (via
+# pyepics), a second EPICS base beside epicscorelibs that crashes Python at exit.
+bluesky = ">=1.15.1"
+nslsii = ">=0.11.9,<0.12"
+ophyd-async = { git = "https://github.com/bluesky/ophyd-async", rev = "main" }
+
+[feature.profile.dependencies]
+
+[feature.qs.pypi-dependencies]
+bluesky-queueserver = ">=0.0.25,<0.0.26"
+bluesky-queueserver-api = ">=0.0.13,<0.0.14"
+bluesky-httpserver = ">=0.0.12,<0.0.13"
+
+[feature.qs.tasks]
+qs-backend = "test -n \"$BS_PROFILE\" || (echo 'BS_PROFILE is not set, e.g. BS_PROFILE=xpdd' && exit 1) && start-re-manager --startup-script src/xpd_tools/profiles/$BS_PROFILE.py"
+qs-server = "uvicorn --host localhost --port 60610 bluesky_httpserver.server:app"
+
+[feature.terminal.dependencies]
+matplotlib = ">=3.10.9,<4"
+qtpy = ">=2.4.3,<3"
+pyside6 = ">=6.9.0,<6.13"
+
+[feature.terminal.tasks.start]
+# Extra arguments, e.g. `--mock`, are forwarded to the profile
+cmd = "test -n \"$BS_PROFILE\" || (echo 'BS_PROFILE is not set, e.g. BS_PROFILE=xpdd' && exit 1) && unset SESSION_MANAGER PYTHONPATH PYTHONUSERBASE && MPLBACKEND=qtagg ipython -i src/xpd_tools/profiles/$BS_PROFILE.py --"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[feature.dev.dependencies]
+pre-commit = ">=4.6.1,<5"
+pytest = ">=9.1.1,<10"
+pytest-cov = ">=7.1.0,<8"
+pytest-mock = ">=3.15.1,<4"
+ruff = ">=0.16.2,<0.17"
+pyright = ">=1.1.414,<1.2.0"
+pytest-asyncio = ">=1.4.0,<2"
+import-linter = ">=2.13,<3"
+inflection = ">=0.5.1,<0.6"
+pytest-timeout = ">=2.4.0,<3"
+tiled-server = ">=0.2.14,<0.3"
+python-build = ">=1.2.2,<2"
+pip = "*"
+
+[feature.dev.tasks]
+tests = "pytest --cov=src/xpd_tools --cov-report=term"
+lint = "pre-commit run --all-files"
+type-check = "pyright src tests"
+
+[environments]
+# Base environments
+default = { solve-group = "default" }
+dev = { features = ["profile", "terminal", "dev"], solve-group = "default" }
+
+# Profile environments
+terminal = { features = ["profile", "terminal"], solve-group = "default" }
+
+# Python version specific environments for CI
+py311 = { features = ["profile", "terminal", "dev", "py311"], solve-group = "py311" }
+py312 = { features = ["profile", "terminal", "dev", "py312"], solve-group = "py312" }
+py313 = { features = ["profile", "terminal", "dev", "py313"], solve-group = "py313" }
+
+# Queueserver environment
+qs = { features = ["profile", "qs"], solve-group = "qs" }
