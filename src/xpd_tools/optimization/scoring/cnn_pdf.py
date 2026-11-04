@@ -7,11 +7,11 @@ import numpy as np
 import torch
 from numpy.typing import ArrayLike
 
-from autoencoder_pdf.training.conc_encoder import ConcEncoder
-
 
 class CnnScorer:
     """A loaded autoencoder-pdf encoder scorer."""
+
+    from autoencoder_pdf.training.conc_encoder import ConcEncoder
 
     def __init__(
         self,
