@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "xpd-tools"
@@ -9,13 +9,12 @@ authors = [
 ]
 description = "Tools for NSLS-II XPD beamline"
 readme = "README.md"
-license.file = "LICENSE"
+license = "BSD-3-Clause"
 requires-python = ">=3.11,<3.14"
 classifiers = [
   "Development Status :: 1 - Planning",
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: BSD License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -79,22 +78,35 @@ docs = [
 ]
 
 [project.scripts]
-xpd-profile = "xpdtools:start_profile"
+xpd-profile = "xpd_tools:start_profile"
 
 [project.urls]
-Homepage = "https://github.com/NSLS2/xpdtools"
-Issues = "https://github.com/NSLS2/xpdtools/issues"
-Discussions = "https://github.com/NSLS2/xpdtools/discussions"
-Changelog = "https://github.com/NSLS2/xpdtools/releases"
+Homepage = "https://github.com/NSLS2/xpd-tools"
+Issues = "https://github.com/NSLS2/xpd-tools/issues"
+Discussions = "https://github.com/NSLS2/xpd-tools/discussions"
+Changelog = "https://github.com/NSLS2/xpd-tools/releases"
 
 [project.optional-dependencies]
-profiles = ["pyside6>=6.9,<6.10", "qtpy>=2.4.3"]
+profiles = ["pyside6>=6.9,<6.13", "qtpy>=2.4.3"]
 
-[tool.setuptools.package-data]
-"xpd_tools.panda_configurations" = ["*.yaml"]
+[tool.hatch.version]
+source = "vcs"
 
-[tool.setuptools_scm]
-write_to = "src/xpd_tools/_version.py"
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build]
+artifacts = ["src/xpd_tools/_version.py"]
+
+[tool.hatch.version.raw-options]
+fallback_version = "0.0.0"
+local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/xpd_tools/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xpd_tools"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -133,6 +145,7 @@ data_file = "/tmp/xpd_tools.coverage"
 source = ["src", "**/site-packages/"]
 
 [tool.ruff]
+target-version = "py311"
 line-length = 88
 lint.select = [
   "B",       # flake8-bugbear - https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
@@ -158,6 +171,9 @@ lint.preview = true # so that preview mode PLC2701 is enabled
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["xpd_tools"]
 
 [tool.ruff.lint.per-file-ignores]
 # By default, private member access is allowed in tests

@@ -6,7 +6,6 @@ from xpd_tools.flyers import (
     SingleAxisFlyscanInfo,
     calculate_move_time_for_flyscan,
     construct_fly_info_models,
-    get_zero_encoder_position,
 )
 
 
@@ -39,7 +38,7 @@ def test_calculate_move_time_for_flyscan(
 @pytest.mark.parametrize(
     "num_pulses, max_exposure_time, start_position,"
     " stop_position, encoder_resolution, max_motor_velocity,"
-    " encoder_pos_at_zero, time_based,"
+    " current_encoder_value, time_based,"
     " expected_flyer_info, expected_motor_info",
     [
         (
@@ -135,7 +134,7 @@ def test_construct_fly_info_models(
     stop_position: float,
     encoder_resolution: float,
     max_motor_velocity: float,
-    encoder_pos_at_zero: int,
+    current_encoder_value: int,
     time_based: bool,
     expected_flyer_info: SingleAxisFlyscanInfo,
     expected_motor_info: FlyMotorInfo,
@@ -147,7 +146,8 @@ def test_construct_fly_info_models(
         stop_position,
         encoder_resolution,
         max_motor_velocity,
-        encoder_pos_at_zero,
+        current_position=0.0,
+        current_encoder_value=current_encoder_value,
         time_based=time_based,
     )
     assert flyer_info.start == expected_flyer_info.start
@@ -172,7 +172,7 @@ def test_construct_fly_info_models(
 @pytest.mark.parametrize(
     "num_pulses, max_exposure_time, start_position,"
     " stop_position, encoder_resolution, max_motor_velocity,"
-    " encoder_pos_at_zero, expected_match",
+    " current_encoder_value, expected_match",
     [
         # travel_counts=1000, num_pulses-1=6 -> 1000 % 6 != 0
         (7, 0.1, 0.0, 100.0, 0.1, 50.0, 0, "not evenly divisible"),
@@ -187,7 +187,7 @@ def test_construct_fly_info_models_raises(
     stop_position: float,
     encoder_resolution: float,
     max_motor_velocity: float,
-    encoder_pos_at_zero: int,
+    current_encoder_value: int,
     expected_match: str,
 ):
     with pytest.raises(ValueError, match=expected_match):
@@ -198,33 +198,66 @@ def test_construct_fly_info_models_raises(
             stop_position,
             encoder_resolution,
             max_motor_velocity,
-            encoder_pos_at_zero,
+            current_position=0.0,
+            current_encoder_value=current_encoder_value,
         )
 
 
 @pytest.mark.parametrize(
-    "current_position, start_position, encoder_resolution, current_encoder_value,"
-    "expected_zero_encoder_position",
+    "current_position, current_encoder_value, start_position, stop_position,"
+    " expected_start, expected_offset",
     [
-        (10.0, 0.0, 0.1, 100, 0),
-        (5.0, 2.0, 0.2, 50, 35),
-        (20.0, 10.0, 0.5, 200, 180),
-        (15.0, 5.0, 0.1, 150, 50),
-        (8.0, 4.0, 0.2, 80, 60),
-        (183, 0.0, 0.0009, 198353, -4980),
+        (183.0, 198353, 0.0, 360.0, -4980, 4.4823),
+        (183.0, 198353, 1.0, 361.0, -3869, 4.4823),
+        # Negative scan
+        (183.0, 198353, 361.0, 1.0, 396131, 4.4823),
+        # Multi-revolution motor position and a large counter offset
+        (946.0, -1_234_567_890, 1.0, 361.0, -1_235_617_890, 1_112_057.101),
     ],
 )
-def test_get_zero_encoder_position(
+def test_construct_fly_info_models_relative_to_reading(
     current_position: float,
-    start_position: float,
-    encoder_resolution: float,
     current_encoder_value: int,
-    expected_zero_encoder_position: int,
+    start_position: float,
+    stop_position: float,
+    expected_start: int,
+    expected_offset: float,
 ):
-    zero_encoder_position = get_zero_encoder_position(
-        current_position=current_position,
+    encoder_resolution = 0.0009
+    flyer_info, _ = construct_fly_info_models(
+        num_pulses=11,
+        max_exposure_time=0.01,
         start_position=start_position,
+        stop_position=stop_position,
         encoder_resolution=encoder_resolution,
+        max_motor_velocity=100.0,
+        current_position=current_position,
         current_encoder_value=current_encoder_value,
     )
-    assert zero_encoder_position == expected_zero_encoder_position
+    assert flyer_info.start == expected_start
+    assert flyer_info.pulse_step == 40_000
+    assert flyer_info.position_offset == pytest.approx(expected_offset)
+    # The captured position at the first trigger is the start position
+    assert flyer_info.start * encoder_resolution + flyer_info.position_offset == (
+        pytest.approx(start_position, abs=1e-3)
+    )
+
+
+def test_pcomp_start_does_not_depend_on_where_the_motor_is():
+    """The start must land on the same encoder count whatever the motor reads."""
+    encoder_resolution = 0.0009
+    # Encoder is at 1000 counts when the motor is at 0 degrees
+    starts = set()
+    for current_position in (0.0, 1.0, 183.0, 946.0):
+        flyer_info, _ = construct_fly_info_models(
+            num_pulses=11,
+            max_exposure_time=0.01,
+            start_position=1.0,
+            stop_position=361.0,
+            encoder_resolution=encoder_resolution,
+            max_motor_velocity=100.0,
+            current_position=current_position,
+            current_encoder_value=1000 + round(current_position / encoder_resolution),
+        )
+        starts.add(flyer_info.start)
+    assert starts == {1000 + 1111}
