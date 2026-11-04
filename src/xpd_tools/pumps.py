@@ -1,3 +1,8 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
+
 """EPICS syringe-pump interfaces and syringe/rate policy."""
 
 from __future__ import annotations
@@ -7,11 +12,83 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Annotated as A
 
-from ophyd_async.core import SignalR, SignalRW, StandardReadable, TriggerableCommand
+from ophyd_async.core import (
+    DeviceMock,
+    SignalR,
+    SignalRW,
+    StandardReadable,
+    TriggerableCommand,
+    callback_on_mock_execute,
+    callback_on_mock_put,
+    default_mock_class,
+    set_mock_value,
+)
 from ophyd_async.core import StandardReadableFormat as Format
 from ophyd_async.epics.core import EpicsDevice, PvSuffix
 
 
+def _connect_flow_mock(pump: DDSSyringeAxis | UltraSyringePump) -> None:
+    """Make mocked flow commands and rate setpoints update their readbacks."""
+    set_mock_value(pump.status, "Idle")
+    for direction in ("infuse", "withdraw"):
+        callback_on_mock_put(
+            getattr(pump, f"{direction}_rate"),
+            lambda value, direction=direction: set_mock_value(
+                getattr(pump, f"read_{direction}_rate"), value
+            ),
+        )
+        callback_on_mock_put(
+            getattr(pump, f"{direction}_rate_unit"),
+            lambda value, direction=direction: set_mock_value(
+                getattr(pump, f"read_{direction}_rate_unit"), value
+            ),
+        )
+    callback_on_mock_execute(
+        pump.pump_infuse, lambda: set_mock_value(pump.status, "Infusing")
+    )
+    callback_on_mock_execute(
+        pump.pump_withdraw, lambda: set_mock_value(pump.status, "Withdrawing")
+    )
+    callback_on_mock_execute(
+        pump.pump_stop, lambda: set_mock_value(pump.status, "Idle")
+    )
+    callback_on_mock_execute(
+        pump.clear_infused, lambda: set_mock_value(pump.read_infused, 0)
+    )
+    callback_on_mock_execute(
+        pump.clear_withdrawn, lambda: set_mock_value(pump.read_withdrawn, 0)
+    )
+
+
+class DDSSyringeAxisMock(DeviceMock["DDSSyringeAxis"]):
+    """Mock-mode DDS axis that follows flow commands and rate setpoints.
+
+    Notes
+    -----
+    The mock reports a 50 mL steel syringe selected on the controller panel:
+    its rate-limit readbacks match that syringe's entry in the DDS table.
+    """
+
+    async def connect(self, device: DDSSyringeAxis) -> None:
+        """Initialize an idle axis with 50 mL steel syringe limits."""
+        _connect_flow_mock(device)
+        minimum, maximum = _DDS_RANGES["steel"][50]
+        for direction in ("infuse", "withdraw"):
+            set_mock_value(getattr(device, f"read_min_{direction}"), minimum)
+            set_mock_value(getattr(device, f"read_min_{direction}_unit"), "nl/min")
+            set_mock_value(getattr(device, f"read_max_{direction}"), maximum)
+            set_mock_value(getattr(device, f"read_max_{direction}_unit"), "ml/min")
+
+
+class UltraSyringePumpMock(DeviceMock["UltraSyringePump"]):
+    """Mock-mode Ultra pump that follows flow commands and rate setpoints."""
+
+    async def connect(self, device: UltraSyringePump) -> None:
+        """Initialize an idle pump with flow and counter callbacks."""
+        _connect_flow_mock(device)
+
+
+@default_mock_class(DDSSyringeAxisMock)
 class DDSSyringeAxis(StandardReadable, EpicsDevice):
     """Represent one DDS pump axis with axis-local commands and readbacks.
 
@@ -74,17 +151,17 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
     """
 
     status: A[SignalR[str], PvSuffix("STATUS"), Format.UNCACHED_SIGNAL]
-    pump_infuse: A[TriggerableCommand, PvSuffix("IRUN")]
-    pump_withdraw: A[TriggerableCommand, PvSuffix("WRUN")]
-    pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
+    pump_infuse: A[TriggerableCommand, PvSuffix("IRUN.PROC")]
+    pump_withdraw: A[TriggerableCommand, PvSuffix("WRUN.PROC")]
+    pump_stop: A[TriggerableCommand, PvSuffix("STOP.PROC")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUME:EGU"), Format.CONFIG_SIGNAL]
     read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUME:RBV:EGU"), Format.UNCACHED_SIGNAL
     ]
-    clear_infused: A[TriggerableCommand, PvSuffix("CIVOLUME")]
-    clear_withdrawn: A[TriggerableCommand, PvSuffix("CWVOLUME")]
+    clear_infused: A[TriggerableCommand, PvSuffix("CIVOLUME.PROC")]
+    clear_withdrawn: A[TriggerableCommand, PvSuffix("CWVOLUME.PROC")]
     read_infused: A[SignalR[float], PvSuffix("IVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_withdrawn: A[SignalR[float], PvSuffix("WVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_infused_unit: A[
@@ -138,7 +215,7 @@ class DDSSyringeAxis(StandardReadable, EpicsDevice):
         SignalR[str], PvSuffix("WRATE:MIN:RBV:EGU"), Format.UNCACHED_SIGNAL
     ]
     # TODO: make lowercase
-    LIM: A[SignalRW[str], PvSuffix("IRATE-LIM:ENABLE"), Format.CONFIG_SIGNAL]
+    LIM: A[SignalRW[float], PvSuffix("IRATE-LIM:ENABLE"), Format.CONFIG_SIGNAL]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
     read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
@@ -187,6 +264,7 @@ class DDSSyringeController(EpicsDevice):
     show_condition: A[SignalR[str], PvSuffix("}CONDITION:RBV")]
 
 
+@default_mock_class(UltraSyringePumpMock)
 class UltraSyringePump(StandardReadable, EpicsDevice):
     """Represent an Ultra pump with per-pump communication and flow control.
 
@@ -244,7 +322,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
     pump_stop: A[TriggerableCommand, PvSuffix("STOP")]
     target_vol: A[SignalRW[float], PvSuffix("TVOLUME"), Format.CONFIG_SIGNAL]
     target_vol_unit: A[SignalRW[str], PvSuffix("TVOLUMEUNITS"), Format.CONFIG_SIGNAL]
-    read_target_vol: A[SignalR[float], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_vol: A[SignalR[str], PvSuffix("TVOLUME:RBV"), Format.UNCACHED_SIGNAL]
     read_target_vol_unit: A[
         SignalR[str], PvSuffix("TVOLUMEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
@@ -273,7 +351,7 @@ class UltraSyringePump(StandardReadable, EpicsDevice):
         SignalR[str], PvSuffix("WRATEUNITS:RBV"), Format.UNCACHED_SIGNAL
     ]
     target_time: A[SignalRW[float], PvSuffix("TTIME"), Format.CONFIG_SIGNAL]
-    read_target_time: A[SignalR[float], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
+    read_target_time: A[SignalR[str], PvSuffix("TTIME:RBV"), Format.UNCACHED_SIGNAL]
     force: A[SignalRW[float], PvSuffix("FORCE"), Format.CONFIG_SIGNAL]
     read_force: A[SignalR[float], PvSuffix("FORCE:RBV"), Format.UNCACHED_SIGNAL]
     diameter: A[SignalR[float], PvSuffix("DIAMETER"), Format.CONFIG_SIGNAL]
