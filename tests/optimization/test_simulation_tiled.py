@@ -216,8 +216,10 @@ def test_build_simulated_tiled_clients_makes_plqy_finite_end_to_end(
     ]
     dof_for_phase = {"Wanted": "infusion_rate_CsPb", "Unwanted": "infusion_rate_Br"}
 
+    # Noise off: absorbance noise at the default 0.05 can drive the corrected
+    # absorbance at the excitation wavelength <= 0 and hit the 1e-10 floor.
     tiled_client, _sandbox_client = build_simulated_tiled_clients(
-        RE, phases=phases, dof_for_phase=dof_for_phase
+        RE, phases=phases, dof_for_phase=dof_for_phase, noise_level=0.0
     )
 
     context = plan_context_factory(
@@ -606,6 +608,40 @@ def test_build_simulated_tiled_clients_band_gap_ev_overrides_mp(
     )
     assert wanted == pytest.approx(1240.0 / 2.38, abs=1.0)  # 521 nm, not MP's 430
     assert unwanted == pytest.approx(1240.0 / 2.0, abs=1.0)  # MP's own gap
+
+
+@pytest.mark.parametrize("phases", [None, ()])
+@patch("xpd_tools.optimization.simulation.tiled.MPAPIUser")
+def test_build_simulated_tiled_clients_without_phases_uses_dof_for_phase(
+    mock_mp_user_cls: Any,
+    RE: RunEngine,
+    plan_context_factory: Any,
+    phases: Any,
+) -> None:
+    """A UV-Vis-only agent has no phases (only set_xray_objectives sets them):
+    notebooks pass build_agent.phases (None), the GUI phases=(). Either way the
+    phases named in dof_for_phase are simulated."""
+    mock_mp_user_cls.return_value.load.return_value = (
+        np.linspace(1.0, 25.0, 5),
+        np.column_stack([np.ones(5), np.ones(5)]),
+    )
+    mock_mp_user_cls.return_value.band_gaps.return_value = {"Red": 2.0, "Blue": 2.5}
+    tiled_client, _ = build_simulated_tiled_clients(
+        RE,
+        phases=phases,
+        dof_for_phase={"Red": "infusion_rate_CsPb", "Blue": "infusion_rate_Br"},
+        noise_level=0.0,
+    )
+    assert mock_mp_user_cls.call_args.kwargs["formulas"] == ["Red", "Blue"]
+
+    rates = {
+        "infusion_rate_CsPb": 30.0,
+        "infusion_rate_Br": 0.0,
+        "infusion_rate_I2": 0.0,
+    }
+    assert _pl_peak_nm(tiled_client, RE, plan_context_factory, rates) == (
+        pytest.approx(620.0, abs=1.0)
+    )
 
 
 def test_missing_mp_api_key_says_where_to_set_it(

@@ -66,7 +66,7 @@ def _mix_or_constant(
 def build_simulated_tiled_clients(
     RE: RunEngine,
     *,
-    phases: Sequence[Phase],
+    phases: Sequence[Phase] | None,
     dof_for_phase: Mapping[str, str],
     weight_fn: PhaseWeightFn = linear_dof_weights,
     q: tuple[float, float] = (0.5, 25.0),
@@ -90,7 +90,8 @@ def build_simulated_tiled_clients(
 
     Args:
         - RE: the RunEngine to use for simulation.
-        - phases: the list of `Phase` objects to simulate.
+        - phases: the list of `Phase` objects to simulate; None or empty (a UV-Vis-only
+          agent has no phases) simulates the phases named in dof_for_phase.
         - dof_for_phase: a mapping of phase names to DOF names.
         - weight_fn: the function to use for DOF weight normalization.
         - q: the range of q values to simulate.
@@ -121,16 +122,17 @@ def build_simulated_tiled_clients(
     tiled_client = FakeTiledCatalog()
     sandbox_client = FakeTiledCatalog()
 
+    names = [phase.name for phase in phases or ()] or list(dof_for_phase)
     mp_user = MPAPIUser(
         q=q,
         r=r,
         qstep=qstep,
         rstep=rstep,
-        formulas=[phase.name for phase in phases],
+        formulas=names,
         api_key=mp_api_key,
     )
     r_ref, gs = mp_user.load()
-    phase_grs = dict(zip((phase.name for phase in phases), gs.T, strict=True))
+    phase_grs = dict(zip(names, gs.T, strict=True))
     phase_band_gaps = {**mp_user.band_gaps(), **(band_gap_ev or {})}
 
     documents: list[tuple[str, Mapping[str, Any]]] = []

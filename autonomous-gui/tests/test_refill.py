@@ -4,7 +4,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from xpd_autonomous_gui.server import Session, create_app
+from xpd_autonomous_gui.server import Session, _simulation_options, create_app
 
 
 def test_refill_then_continue(make_config, tmp_path, wait_for) -> None:
@@ -83,6 +83,26 @@ def test_simulation_presets_come_from_the_config(make_config, client_for) -> Non
     response = client.post("/api/build")
     assert response.status_code == 500
     assert "pick a DOF for at least one phase" in response.json()["detail"]
+
+
+def test_uvvis_only_simulation_uses_the_configs_dof_for_phase() -> None:
+    """A UV-Vis-only config has no xray phases: the DOF dropdowns are for the
+    phases already named in run.local.simulated.dof_for_phase."""
+    simulated = {"dof_for_phase": {"CsPbBr3": "infusion_rate_Br", "CsPbI3": None}}
+    config = {
+        "evaluation_method": "uvvis",
+        "experiment": {"sources": [{"dof": "infusion_rate_Br"}, {"dof": "infusion_rate_I"}]},
+        "run": {"local": {"simulated": simulated}},
+    }
+    presets, choices = _simulation_options(config)
+    assert presets["run.local.simulated"][1]["value"] == {
+        "dof_for_phase": {"CsPbBr3": None, "CsPbI3": None}
+    }
+    dofs = [None, "infusion_rate_Br", "infusion_rate_I"]
+    assert choices == {
+        "run.local.simulated.dof_for_phase.CsPbBr3": dofs,
+        "run.local.simulated.dof_for_phase.CsPbI3": dofs,
+    }
 
 
 def test_success_criteria_options_apply(make_config, client_for) -> None:

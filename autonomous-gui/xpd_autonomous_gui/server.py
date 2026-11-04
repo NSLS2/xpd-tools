@@ -441,6 +441,11 @@ def _simulation_options(
     if config is None:
         return {}, {}
     phases = [phase["name"] for phase in (config.get("xray") or {}).get("phases") or []]
+    if not phases:
+        # UV-Vis only: no xray phases, so the phases to simulate are the ones
+        # already named in the config's dof_for_phase (e.g. from to_config()).
+        simulated = ((config.get("run") or {}).get("local") or {}).get("simulated")
+        phases = list((simulated or {}).get("dof_for_phase") or {})
     dofs = [source["dof"] for source in config["experiment"]["sources"]]
     presets = {
         "run.local.simulated": [

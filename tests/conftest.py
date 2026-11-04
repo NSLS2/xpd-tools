@@ -4,6 +4,16 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
+# caproto uses ctypes structures with _pack_ but without _layout_, which is
+# deprecated in Python 3.14.  Pre-import it here (before pytest's own filter
+# machinery is active) so the DeprecationWarning is suppressed globally.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    try:
+        import caproto  # noqa: F401
+    except (ImportError, Exception):
+        pass
+
 # Pre-import websockets modules that trigger DeprecationWarnings so they are
 # cached in sys.modules before uvicorn's server thread imports them.
 with warnings.catch_warnings():

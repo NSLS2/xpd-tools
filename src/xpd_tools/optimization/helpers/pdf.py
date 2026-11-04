@@ -7,18 +7,22 @@ import logging
 import re
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal, cast
-
-from xpd_tools.optimization.pdffit import fit_pdf_correlations
 
 import numpy as np
 from tiled.queries import Eq
 
 from xpd_tools.optimization.analysis import pdf_profile
-from xpd_tools.optimization.scoring import _ALL_SCORING_NAMES, _resolve_scorer, CnnScorer, EnsembleScorers
-from xpd_tools.optimization.helpers.common import _TiledAccessError, _retry_access
+from xpd_tools.optimization.helpers.common import _retry_access, _TiledAccessError
+from xpd_tools.optimization.pdffit import fit_pdf_correlations
+from xpd_tools.optimization.scoring import (
+    _ALL_SCORING_NAMES,
+    CnnScorer,
+    EnsembleScorers,
+    _resolve_scorer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,10 @@ _PHASE_FIELDS = frozenset(
         "minimize",
         "constraint_profile",
         "scoring_function",
+        "cnn_name",
+        "role",
+        "bound",
+        "objective_threshold",
         "target_fraction",
     }
 )
@@ -51,8 +59,17 @@ class _PdfPhaseReference:
     cif_path: Path | None = None
     constraint_profile: Literal["none", "cs_pb_br3"] = "none"
     scoring_function: Literal[
-        "pearson", "cross_correlation", "nn_matrix", "weighted_profile_r", "ensemble", "cnn"
+        "pearson",
+        "cross_correlation",
+        "nn_matrix",
+        "weighted_profile_r",
+        "ensemble",
+        "cnn"
     ] = "pearson"
+    cnn_name: str | None = None
+    role: Literal["objective", "constraint"] = "objective"
+    bound: float | None = None
+    objective_threshold: float | None = None
     target_fraction: float | None = None
 
 
@@ -163,7 +180,9 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
             gr_path = None
         else:
             if "gr_path" not in raw_phase:
-                raise ValueError(f"{field}.gr_path is required unless scoring_function is 'cnn'")
+                raise ValueError(
+                    f"{field}.gr_path is required unless scoring_function is 'cnn'"
+                )
             gr_path = _reference_path(
                 raw_phase["gr_path"],
                 config_path.parent,
@@ -171,12 +190,47 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
                 require_file=True,
             )
 
+        # Extract and validate the cnn_name (cnn only -- overrides name for
+        # CNN dictionary lookup; metric keys still use the short name).
+        cnn_name = raw_phase.get("cnn_name")
+        if cnn_name is not None:
+            if scoring_function != "cnn":
+                raise ValueError(f"{field}.cnn_name requires scoring_function 'cnn'")
+            if not isinstance(cnn_name, str) or not cnn_name:
+                raise ValueError(f"{field}.cnn_name must be a non-empty string")
+
+        # Extract and validate role / bound / objective_threshold.
+        role = raw_phase.get("role", "objective")
+        if role not in ("objective", "constraint"):
+            raise ValueError(
+                f"{field}.role must be 'objective' or 'constraint', got {role!r}"
+            )
+        bound = raw_phase.get("bound")
+        if bound is not None and not isinstance(bound, (int, float)):
+            raise ValueError(f"{field}.bound must be a number")
+        objective_threshold = raw_phase.get("objective_threshold")
+        if objective_threshold is not None and \
+            not isinstance(objective_threshold, (int, float)):
+            raise ValueError(f"{field}.objective_threshold must be a number")
+        if role == "constraint":
+            if bound is None:
+                raise ValueError(f"{field}: role='constraint' requires bound to be set")
+            if objective_threshold is not None:
+                raise ValueError(
+                    f"{field}: objective_threshold is only valid for role='objective'"
+                )
+        else:
+            if bound is not None:
+                raise ValueError(f"{field}: bound is only valid for role='constraint'")
+
         # Extract and validate the target fraction (cnn only -- it's the
         # only scorer that predicts phase fractions).
         target_fraction = raw_phase.get("target_fraction")
         if target_fraction is not None:
             if scoring_function != "cnn":
-                raise ValueError(f"{field}.target_fraction requires scoring_function 'cnn'")
+                raise ValueError(
+                    f"{field}.target_fraction requires scoring_function 'cnn'"
+                )
             if (
                 isinstance(target_fraction, bool)
                 or not isinstance(target_fraction, (int, float))
@@ -185,7 +239,8 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
                 raise ValueError(f"{field}.target_fraction must be a number in [0, 1]")
             if minimize:
                 raise ValueError(
-                    f"{field}.target_fraction sets its own direction; minimize must be false"
+                    f"{field}.target_fraction sets its own direction; \
+                    minimize must be false"
                 )
 
         # Extract and validate the CIF path.
@@ -222,6 +277,10 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
                     ],
                     scoring_function,
                 ),
+                cnn_name=cnn_name,
+                role=cast(Literal["objective", "constraint"], role),
+                bound=bound,
+                objective_threshold=objective_threshold,
                 target_fraction=target_fraction,
             )
         )
@@ -232,6 +291,7 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
     if total > 1 + 1e-6:
         raise ValueError(f"target_fraction values sum to {total:g}; must be <= 1")
     return tuple(phases)
+
 
 def _read_pdfstream_data(
     sandbox_client: Any,
@@ -271,7 +331,7 @@ def _read_pdfstream_data(
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_reference_gr(gr_path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Load and cache one phase's reference G(r).
 
@@ -302,7 +362,8 @@ def _raw_pdf_correlations(
         - ensemble_scorers: Mapping of ensemble scorers.
         - cnn_scorer: Built CnnScorer.
 
-    Returns:
+    Returns
+    -------
         - results: corr_{name} per correlation-scored phase; for cnn phases
           frac_{name} (predicted fraction) and, with a target,
           frac_dist_{name} (squared distance to it).
@@ -319,16 +380,17 @@ def _raw_pdf_correlations(
         cnn_scores = cnn_scorer.score(
             pdf_data["gr_r"],
             pdf_data["gr_G"],
-            phase_names=[phase.name for phase in cnn_phases],
+            phase_names=[phase.cnn_name or phase.name for phase in cnn_phases],
             r_min=r_min,
             r_max=r_max,
         )
         for phase in cnn_phases:
-            fraction = cnn_scores[phase.name]
+            fraction = cnn_scores[phase.cnn_name or phase.name]
             results[f"frac_{phase.name}"] = fraction
             # Squared, not abs: smooth at the target, so the GP models it well.
             if phase.target_fraction is not None:
-                results[f"frac_dist_{phase.name}"] = (fraction - phase.target_fraction) ** 2
+                results[f"frac_dist_{phase.name}"] = \
+                (fraction - phase.target_fraction) ** 2
 
     for phase in phases:
         if phase.scoring_function == "cnn":
@@ -341,7 +403,11 @@ def _raw_pdf_correlations(
             reference_g,
             r_min=r_min,
             r_max=r_max,
-            function=_resolve_scorer(phase.scoring_function, phase.name, ensemble_scorers),
+            function=_resolve_scorer(
+                phase.scoring_function,
+                phase.name,
+                ensemble_scorers
+            ),
         )
     return results
 
@@ -373,7 +439,8 @@ def _process_pdf(
         - cnn_scorer: Built CnnScorer, required if any phase uses scoring_function
           "cnn".
 
-    Returns:
+    Returns
+    -------
         - results: Dictionary of phase names to raw or fit PDF correlation values.
     """
     results = _raw_pdf_correlations(

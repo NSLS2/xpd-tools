@@ -104,9 +104,7 @@ def build_cnn_scorer(dataset_path: str, weights_path: str) -> CnnScorer:
         raise ValueError(f"cnn scorer: failed to load weights_path {weights_path!r}: {exc}") from exc
 
     try:
-        encoder = ConcEncoder(len(r_dict), len(names))
-        encoder.load_state_dict(ckpt["state"])
-        encoder.eval()
+        encoder = ConcEncoder.from_checkpoint(ckpt, n_r=len(r_dict))
     except Exception as exc:
         raise ValueError(
             f"cnn scorer: weights at {weights_path!r} don't match the ConcEncoder architecture: {exc}"

@@ -356,6 +356,28 @@ class TestPeakOutcomeConstraints:
         constraints = agent._peak_outcome_constraints()
         assert [str(c) for c in constraints] == ["Peak >= 646", "Peak <= 654"]
 
+    def test_objective_thresholds_become_constraints_on_the_objectives(self) -> None:
+        """Ax turns constraints on objective metrics into objective thresholds."""
+        agent = _uvvis_agent()
+        agent.set_uvvis_objectives(
+            peak_target=650, peak_tolerance=4, plqy=PlqyReference(),
+            max_fwhm_nm=60.0, min_plqy=1e-3, max_peak_distance_nm=50.0,
+        )
+        thresholds = [str(c) for c in agent._uvvis_objective_thresholds()]
+        assert thresholds == [
+            "log_FWHM <= 4.09434", "log_PLQY >= -6.90776", "peak_distance <= 50"
+        ]
+        assert [str(c) for c in agent._outcome_constraints(needs_plqy=True)] == [
+            "Peak >= 646", "Peak <= 654", *thresholds
+        ]
+
+    def test_objective_thresholds_default_to_none_and_must_be_positive(self) -> None:
+        agent = _uvvis_agent()
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+        assert agent._uvvis_objective_thresholds() == ()
+        with pytest.raises(ValueError, match="min_plqy must be positive"):
+            agent.set_uvvis_objectives(plqy=PlqyReference(), min_plqy=0.0)
+
 
 class TestAcquisitionPlanSelection:
     def test_uvvis(self) -> None:
@@ -583,6 +605,9 @@ class TestConfigRoundTrip:
             peak_tolerance=4,
             plqy=PlqyReference(),
             fit_settings=SpectraFitSettings(),
+            max_fwhm_nm=60.0,
+            min_plqy=1e-3,
+            max_peak_distance_nm=50.0,
         )
         agent.set_success_criteria(min_correlation=0.9, max_fwhm=30.0, min_plqy=0.5, poll_interval=2.0)
         agent.set_run(
