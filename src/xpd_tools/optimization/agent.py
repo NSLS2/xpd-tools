@@ -1191,12 +1191,17 @@ class BuildAgent:
 
         return kwargs
 
-    def build(self, ) -> None:
+    def build(self, *, send_config: bool = False) -> None:
         """Build the agent for use in a queueserver environment.
 
         This method should only be called when `queue_server=True`,
         and needs the local environment of the beamline to function
         properly.
+
+        With ``send_config=True`` every queued step carries
+        ``config=self.to_config()``, for workers that register
+        `xpd_tools.optimization.worker.register_worker_plans`.  The default
+        sends the per-config dicts the profile collection's copied plans take.
         """
         if not self.queue_server:
             raise NotImplementedError(
@@ -1248,7 +1253,11 @@ class BuildAgent:
             objectives=self.objectives,
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
-            acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
+            acquisition_plan_kwargs=(
+                {"config": self.to_config()}
+                if send_config
+                else self._acquisition_plan_kwargs()
+            ),
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)

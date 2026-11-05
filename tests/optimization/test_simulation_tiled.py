@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+
+pytest.importorskip("mp_api", reason="mp-api is not a declared dependency")
 from bluesky.run_engine import RunEngine
 from ophyd import Signal
 

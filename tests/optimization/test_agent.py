@@ -319,6 +319,7 @@ class TestXrayObjectives:
 
         raw_agent = BuildAgent(evaluation_method="xray", pdf_mode="raw")
         raw_agent.set_xray_objectives(phases=phases)
+        raw_agent._assemble_objectives()
         assert raw_agent.phases == phases
         assert {obj.name for obj in raw_agent.objectives} == {
             "corr_Wanted",
@@ -327,6 +328,7 @@ class TestXrayObjectives:
 
         fit_agent = BuildAgent(evaluation_method="xray", pdf_mode="fit")
         fit_agent.set_xray_objectives(phases=phases)
+        fit_agent._assemble_objectives()
         assert {obj.name for obj in fit_agent.objectives} == {
             "pdf_fit_corr_Wanted",
             "pdf_fit_corr_Impurity",
@@ -334,6 +336,7 @@ class TestXrayObjectives:
 
         raw_tracked_agent = BuildAgent(evaluation_method="xray", pdf_mode="raw_tracked")
         raw_tracked_agent.set_xray_objectives(phases=phases)
+        raw_tracked_agent._assemble_objectives()
         assert {obj.name for obj in raw_tracked_agent.objectives} == {
             "corr_Wanted",
             "corr_Impurity",
@@ -343,7 +346,7 @@ class TestXrayObjectives:
         agent = BuildAgent(evaluation_method="xray")
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
-        with pytest.raises(ValueError, match="requires phases"):
+        with pytest.raises(ValueError, match="No objectives configured"):
             agent.build()
 
 
@@ -1119,7 +1122,7 @@ class TestAcquisitionPlanKwargs:
         assert fc["mixer_lengths_cm"] == [25.0]
         assert fc["resident_t_ratio"] == 0.9
         assert fc["precursor_list"] == ["precursor-CsPb", "precursor-Br"]
-        assert fc["precursor_prefix_list"] == ["CsPb", "Br"]
+        assert fc["precursor_prefix_list"] == ["precursor-CsPb", "precursor-Br"]
         assert fc["dof_to_pump"] == {
             "infusion_rate_CsPb": "dds-CsPb",
             "infusion_rate_Br": "dds-Br",

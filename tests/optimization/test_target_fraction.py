@@ -46,6 +46,8 @@ def _cnn_agent(phases: list[Phase], fraction_mode: bool = True) -> BuildAgent:
         cnn_weights_path="amortized_encoder.pt",
         fraction_mode=fraction_mode,
     )
+    # Objectives are assembled at build time (58034a9); tests read them directly.
+    agent._assemble_objectives()
     return agent
 
 
