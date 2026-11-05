@@ -49,12 +49,14 @@ ax-platform = ">=1.3,<1.4"
 "diffpy.structure" = "==3.3.1"
 mp-api = "*"
 numpy = ">=2"
-ophyd = ">=1.11,<2"
 pymatgen = ">=2025.6"
 # ophyd-async -> pydantic-numpy needs ruamel.yaml <0.19.
 "ruamel.yaml" = "<0.19"
 
 [feature.optimization.pypi-dependencies]
+# From PyPI, not conda-forge: its conda build pulls in pyepics and conda epics-base,
+# a second EPICS base beside epicscorelibs that crashes Python at exit.
+ophyd = ">=1.11,<2"
 # blop was renamed bluesky-adaptive at 1.0; conda-forge only has the pre-rename 0.3 line.
 bluesky-adaptive = { version = ">=1.0,<1.1", extras = ["ax", "queueserver"] }
 bluesky-queueserver-api = ">=0.0.13,<0.0.14"
