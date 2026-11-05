@@ -7,7 +7,7 @@ import bluesky.plans as bp
 from bluesky.callbacks.best_effort import BestEffortCallback
 from bluesky.run_engine import RunEngine, call_in_bluesky_event_loop
 from bluesky.utils import ProgressBarManager
-from bluesky_tiled_plugins import TiledWriter
+from bluesky_tiled_plugins import BufferingWrapper, TiledWriter
 from IPython.core.getipython import get_ipython
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from nslsii.ophyd_async.providers import NSLS2PathProvider
@@ -30,6 +30,9 @@ XPD_TOOLS_RUNNING_IN_CI = (
     os.environ.get("XPD_TOOLS_RUNNING_IN_CI", "false").lower() == "true"
 )
 
+TILED_BACKUP_ROOT = "/nsls2/data/xpd/xpdd/shared/config/bluesky/tiled_backup"
+TILED_LOCAL_BACKUP_ROOT = "/tmp/bluesky-docs"
+
 os.environ["REDIS_HOST"] = "xf28id2-xpdd-redis1.nsls2.bnl.gov"
 os.environ["OPHYD_ASYNC_PRESERVE_DETECTOR_STATE"] = "YES"
 
@@ -50,6 +53,11 @@ if not XPD_TOOLS_RUNNING_IN_CI:
         "https://tiled.nsls2.bnl.gov",
         api_key=os.environ.get("TILED_BLUESKY_WRITING_API_KEY_XPDD", ""),
     )["xpdd"]["migration"]
+    tw = BufferingWrapper(
+        TiledWriter(
+            tiled_writing_client, backup_directory=f"{TILED_BACKUP_ROOT}/migration"
+        )
+    )
 else:
     from tiled.client import simple
 
@@ -59,9 +67,12 @@ else:
         api_key="xpdtools",
         readable_storage="/tmp/xpd_tools",
     )
-
-# Setup writing to the database
-tw = TiledWriter(tiled_writing_client)
+    tw = BufferingWrapper(
+        TiledWriter(
+            tiled_writing_client,
+            backup_directory=f"{TILED_LOCAL_BACKUP_ROOT}/migration",
+        )
+    )
 RE.subscribe(tw)
 
 # Setup BEC

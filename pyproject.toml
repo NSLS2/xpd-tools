@@ -28,7 +28,7 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
   "bluesky>=1.15.1",
-  "bluesky-tiled-plugins>=2.0.6",
+  "bluesky-tiled-plugins>=2.0.13",
   "ipython>=9.15.0",
   "nslsii>=0.11.9",
   "ophyd-async[ca,pva] @ git+https://github.com/bluesky/ophyd-async@main",
@@ -63,7 +63,7 @@ dev = [
   "types-mock",
   "types-pyyaml",
   "tiled[client,server]>=0.2.9",
-  "bluesky-tiled-plugins>=2.0.2",
+  "bluesky-tiled-plugins>=2.0.13",
   "h5py>=3.16.0",
   "ty>=0.0.57",
 ]

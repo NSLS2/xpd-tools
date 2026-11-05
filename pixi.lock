@@ -12422,7 +12422,7 @@ packages:
 - pypi: ./
   name: xpd-tools
   requires_dist:
-  - bluesky-tiled-plugins>=2.0.6
+  - bluesky-tiled-plugins>=2.0.13
   - bluesky>=1.15.1
   - ipython>=9.15.0
   - nslsii>=0.11.9
