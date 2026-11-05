@@ -88,6 +88,21 @@ Changelog = "https://github.com/NSLS2/xpd-tools/releases"
 
 [project.optional-dependencies]
 profiles = ["pyside6>=6.9,<6.13", "qtpy>=2.4.3"]
+gui = [
+  "bluesky-widgets",
+  "bluesky-queueserver",
+  "bluesky-queueserver-api",
+  "bluesky-httpserver",
+  "docstring-parser",
+  "tiled[client]",
+  "bluesky-tiled-plugins",
+  "matplotlib",
+  "pyqtgraph",
+  "qtpy",
+  "pyside6",
+  "pexpect",
+  "ntnda-qt-viewer @ git+https://github.com/jwlodek/ntnda-qt-viewer@main",
+]
 
 [tool.hatch.version]
 source = "vcs"
@@ -111,6 +126,11 @@ packages = ["src/xpd_tools"]
 [tool.pyright]
 typeCheckingMode = "standard"
 reportMissingImports = false  # Ignore missing stubs in imported modules
+executionEnvironments = [
+    # qtpy re-exports Qt names in a way pyright doesn't count as exported.
+    { root = "src/xpd_tools/gui", reportPrivateImportUsage = false },
+    { root = "." },
+]
 
 
 [tool.pytest.ini_options]
@@ -179,7 +199,12 @@ known-first-party = ["xpd_tools"]
 # By default, private member access is allowed in tests
 # See https://github.com/DiamondLightSource/python-copier-template/issues/154
 # Remove this line to forbid private member access in tests
-"tests/**/*" = ["SLF001", "S101", "D"]
+"tests/**/*" = ["SLF001", "S101", "D", "PLC2701"]
+# Qt requires camelCase names for overridden methods (closeEvent, sizeHint, ...).
+"src/xpd_tools/gui/**/*" = ["N802"]
+# Vendored from bluesky_widgets; kept close to upstream.
+"src/xpd_tools/gui/_threading.py" = ["D", "E501", "N803", "SLF001"]
+"src/xpd_tools/gui/_event_loop.py" = ["D", "SLF001"]
 "src/xpd_tools/profiles/**" = ["F401"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]

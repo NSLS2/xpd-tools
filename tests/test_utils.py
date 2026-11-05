@@ -115,3 +115,15 @@ def test_proposal_id_prompt_no_session(mocker: MockerFixture) -> None:
         (Token.PromptNum, "1"),
         (Token.Prompt, "]: "),
     ]
+
+
+def test_mock_run_engine_does_not_open_redis(monkeypatch):
+    import xpd_tools.utils as utils
+
+    def no_redis(*args, **kwargs):
+        raise AssertionError("mock mode must not open the beamline Redis")
+
+    monkeypatch.setenv("XPD_TOOLS_RUNNING_IN_CI", "true")
+    monkeypatch.setattr(utils, "open_redis_client", no_redis)
+    RE = utils.initialize_run_engine()
+    assert RE.md["data_session"] == "pass-123456"

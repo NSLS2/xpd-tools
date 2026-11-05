@@ -36,6 +36,16 @@ qs-server = "uvicorn --host localhost --port 60610 bluesky_httpserver.server:app
 matplotlib = ">=3.10.9,<4"
 qtpy = ">=2.4.3,<3"
 pyside6 = ">=6.9.0,<6.13"
+pexpect = ">=4.9.0,<5"
+
+# Install the `gui` extra (bluesky-widgets, ntnda-qt-viewer, ...) in this env.
+[feature.terminal.pypi-dependencies]
+xpd-tools = { path = ".", editable = true, extras = ["gui"] }
+ntnda-qt-viewer = { git = "https://github.com/jwlodek/ntnda-qt-viewer", rev = "main" }
+
+[feature.terminal.tasks.xpdd-gui]
+cmd = "python -m xpd_tools.gui"
+default-environment = "terminal"
 
 [feature.terminal.tasks.start]
 # Extra arguments, e.g. `--mock`, are forwarded to the profile
@@ -66,7 +76,11 @@ python-build = ">=1.2.2,<2"
 pip = "*"
 
 [feature.dev.tasks]
-tests = "pytest --cov=src/xpd_tools --cov-report=term"
+# The GUI tests run separately, as in CI: Qt objects they leave behind can crash
+# later tests in the same process.
+tests = "pytest --ignore=tests/gui --cov=src/xpd_tools --cov-report=term"
+gui-tests = "pytest tests/gui"
+xpdd-gui-mock = "python -m xpd_tools.gui --mock"
 lint = "pre-commit run --all-files"
 type-check = "pyright src tests"
 

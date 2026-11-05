@@ -56,7 +56,7 @@ class ProposalIDPrompt(Prompts):
 
 def initialize_run_engine() -> RunEngine:
     """Initialize the bluesky RunEngine with appropriate metadata."""
-    if os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true":
+    if os.environ.get("XPD_TOOLS_RUNNING_IN_CI", "false").lower() == "true":
         return RunEngine(
             {
                 "data_session": "pass-123456",
