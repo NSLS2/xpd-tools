@@ -1131,7 +1131,7 @@ class BuildAgent:
             "mixer_lengths_cm": list(self.mixer_lengths_cm),
             "resident_t_ratio": self.residence_time_ratio,
             "precursor_list": [s.precursor for s in sources],
-            "precursor_prefix_list": [s.sample_label for s in sources],
+            "precursor_prefix_list": [s.precursor for s in sources],
             "dof_to_pump": {s.dof: str(s.pump) for s in sources},
             "post_dilute": bool(dilutions),
             "post_dilute_ratio": [d.ratio for d in dilutions] or [1.0],
