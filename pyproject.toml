@@ -103,7 +103,6 @@ profiles = [
 ]
 
 optimization = [
-    "autoencoder-pdf",
     "ax-platform>=1.3,<1.4",
     "blop[ax,queueserver]>=1.1,<1.2",
     "diffpy.pdffit2==1.5.1",
@@ -114,6 +113,12 @@ optimization = [
     "scipy>=1.14",
     "torch",
     "bluesky_queueserver_api"
+]
+
+cnn = [
+    # Not yet on PyPI -- install manually or via the editable path in uv.sources.
+    # Once published, `pip install 'xpd-tools[cnn]'` will pull it in.
+    "autoencoder-pdf",
 ]
 
 [tool.uv.sources]

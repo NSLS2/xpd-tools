@@ -1148,8 +1148,7 @@ class BuildAgent:
             "syringe_list": [c.syringe_ml for c in wash_cycles],
             # Rate formatted as "NNN ul/min" to match the string the plan passes
             # to set_group_infuse2 — same unit as self.rate_unit.
-            "rate_list": [f"{int(c.rate_ul_min)} \
-                {self.rate_unit}" for c in wash_cycles],
+            "rate_list": [f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles],
             # All cycles share the same duration; the queueserver WashConfig
             # has a single duration_sec scalar. Use the first cycle's value.
             "duration_sec": wash_cycles[0].duration_sec if wash_cycles else 60.0,
@@ -1249,7 +1248,7 @@ class BuildAgent:
             objectives=self.objectives,
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
-            acquisition_plan_kwargs={},
+            acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)

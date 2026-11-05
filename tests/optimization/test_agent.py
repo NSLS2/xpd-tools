@@ -1245,15 +1245,15 @@ class TestAcquisitionPlanKwargs:
         assert rebuilt.mixer_lengths_cm == (30.0,)
         assert rebuilt.residence_time_ratio == 1.0
 
-    def test_build_passes_empty_plan_kwargs_to_queueserver_agent(
+    def test_build_passes_explicit_plan_kwargs_to_queueserver_agent(
         self, mocked_queueserver: None
     ) -> None:
-        """build() must pass empty acquisition_plan_kwargs to QueueserverAgent.
+        """build() must pass the explicit flow/wash/quality config dicts.
 
-        The xpd-tools plan is context-bound at worker startup via
-        register_acquisition_plans -- all config is baked into the plan closure,
-        so nothing is sent per-submission.  Sending flow_config/wash_config/
-        quality_config would cause a TypeError on the plan's signature.
+        The worker plans (uvvis_acquire, xray_acquire, xray_uvvis_acquire in
+        97-xray_uvvis.py and 98-acq-variants.py) are self-contained and expect
+        flow_config, wash_config, and quality_config as named kwargs — never a
+        serialized BuildAgent config blob.
         """
         from unittest.mock import patch
 
@@ -1274,9 +1274,23 @@ class TestAcquisitionPlanKwargs:
 
         assert captured, "QueueserverAgent was never called"
         plan_kwargs = captured[0].get("acquisition_plan_kwargs", {})
-        assert plan_kwargs == {}, (
-            "build() must send no plan kwargs -- the context-bound plan accepts none"
+
+        # Must send the explicit named config dicts the worker plans consume.
+        assert "flow_config" in plan_kwargs, "build() must send flow_config"
+        assert "wash_config" in plan_kwargs, "build() must send wash_config"
+        assert "quality_config" in plan_kwargs, "build() must send quality_config"
+
+        # Must NOT send a serialized agent config blob.
+        assert "config" not in plan_kwargs, (
+            "build() must not send a 'config' blob — worker plans are "
+            "self-contained and must never deserialize a BuildAgent"
         )
+
+        # Spot-check that flow_config carries the expected keys.
+        fc = plan_kwargs["flow_config"]
+        assert "rate_unit" in fc
+        assert "dof_to_pump" in fc
+        assert "syringe_list" in fc
 
     def test_tubing_id_round_trips_through_config(self) -> None:
         """tubing_id_mm must survive a to_config/from_config round-trip."""
