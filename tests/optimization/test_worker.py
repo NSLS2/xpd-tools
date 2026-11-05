@@ -6,7 +6,7 @@ import inspect
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 import numpy as np
@@ -24,6 +24,8 @@ from xpd_tools.optimization.worker import (
     plan_name_for_config,
     register_worker_plans,
 )
+
+Screening = Literal["unscreened", "screen_only", "screen_and_record"]
 
 _PUMPS = ("dds-CsPb", "dds-Br", "dds-dil", "dds-wash")
 _DEVICES = {
@@ -53,7 +55,7 @@ def _agent(
     evaluation_method: str = "uvvis",
     *,
     pump: str = "dds-CsPb",
-    screening: str | None = None,
+    screening: Screening | None = None,
     tmp_path: Path | None = None,
 ) -> BuildAgent:
     agent = BuildAgent(
@@ -104,6 +106,12 @@ def _agent(
     return agent
 
 
+def _config(agent: BuildAgent) -> dict[str, Any]:
+    config = agent.to_config()
+    assert config is not None
+    return config
+
+
 def _fake_bound_plan(calls: list[tuple]):
     def plan(suggestions, actuators, sensors=None, md=None):
         calls.append((suggestions, actuators, sensors, md))
@@ -133,11 +141,11 @@ def _run(gen) -> tuple[list, Any]:
     ],
 )
 def test_context_matches_build_agent(
-    tmp_path: Path, evaluation_method: str, screening: str | None, plan_name: str
+    tmp_path: Path, evaluation_method: str, screening: Screening | None, plan_name: str
 ) -> None:
     """The worker builds the same plan context BuildAgent would, from its config."""
     agent = _agent(evaluation_method, screening=screening, tmp_path=tmp_path)
-    config = agent.to_config()
+    config = _config(agent)
     assert plan_name_for_config(config) == plan_name == agent._acquisition_plan_name()
     rebuilt = BuildAgent.from_config(config)
     expected = rebuilt._build_plan_context(
@@ -192,11 +200,11 @@ def test_missing_config_names_the_fix() -> None:
 def test_config_selecting_another_plan_is_refused() -> None:
     plan = register_worker_plans(devices=_DEVICES)["xray_acquire"]
     with pytest.raises(ValueError, match="selects uvvis_acquire"):
-        next(plan([{}], [], config=_agent().to_config()))
+        next(plan([{}], [], config=_config(_agent())))
 
 
 def test_xray_plan_without_detector_or_wrapper_is_refused(tmp_path: Path) -> None:
-    config = _agent("xray", screening="unscreened", tmp_path=tmp_path).to_config()
+    config = _config(_agent("xray", screening="unscreened", tmp_path=tmp_path))
     devices = {k: v for k, v in _DEVICES.items() if k != "xray_detector"}
     with pytest.raises(ValueError, match="xray_detector"):
         next(
@@ -222,11 +230,11 @@ def test_binding_is_cached_per_config() -> None:
 
     with patch.dict(worker._PLAN_FACTORIES, {"uvvis_acquire": factory}):
         plan = register_worker_plans(devices=_DEVICES)["uvvis_acquire"]
-        first = _agent().to_config()
+        first = _config(_agent())
         messages, uid = _run(plan([{"a": 1}], ["act"], None, {"k": 1}, config=first))
         _run(plan([{"a": 2}], ["act"], config=dict(first)))
         assert len(contexts) == 1
-        _run(plan([{"a": 3}], ["act"], config=_agent(pump="dds-Br").to_config()))
+        _run(plan([{"a": 3}], ["act"], config=_config(_agent(pump="dds-Br"))))
         assert len(contexts) == 2
 
     assert messages == ["msg"]
@@ -248,7 +256,7 @@ def test_xray_detector_and_wrapper_reach_the_context(tmp_path: Path) -> None:
         plan = register_worker_plans(
             devices=devices, xray_detector=detector, wrap_xray_run=_wrap
         )["xray_acquire"]
-        config = _agent("xray", screening="unscreened", tmp_path=tmp_path).to_config()
+        config = _config(_agent("xray", screening="unscreened", tmp_path=tmp_path))
         _run(plan([{}], [], config=config))
 
     assert contexts[0].xray_detector is detector
@@ -282,4 +290,4 @@ def test_build_sends_config_only_when_asked(
     kwargs = qs_agent.call_args.kwargs["acquisition_plan_kwargs"]
     assert set(kwargs) == expected_keys
     if send_config:
-        assert kwargs["config"] == agent.to_config()
+        assert kwargs["config"] == _config(agent)

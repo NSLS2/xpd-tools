@@ -143,7 +143,11 @@ def plan_context_from_config(
             fit_settings=fit_settings,
             **common,
         )
-    settings = XraySettings(**xray["settings"]) if xray.get("settings") else None
+    if not xray.get("settings"):
+        raise ValueError(f"{plan_name} needs a config with X-ray settings.")
+    if wrap_xray_run is None:
+        raise ValueError(f"{plan_name} needs wrap_xray_run (dark frames).")
+    settings = XraySettings(**xray["settings"])
     if plan_name == "xray_acquire":
         return XrayPlanContext(
             led=devices["led"],
