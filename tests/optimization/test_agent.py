@@ -1245,14 +1245,15 @@ class TestAcquisitionPlanKwargs:
         assert rebuilt.mixer_lengths_cm == (30.0,)
         assert rebuilt.residence_time_ratio == 1.0
 
-    def test_build_passes_plan_kwargs_to_queueserver_agent(
+    def test_build_passes_empty_plan_kwargs_to_queueserver_agent(
         self, mocked_queueserver: None
     ) -> None:
-        """build() must pass acquisition_plan_kwargs to QueueserverAgent.
+        """build() must pass empty acquisition_plan_kwargs to QueueserverAgent.
 
-        Uses the mocked_queueserver fixture (which patches QueueserverAgent among
-        other network calls) and captures the constructor kwargs via a secondary
-        patch that wraps the already-mocked class.
+        The xpd-tools plan is context-bound at worker startup via
+        register_acquisition_plans -- all config is baked into the plan closure,
+        so nothing is sent per-submission.  Sending flow_config/wash_config/
+        quality_config would cause a TypeError on the plan's signature.
         """
         from unittest.mock import patch
 
@@ -1273,6 +1274,133 @@ class TestAcquisitionPlanKwargs:
 
         assert captured, "QueueserverAgent was never called"
         plan_kwargs = captured[0].get("acquisition_plan_kwargs", {})
-        assert "flow_config" in plan_kwargs
-        assert "wash_config" in plan_kwargs
-        assert "quality_config" in plan_kwargs
+        assert plan_kwargs == {}, (
+            "build() must send no plan kwargs -- the context-bound plan accepts none"
+        )
+
+    def test_tubing_id_round_trips_through_config(self) -> None:
+        """tubing_id_mm must survive a to_config/from_config round-trip."""
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()], tubing_id_mm=0.8)
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        config = agent.to_config()
+        assert config["experiment"]["tubing_id_mm"] == 0.8
+
+        rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.tubing_id_mm == 0.8
+
+    def test_old_config_without_tubing_id_loads_with_default(self) -> None:
+        """Configs saved before tubing_id_mm existed must reload with the 1.016 mm default."""
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()])
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        config = agent.to_config()
+        del config["experiment"]["tubing_id_mm"]
+
+        rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.tubing_id_mm == 1.016
+
+    def test_quality_policy_round_trips_for_uvvis_only(self) -> None:
+        """PL quality gate must survive to_config/from_config for UV-Vis-only campaigns.
+
+        Previously quality_policy was only serialized in the xray block, so a
+        UV-Vis-only reload silently disabled the quality gate.
+        """
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()])
+        agent.set_uvvis_objectives(
+            plqy=PlqyReference(),
+            use_good_bad=True,
+            good_target=4,
+            max_bad=2,
+            num_abs=8,
+            num_flu=12,
+        )
+
+        config = agent.to_config()
+        qp_saved = config["uvvis"]["quality_policy"]
+        assert qp_saved is not None
+        assert qp_saved["enabled"] is True
+        assert qp_saved["good_batches"] == 4
+
+        rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.quality_policy is not None
+        assert rebuilt.quality_policy.enabled is True
+        assert rebuilt.quality_policy.good_batches == 4
+        assert rebuilt.quality_policy.max_bad_batches == 2
+        assert rebuilt.quality_policy.absorbance_shots == 8
+        assert rebuilt.quality_policy.fluorescence_shots == 12
+
+    def test_register_acquisition_plans_uses_stored_geometry(self, mocked_queueserver: None) -> None:
+        """register_acquisition_plans must use stored mixer/residence_time/tubing_id,
+        not the old hardcoded (30.0,)/1.0/1.016 defaults.
+        """
+        from unittest.mock import MagicMock, patch
+        from xpd_tools.optimization.helpers.beamline import UvvisPlanContext
+
+        agent = self._uvvis_agent_full()
+        agent.experiment(
+            sources=agent.sources,
+            mixer_lengths_cm=(22.5,),
+            residence_time_ratio=0.8,
+            tubing_id_mm=0.75,
+        )
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        # Build fake device map matching the pump ids in _uvvis_agent_full.
+        fake_devices = {
+            "dds-CsPb": MagicMock(name="dds-CsPb"),
+            "dds-Br": MagicMock(name="dds-Br"),
+            "ultra1": MagicMock(name="ultra1"),
+            "qepro": MagicMock(name="qepro"),
+            "led": MagicMock(name="led"),
+            "uv_shutter": MagicMock(name="uv_shutter"),
+            "fast_shutter": MagicMock(name="fast_shutter"),
+        }
+
+        captured_contexts: list[UvvisPlanContext] = []
+
+        import xpd_tools.optimization.agent as _agent_mod
+        real_create = _agent_mod.create_uvvis_plan
+
+        def _capture(ctx: UvvisPlanContext):
+            captured_contexts.append(ctx)
+            return real_create(ctx)
+
+        # Patch where the name is looked up: inside agent.py's _LOCAL_PLAN_FACTORIES
+        # which holds a reference to create_uvvis_plan at import time.  We need to
+        # replace the dict entry so the lookup hits our wrapper.
+        original_factories = dict(_agent_mod._LOCAL_PLAN_FACTORIES)
+        _agent_mod._LOCAL_PLAN_FACTORIES["uvvis_acquire"] = _capture
+        try:
+            agent.register_acquisition_plans(fake_devices)
+        finally:
+            _agent_mod._LOCAL_PLAN_FACTORIES.update(original_factories)
+
+        assert captured_contexts, "create_uvvis_plan was never called"
+        ctx = captured_contexts[0]
+        assert ctx.mixer_lengths_cm == (22.5,)
+        assert ctx.residence_time_ratio == 0.8
+        assert ctx.tubing_id_mm == 0.75
+
+    def test_register_acquisition_plans_rejects_wrong_rate_unit(self) -> None:
+        """register_acquisition_plans must raise if rate_unit != 'ul/min'."""
+        from unittest.mock import MagicMock
+
+        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent.set_dofs([_pump()])
+        agent.experiment(sources=[_source()], rate_unit="ml/min")
+        agent.set_uvvis_objectives(plqy=PlqyReference())
+
+        fake_devices = {
+            "dds-CsPb": MagicMock(),
+            "qepro": MagicMock(), "led": MagicMock(),
+            "uv_shutter": MagicMock(), "fast_shutter": MagicMock(),
+        }
+        with pytest.raises(ValueError, match="rate_unit must be 'ul/min'"):
+            agent.register_acquisition_plans(fake_devices)

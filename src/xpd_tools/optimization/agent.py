@@ -350,6 +350,7 @@ class BuildAgent:
         self.rate_unit: str = "ul/min"
         self.mixer_lengths_cm: tuple[float, ...] = (30.0,)
         self.residence_time_ratio: float = 1.0
+        self.tubing_id_mm: float = 1.016
         self.phases: list[Phase] | None = None
         self.plqy: PlqyReference | None = None
         self.fit_settings: SpectraFitSettings | None = None
@@ -580,6 +581,13 @@ class BuildAgent:
         peak_tolerance: float = 5.0,
         max_retries: int = 10,
         retry_delay: float = 2.0,
+        # PL quality gate (applies to UV-Vis-only campaigns; for xray+uvvis
+        # campaigns this is set via set_xray_objectives instead).
+        use_good_bad: bool = False,
+        good_target: int = 3,
+        max_bad: int = 3,
+        num_abs: int = 10,
+        num_flu: int = 10,
         # Screening, data selection, and fitting windows
         fit_settings: SpectraFitSettings = SpectraFitSettings(),  # ruff:ignore[function-call-in-default-argument]
         # Calibration Standard Reference
@@ -602,6 +610,15 @@ class BuildAgent:
         # Setting Objective Targets
         self.peak_target = peak_target
         self.peak_tolerance = peak_tolerance
+
+        # PL quality gate for UV-Vis-only plans
+        self.quality_policy = QualityPolicy(
+            enabled=use_good_bad,
+            good_batches=good_target,
+            max_bad_batches=max_bad,
+            absorbance_shots=num_abs,
+            fluorescence_shots=num_flu,
+        )
         for name, value in (("max_fwhm_nm", max_fwhm_nm), ("min_plqy", min_plqy),
                             ("max_peak_distance_nm", max_peak_distance_nm)):
             if value is not None and not value > 0:
@@ -732,6 +749,7 @@ class BuildAgent:
         rate_unit: str | None = None,
         mixer_lengths_cm: tuple[float, ...] | list[float] | None = None,
         residence_time_ratio: float | None = None,
+        tubing_id_mm: float | None = None,
     ) -> None:
         # Normalized to lists regardless of what sequence type the caller
         # passed in -- see set_dofs's comment on why this matters for
@@ -745,6 +763,8 @@ class BuildAgent:
             self.mixer_lengths_cm = tuple(mixer_lengths_cm)
         if residence_time_ratio is not None:
             self.residence_time_ratio = residence_time_ratio
+        if tubing_id_mm is not None:
+            self.tubing_id_mm = tubing_id_mm
         self._check_dof_source_alignment()
 
     def _metric_prefix(self) -> str:
@@ -1128,7 +1148,8 @@ class BuildAgent:
             "syringe_list": [c.syringe_ml for c in wash_cycles],
             # Rate formatted as "NNN ul/min" to match the string the plan passes
             # to set_group_infuse2 — same unit as self.rate_unit.
-            "rate_list": [f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles],
+            "rate_list": [f"{int(c.rate_ul_min)} \
+                {self.rate_unit}" for c in wash_cycles],
             # All cycles share the same duration; the queueserver WashConfig
             # has a single duration_sec scalar. Use the first cycle's value.
             "duration_sec": wash_cycles[0].duration_sec if wash_cycles else 60.0,
@@ -1159,7 +1180,8 @@ class BuildAgent:
         # xray_config — only for plans that touch the area detector
         # ------------------------------------------------------------------
         xray_plans = {"xray_acquire", "xray_screened_acquire", "xray_uvvis_acquire"}
-        if self._acquisition_plan_name() in xray_plans and self.xray_settings is not None:
+        if self._acquisition_plan_name() in xray_plans \
+            and self.xray_settings is not None:
             xs = self.xray_settings
             kwargs["xray_config"] = {
                 "exposure": xs.exposure,
@@ -1227,7 +1249,7 @@ class BuildAgent:
             objectives=self.objectives,
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
-            acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
+            acquisition_plan_kwargs={},
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)
@@ -1263,6 +1285,7 @@ class BuildAgent:
             "quality": self.quality_policy or QualityPolicy(enabled=False),
             "mixer_lengths_cm": mixer_lengths_cm,
             "residence_time_ratio": residence_time_ratio,
+            "tubing_id_mm": self.tubing_id_mm,
         }
         fit_settings = self.fit_settings or SpectraFitSettings()
 
@@ -1370,8 +1393,8 @@ class BuildAgent:
         *,
         namespace: dict[str, Any] | None = None,
         wrap_xray_run: Callable[[Any, bool], Any] | None = None,
-        mixer_lengths_cm: tuple[float, ...] = (30.0,),
-        residence_time_ratio: float = 1.0,
+        mixer_lengths_cm: tuple[float, ...] | None = None,
+        residence_time_ratio: float | None = None,
     ) -> dict[str, Callable]:
         """Build bound acquisition plan(s) and optionally inject them into a namespace.
 
@@ -1400,9 +1423,11 @@ class BuildAgent:
             Required only when the selected `evaluation_method` is `xray`,
             `xray-uvvis`, or `xray-screened`.  Ignored for UV-Vis-only runs.
         mixer_lengths_cm:
-            Tube lengths (cm) between injection tees.  Passed to `_build_plan_context`.
+            Tube lengths (cm) between injection tees.  Defaults to the value
+            stored in this agent (from ``experiment()`` / JSON config).
         residence_time_ratio:
-            Fraction of computed residence time to wait.
+            Fraction of computed residence time to wait.  Defaults to the
+            value stored in this agent.
 
         Returns
         -------
@@ -1410,6 +1435,23 @@ class BuildAgent:
             `{plan_name: bound_plan}` -- e.g. `{"uvvis_acquire": <callable>}`.
         """
         self._validate_before_build()
+
+        # The runtime hardcodes ul/min in _configure_and_start and raises in
+        # _wait_for_equilibrium if any pump reports a different unit.  Catch a
+        # misconfigured rate_unit here so the error is clear and immediate.
+        if self.rate_unit != "ul/min":
+            raise ValueError(
+                f"register_acquisition_plans: rate_unit must be 'ul/min' "
+                f"(the xpd-tools runtime hardcodes this unit), got {self.rate_unit!r}."
+            )
+
+        # Fall back to the stored config values so the JSON round-trip is the
+        # single source of truth -- callers that don't override these get the
+        # geometry they configured, not a silently hardcoded (30.0,)/1.0.
+        _mixer_lengths_cm = mixer_lengths_cm if mixer_lengths_cm \
+            is not None else self.mixer_lengths_cm
+        _residence_time_ratio = residence_time_ratio if residence_time_ratio \
+            is not None else self.residence_time_ratio
 
         plan_name = self._acquisition_plan_name()
 
@@ -1424,8 +1466,8 @@ class BuildAgent:
         context = self._build_plan_context(
             devices,
             wrap_xray_run,  # type: ignore[arg-type]
-            mixer_lengths_cm,
-            residence_time_ratio,
+            _mixer_lengths_cm,
+            _residence_time_ratio,
         )
         bound_plan = _LOCAL_PLAN_FACTORIES[plan_name](context)
         plans = {plan_name: bound_plan}
@@ -1483,6 +1525,7 @@ class BuildAgent:
                 "rate_unit": self.rate_unit,
                 "mixer_lengths_cm": list(self.mixer_lengths_cm),
                 "residence_time_ratio": self.residence_time_ratio,
+                "tubing_id_mm": self.tubing_id_mm,
             },
             "xray": {
                 "max_retries": self.xray_max_retries,
@@ -1523,6 +1566,13 @@ class BuildAgent:
                     None if self.fit_settings is None else asdict(self.fit_settings)
                 ),
                 "plqy": None if self.plqy is None else asdict(self.plqy),
+                # Serialized here (not only in the xray block) so UV-Vis-only
+                # campaigns preserve the PL quality gate across config reload.
+                "quality_policy": (
+                    None
+                    if self.quality_policy is None
+                    else asdict(self.quality_policy)
+                ),
             },
             "run": asdict(self.run_settings),
         }
@@ -1606,6 +1656,7 @@ class BuildAgent:
             rate_unit=experiment.get("rate_unit"),
             mixer_lengths_cm=experiment.get("mixer_lengths_cm"),
             residence_time_ratio=experiment.get("residence_time_ratio"),
+            tubing_id_mm=experiment.get("tubing_id_mm"),
         )
 
         xray = config["xray"]
@@ -1647,6 +1698,10 @@ class BuildAgent:
 
         uvvis = config["uvvis"]
         if uvvis["fit_settings"] is not None or uvvis["plqy"] is not None:
+            # Restore the PL quality gate for UV-Vis-only campaigns.
+            # Older configs (before quality_policy was added to the uvvis block)
+            # lack this key; default to disabled so they reload identically.
+            quality = uvvis.get("quality_policy") or {}
             agent.set_uvvis_objectives(
                 peak_target=uvvis["peak_target"],
                 peak_tolerance=uvvis["peak_tolerance"],
@@ -1659,6 +1714,11 @@ class BuildAgent:
                 max_peak_distance_nm=uvvis.get("max_peak_distance_nm"),
                 max_retries=uvvis["max_retries"],
                 retry_delay=uvvis["retry_delay"],
+                use_good_bad=quality.get("enabled", False),
+                good_target=quality.get("good_batches", 3),
+                max_bad=quality.get("max_bad_batches", 3),
+                num_abs=quality.get("absorbance_shots", 10),
+                num_flu=quality.get("fluorescence_shots", 10),
                 fit_settings=(
                     SpectraFitSettings()
                     if uvvis["fit_settings"] is None

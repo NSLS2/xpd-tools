@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from xpd_tools.optimization.helpers.beamline import (
+    UvvisPlanContext,
     XrayPlanContext,
     XraySettings,
     XrayUvvisPlanContext,
-    UvvisPlanContext,
 )
 from xpd_tools.optimization.helpers.qepro import QualityPolicy, SpectraFitSettings
 from xpd_tools.optimization.helpers.sources import DilutionStage, FlowSource, WashCycle
@@ -32,9 +32,10 @@ __all__ = [
     "XraySettings",
     "XrayUvvisPlanContext",
     "clear_infused_volumes",
+    "refill_pumps",
+    # Queueserver expose plans
     "create_uvvis_plan",
     "create_xray_plan",
     "create_xray_screened_plan",
     "create_xray_uvvis_plan",
-    "refill_pumps",
 ]

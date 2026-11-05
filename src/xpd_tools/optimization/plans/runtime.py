@@ -133,7 +133,8 @@ def _run_pump_sequence_and_measure(
         - volumes: Checks the syringes can supply this trial (before any pump
           starts) and times the measurement for the next check.
 
-    Returns:
+    Returns
+    -------
         - Physical pump movements
     """
     all_pumps = _unique_devices(
@@ -170,6 +171,7 @@ def _run_pump_sequence_and_measure(
         tuple(source.pump for source in context.sources),
         context.mixer_lengths_cm,
         ratio=context.residence_time_ratio,
+        tubing_id_mm=context.tubing_id_mm,
     )
 
     yield from _configure_and_start(after, started)
@@ -208,7 +210,8 @@ def _measure_uvvis(
         - shots: The number of shots to take.
         - settle_sec: The number of seconds to wait after configuring.
 
-    Returns:
+    Returns
+    -------
         - The final event reading from the QEPRO.
     """
     modes = {
@@ -268,7 +271,8 @@ def _measure_pl_with_quality_gate(
         - context: The optimization context.
         - signals: The signals to emit quality events on.
 
-    Returns:
+    Returns
+    -------
         - None. Stops after `good_batches` good or `max_bad_batches` bad batches.
     """
     good_count = 0
