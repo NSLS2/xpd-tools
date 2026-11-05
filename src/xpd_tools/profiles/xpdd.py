@@ -18,7 +18,7 @@ from ophyd_async.epics.adcore import ADWriterFactory, NDStatsIO, PluginSignalDat
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 from ophyd_async.fastcs.panda import HDFPanda
 from ophyd_async.plan_stubs import store_settings
-from tiled.client import from_uri
+from tiled.client import from_uri, simple
 
 from xpd_tools.detectors.panda import PandAConfiguration, switch_panda_configuration
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
@@ -59,8 +59,6 @@ if not XPD_TOOLS_RUNNING_IN_CI:
         )
     )
 else:
-    from tiled.client import simple
-
     tiled_reading_client = tiled_writing_client = c = simple(
         # Tiled refuses API keys that are not alphanumeric.
         "/tmp/xpd_tools",
