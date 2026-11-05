@@ -9,8 +9,16 @@ from typing import Any
 
 import numpy as np
 
-from xpd_tools.optimization.analysis import analyze_pl_spectra, calculate_plqy, correct_absorbance
-from xpd_tools.optimization.helpers.common import _TiledAccessError, _read_stream_dataset, _retry_access
+from xpd_tools.optimization.analysis import (
+    analyze_pl_spectra,
+    calculate_plqy,
+    correct_absorbance,
+)
+from xpd_tools.optimization.helpers.common import (
+    _read_stream_dataset,
+    _retry_access,
+    _TiledAccessError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +53,7 @@ class SpectraFitSettings:
     absorbance_wavelength_range: tuple[float, float] = (210.0, 700.0)
 
     def __post_init__(self) -> None:
+        """Store the range fields as tuples."""
         # Normalize to tuples regardless of what sequence type the caller
         # passed in -- see Pump.__post_init__'s comment for why this matters.
         for field in (
@@ -97,9 +106,7 @@ def _read_quality_stream(client: Any, uid: Hashable) -> list[dict[str, Any]]:
     verdicts = np.asarray(dataset["verdict"].values)
     counts = np.asarray(dataset["n_events_in_batch"].values)
     if verdicts.shape != counts.shape:
-        raise ValueError(
-            "fluorescence_quality verdict and event-count shapes differ"
-        )
+        raise ValueError("fluorescence_quality verdict and event-count shapes differ")
     return [
         {"verdict": str(verdict), "n_events_in_batch": int(count)}
         for verdict, count in zip(verdicts, counts, strict=True)
@@ -117,7 +124,8 @@ def _filter_fl_to_good_batches(
         - fluorescence: The fluorescence data to filter.
         - batch_info: The batch info to use for filtering.
 
-    Returns:
+    Returns
+    -------
         - The filtered fluorescence events.
     """
     output = np.asarray(fluorescence["QEPro_output"])
@@ -181,7 +189,8 @@ def _read_tiled_data(
         - max_retries: The maximum number of retries to perform.
         - retry_delay: The delay between retries, in seconds.
 
-    Returns:
+    Returns
+    -------
         - A tuple of the read data, state, metadata, and batch info.
     """
     state: dict[str, Any] = {}
@@ -279,7 +288,8 @@ def _compute_pl_outcomes(
         - uid: The uid of the run to use for logging.
         - fit_settings: The fit settings to use for fitting.
 
-    Returns:
+    Returns
+    -------
         - A dictionary of the fit results.
     """
     # Fit the fluorescence spectrum

@@ -38,7 +38,8 @@ def cross_correlation(
         - r_max: Maximum r value to consider.
         - lag_halfwidth: Halfwidth of the lag window.
 
-    Returns:
+    Returns
+    -------
         - Cross-correlation similarity score
     """
     r_slice_exp, g_slice_exp, g_sim_i = _mask_and_interpolate(

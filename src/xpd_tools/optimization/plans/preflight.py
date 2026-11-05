@@ -24,7 +24,8 @@ def _preflight(
         - suggestions: the suggestions to validate
         - plan_name: the name of the plan
 
-    Returns:
+    Returns
+    -------
         - the validated suggestion as a tuple of rates
     """
     if len(suggestions) != 1 or not suggestions[0]:

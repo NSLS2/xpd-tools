@@ -1,4 +1,4 @@
-"""Syringe volume check run before each trial, and the plan that resets pump counters."""
+"""Syringe volume check before each trial, and the plan that resets pump counters."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _ML_PER_UNIT = {"ml": 1.0, "ul": 1e-3, "µl": 1e-3, "μl": 1e-3, "nl": 1e-6}
 _PUMPS_PREFIX = "pumps to refill: "
 
 
-class RefillRequired(RuntimeError):
+class RefillRequired(RuntimeError):  # noqa: N818 -- public name, matched in error text
     """
     A syringe can't supply the next trial; refill, clear its counter, and continue.
 
@@ -44,12 +44,13 @@ class RefillRequired(RuntimeError):
 
 def refill_pumps(message: str) -> list[str] | None:
     """
-    The pumps named in a RefillRequired message.
+    Return the pumps named in a RefillRequired message.
 
     Args:
         - message: An error's text, e.g. as reported by the queue server.
 
-    Returns:
+    Returns
+    -------
         - list[str] | None - Pump names, or None if it isn't a refill error.
     """
     found = re.search(rf"{_PUMPS_PREFIX}([\w, -]+)", message)
@@ -67,7 +68,8 @@ def clear_infused_volumes(pumps):  # noqa: ANN001 -- see below
     Args:
         - pumps: Pump devices with `clear_infused`.
 
-    Returns:
+    Returns
+    -------
         - Plan messages.
     """
     for pump in pumps:
@@ -75,8 +77,11 @@ def clear_infused_volumes(pumps):  # noqa: ANN001 -- see below
 
 
 def _mixer_seconds(context: Any, rates: Sequence[float]) -> float:
-    """Equilibrium wait for `rates`, as runtime._wait_for_equilibrium computes it from
-    readbacks (same 1.016 mm tubing)."""
+    """Return the equilibrium wait for `rates`.
+
+    Computed as runtime._wait_for_equilibrium does from readbacks (same 1.016 mm
+    tubing).
+    """
     lengths = context.mixer_lengths_cm
     stages = (
         ((lengths[0], rates[:2]), (lengths[1], rates))
@@ -120,7 +125,8 @@ class VolumeTracker:
         Args:
             - rates: The trial's source rates (µL/min), in context.sources order.
 
-        Returns:
+        Returns
+        -------
             - Plan messages (reads each checked pump's infused volume).
         """
         context = self.context
@@ -136,18 +142,28 @@ class VolumeTracker:
             for position in ("before_equilibrium", "after_equilibrium")
         }
         after_sec = waits["after_equilibrium"] + measure
-        whole_sec = waits["before_equilibrium"] + _mixer_seconds(context, rates) + after_sec
+        whole_sec = (
+            waits["before_equilibrium"] + _mixer_seconds(context, rates) + after_sec
+        )
 
         # (item, µL/min, seconds it runs) for everything a trial pumps
         runs = [
             *((s, r, whole_sec) for s, r in zip(context.sources, rates, strict=True)),
             *(
-                (stage, rate, whole_sec if stage.position == "before_equilibrium" else after_sec)
+                (
+                    stage,
+                    rate,
+                    whole_sec if stage.position == "before_equilibrium" else after_sec,
+                )
                 for stage, rate in zip(context.dilutions, dilution_rates, strict=True)
             ),
-            *((cycle, cycle.rate_ul_min, cycle.duration_sec) for cycle in context.wash_cycles),
+            *(
+                (cycle, cycle.rate_ul_min, cycle.duration_sec)
+                for cycle in context.wash_cycles
+            ),
         ]
-        # Per pump (one pump may serve several roles): smallest usable volume, total need.
+        # Per pump (one pump may serve several roles): smallest usable volume and
+        # total need.
         pumps: dict[int, list[Any]] = {}
         for item, rate, seconds in runs:
             if item.loaded_ml is None:
@@ -158,7 +174,9 @@ class VolumeTracker:
             label = getattr(item, "sample_label", None) or (
                 "wash" if item in context.wash_cycles else "dilution"
             )
-            entry = pumps.setdefault(id(item.pump), [item.pump, label, usable, 0.0, item.reserve_ml])
+            entry = pumps.setdefault(
+                id(item.pump), [item.pump, label, usable, 0.0, item.reserve_ml]
+            )
             entry[2] = min(entry[2], usable)
             entry[3] += rate / 1000 * seconds / 60
             entry[4] = max(entry[4], item.reserve_ml)

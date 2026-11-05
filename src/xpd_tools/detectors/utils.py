@@ -17,7 +17,8 @@ def get_detector_acq_times(
     Args:
         - detectors: list[AreaDetector] - List of area detectors to query.
 
-    Returns:
+    Returns
+    -------
         - list[float] - Acquisition period for each detector. If the acquisition
           period is less than the acquisition time, the acquisition time is used.
     """

@@ -11,7 +11,6 @@ from bluesky import preprocessors as bpp
 from xpd_tools.optimization.helpers.beamline import XrayUvvisPlanContext
 from xpd_tools.optimization.plans.metadata import _build_run_metadata
 from xpd_tools.optimization.plans.preflight import _preflight
-from xpd_tools.optimization.plans.volumes import VolumeTracker
 from xpd_tools.optimization.plans.runtime import (
     _cleanup_devices,
     _measure_pl_with_quality_gate,
@@ -23,6 +22,7 @@ from xpd_tools.optimization.plans.runtime import (
     _with_safe_cleanup,
 )
 from xpd_tools.optimization.plans.validation import _validate_context
+from xpd_tools.optimization.plans.volumes import VolumeTracker
 
 
 def create_xray_screened_plan(context: XrayUvvisPlanContext) -> Callable[..., Any]:

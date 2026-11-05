@@ -37,10 +37,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from xpd_tools.optimization.agent import _EVALUATORS, BuildAgent
+from xpd_tools.optimization.agent import _EVALUATORS, BuildAgent  # noqa: PLC2701
 from xpd_tools.optimization.helpers.run import LocalRunSettings
 from xpd_tools.optimization.plans.volumes import clear_infused_volumes, refill_pumps
-from xpd_tools.optimization.scoring import _ALL_SCORING_NAMES
+from xpd_tools.optimization.scoring import _ALL_SCORING_NAMES  # noqa: PLC2701
 from xpd_tools.optimization.stopping import watch_and_stop
 
 logger = logging.getLogger("autonomous-gui")
@@ -110,7 +110,8 @@ class Session:
         """
         Snapshot for the GUI.
 
-        Returns:
+        Returns
+        -------
             - dict - status, error, config, editable keys, and the trials table.
         """
         mode = None
@@ -141,13 +142,19 @@ class Session:
             "choices": {
                 **simulation_choices,
                 "evaluation_method": list(_EVALUATORS),
-                "pdf_mode": list(typing.get_args(
-                    typing.get_type_hints(BuildAgent.__init__)["pdf_mode"]
-                )),
+                "pdf_mode": list(
+                    typing.get_args(
+                        typing.get_type_hints(BuildAgent.__init__)["pdf_mode"]
+                    )
+                ),
                 "xray.objective_function": sorted(_ALL_SCORING_NAMES),
-                "xray.screening": list(typing.get_args(
-                    typing.get_type_hints(BuildAgent.set_xray_objectives)["screening"]
-                )),
+                "xray.screening": list(
+                    typing.get_args(
+                        typing.get_type_hints(BuildAgent.set_xray_objectives)[
+                            "screening"
+                        ]
+                    )
+                ),
             },
             # Fields picked from whole preset values (a dropdown above their settings).
             "presets": {**simulation_presets, "success_criteria": SUCCESS_PRESETS},
@@ -157,7 +164,8 @@ class Session:
         """
         Trials table of the current agent, or of the last campaign if it was dropped.
 
-        Returns:
+        Returns
+        -------
             - list[dict] - One record per trial, as from ax_client.summarize().
         """
         if self.agent is None:
@@ -171,7 +179,8 @@ class Session:
         Args:
             - suffix: e.g. ".json" (loadable configs) or ".csv" (historical data).
 
-        Returns:
+        Returns
+        -------
             - list[str] - Names relative to the config directory.
         """
         found = sorted(
@@ -225,8 +234,11 @@ class Session:
         with self.lock:
             self._require_config()
             if self.running:
-                changed = {k for k in new.keys() | self.config.keys()
-                           if new.get(k) != self.config.get(k)}
+                changed = {
+                    k
+                    for k in new.keys() | self.config.keys()
+                    if new.get(k) != self.config.get(k)
+                }
                 locked = changed - RUNNING_EDITABLE
                 if locked:
                     raise HTTPException(
@@ -254,7 +266,8 @@ class Session:
         """
         Write the current config next to the original, timestamped.
 
-        Returns:
+        Returns
+        -------
             - Path - The new file.
         """
         out = self._stamped(".json")
@@ -268,7 +281,8 @@ class Session:
         Args:
             - suffix: File ending, e.g. ".json" or "_trials.csv".
 
-        Returns:
+        Returns
+        -------
             - Path - The timestamped path.
         """
         stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -313,12 +327,13 @@ class Session:
                 raise HTTPException(409, "Already running")
             if self.refill is not None:
                 raise HTTPException(
-                    409, "Refill the syringes and press Refilled, or Clear to start over"
+                    409,
+                    "Refill the syringes and press Refilled, or Clear to start over",
                 )
             self._start(self.build_agent.run_settings.iterations)
 
     def refilled(self) -> None:
-        """Clear the refilled pumps' volume counters and run the remaining iterations."""
+        """Clear refilled pumps' volume counters and run the remaining iterations."""
         with self.lock:
             if self.refill is None:
                 raise HTTPException(409, "No refill is pending")
@@ -406,12 +421,14 @@ class Session:
                 # the refused one is run again after the refill.
                 completed = sum(
                     trial.get("trial_status") == "COMPLETED"
-                    for trial in self._trials()[self.run_start:]
+                    for trial in self._trials()[self.run_start :]
                 )
                 self.remaining = max(self.remaining - completed, 1)
                 self.refill = {"message": _refill_message(exc), "pumps": pumps}
                 self.status = "refill"
-                logger.warning("Campaign waiting for a refill: %s", self.refill["message"])
+                logger.warning(
+                    "Campaign waiting for a refill: %s", self.refill["message"]
+                )
             elif exc is None:
                 self.status = "finished"
             elif (
@@ -434,7 +451,8 @@ def _simulation_options(
     Args:
         - config: The loaded config, if any.
 
-    Returns:
+    Returns
+    -------
         - tuple - (presets by path, choices by path): the two options for
           run.local.simulated, and each phase's DOF dropdown in its dof_for_phase.
     """
@@ -453,7 +471,7 @@ def _simulation_options(
             {
                 "label": "Materials Project simulation",
                 # Which DOF drives each phase is a judgement call: left for the user.
-                "value": {"dof_for_phase": {phase: None for phase in phases}},
+                "value": {"dof_for_phase": dict.fromkeys(phases)},
             },
         ]
     }
@@ -464,18 +482,22 @@ def _simulation_options(
 
 
 def _error_text(exc: BaseException) -> str:
-    """An error with its causes, as text (the queue server's errors are text anyway)."""
+    """Return an error with its causes, as text.
+
+    The queue server's errors are text anyway.
+    """
     return "".join(traceback.format_exception(exc))
 
 
 def _refill_message(exc: BaseException) -> str:
     """
-    The "Refill needed: ..." sentence from a RefillRequired error or its text.
+    Return the "Refill needed: ..." sentence from a RefillRequired error or its text.
 
     Args:
         - exc: The campaign's error, possibly wrapping the RefillRequired.
 
-    Returns:
+    Returns
+    -------
         - str - From "Refill needed:" up to the pump list.
     """
     text = _error_text(exc)
@@ -501,13 +523,14 @@ def _request_stop(stopper: Any) -> None:
 
 def _historical_path(config: dict[str, Any] | None, base_dir: Path) -> str | None:
     """
-    The config's agent_data_path, resolved against `base_dir` if relative.
+    Return the config's agent_data_path, resolved against `base_dir` if relative.
 
     Args:
         - config: The loaded config, if any.
         - base_dir: The config file's folder.
 
-    Returns:
+    Returns
+    -------
         - str | None - Absolute path of the historical-data CSV, or None if unset.
     """
     if config is None or not config.get("agent_data_path"):
@@ -517,13 +540,14 @@ def _historical_path(config: dict[str, Any] | None, base_dir: Path) -> str | Non
 
 def _resolve_phase(phase: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     """
-    A phase with its gr/cif files resolved against `base_dir` and checked to exist.
+    Return a phase with gr/cif files resolved against `base_dir`, checked to exist.
 
     Args:
         - phase: One entry of the config's xray.phases.
         - base_dir: The config file's folder.
 
-    Returns:
+    Returns
+    -------
         - dict - A copy of the phase with absolute gr/cif paths.
     """
     resolved = dict(phase)
@@ -548,7 +572,8 @@ def _build_agent(config: dict[str, Any], base_dir: Path) -> BuildAgent:
           gr/cif) are resolved against: the config file's, so they don't depend on
           where server.py was started. The config itself keeps them as written.
 
-    Returns:
+    Returns
+    -------
         - BuildAgent - The rebuilt agent.
     """
     # (run-section rules such as n_points == 1 are checked by BuildAgent.set_run)
@@ -608,7 +633,8 @@ class LocalRunner:
             - iterations: Number of optimization iterations.
             - n_points: Points suggested per iteration.
 
-        Returns:
+        Returns
+        -------
             - Future - Resolves when the RunEngine returns or raises.
         """
         future: Future = Future()
@@ -633,7 +659,7 @@ class LocalRunner:
 
 def _filled_sections(build_agent: BuildAgent, config: dict[str, Any]) -> dict[str, Any]:
     """
-    The agent's "run", "experiment" and "xray" sections as the GUI shows them.
+    Return the agent's "run", "experiment" and "xray" sections as shown in the GUI.
 
     Defaults are filled in, so fields newer than the file (e.g. a pump's loaded_ml,
     xray's cnn paths, a phase's target_fraction) appear on the Config page and are
@@ -644,7 +670,8 @@ def _filled_sections(build_agent: BuildAgent, config: dict[str, Any]) -> dict[st
         - config: The config it was rebuilt from. Its xray values win over the
           agent's, which hold resolved absolute paths.
 
-    Returns:
+    Returns
+    -------
         - dict - The sections, round-tripped through JSON so tuples are lists
           (an unchanged section then compares equal to what the page sends back).
     """
@@ -656,7 +683,9 @@ def _filled_sections(build_agent: BuildAgent, config: dict[str, Any]) -> dict[st
         if xray.get("phases"):
             sections["xray"]["phases"] = [
                 {**default, **phase}
-                for default, phase in zip(filled["xray"]["phases"], xray["phases"])
+                for default, phase in zip(
+                    filled["xray"]["phases"], xray["phases"], strict=False
+                )
             ]
     return json.loads(json.dumps(sections))
 
@@ -671,7 +700,8 @@ def _build_local(
         - build_agent: A BuildAgent with queue_server=False.
         - local: The agent's run_settings.local.
 
-    Returns:
+    Returns
+    -------
         - tuple - (agent, LocalRunner wrapping it).
     """
     from bluesky.run_engine import RunEngine
@@ -700,7 +730,8 @@ def _build_local(
         }
         if not dof_for_phase:
             raise ValueError(
-                "run.local.simulated: pick a DOF for at least one phase in dof_for_phase"
+                "run.local.simulated: pick a DOF for at least one phase "
+                "in dof_for_phase"
             )
         tiled_client, sandbox_client = build_simulated_tiled_clients(
             RE,
@@ -739,7 +770,8 @@ def create_app(session: Session) -> FastAPI:
     Args:
         - session: The loaded config session.
 
-    Returns:
+    Returns
+    -------
         - FastAPI - The app, serving web/dist at / when it has been built.
     """
     app = FastAPI(title="xpd-tools autonomous GUI")
@@ -809,7 +841,8 @@ def acquire_lock(path: Path, **info: Any) -> IO[str]:
         - path: Lock file to create or reuse.
         - info: Extra details to record, e.g. the URL.
 
-    Returns:
+    Returns
+    -------
         - IO[str] - The open lock file; keep it open for the life of the process.
     """
     handle = path.open("a+")
@@ -825,13 +858,17 @@ def acquire_lock(path: Path, **info: Any) -> IO[str]:
         )
     handle.seek(0)
     handle.truncate()
-    handle.write(json.dumps({
-        "pid": os.getpid(),
-        "host": socket.gethostname(),
-        "user": getpass.getuser(),
-        "started": datetime.now().isoformat(timespec="seconds"),
-        **info,
-    }))
+    handle.write(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "host": socket.gethostname(),
+                "user": getpass.getuser(),
+                "started": datetime.now().isoformat(timespec="seconds"),
+                **info,
+            }
+        )
+    )
     handle.flush()
     return handle
 

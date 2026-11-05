@@ -66,7 +66,7 @@ class _PdfPhaseReference:
         "nn_matrix",
         "weighted_profile_r",
         "ensemble",
-        "cnn"
+        "cnn",
     ] = "pearson"
     cnn_name: str | None = None
     role: Literal["objective", "constraint"] = "objective"
@@ -133,7 +133,6 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
     names: set[str] = set()
     phases: list[_PdfPhaseReference] = []
     for index, raw_phase in enumerate(raw_phases):
-
         # Validate the phase object and extract its fields.
         field = f"phases[{index}]"
         if not isinstance(raw_phase, dict):
@@ -211,8 +210,9 @@ def _load_pdf_references(path: str | Path) -> tuple[_PdfPhaseReference, ...]:
         if bound is not None and not isinstance(bound, (int, float)):
             raise ValueError(f"{field}.bound must be a number")
         objective_threshold = raw_phase.get("objective_threshold")
-        if objective_threshold is not None and \
-            not isinstance(objective_threshold, (int, float)):
+        if objective_threshold is not None and not isinstance(
+            objective_threshold, (int, float)
+        ):
             raise ValueError(f"{field}.objective_threshold must be a number")
         if role == "constraint":
             if bound is None:
@@ -391,8 +391,9 @@ def _raw_pdf_correlations(
             results[f"frac_{phase.name}"] = fraction
             # Squared, not abs: smooth at the target, so the GP models it well.
             if phase.target_fraction is not None:
-                results[f"frac_dist_{phase.name}"] = \
-                (fraction - phase.target_fraction) ** 2
+                results[f"frac_dist_{phase.name}"] = (
+                    fraction - phase.target_fraction
+                ) ** 2
 
     for phase in phases:
         if phase.scoring_function == "cnn":
@@ -406,9 +407,7 @@ def _raw_pdf_correlations(
             r_min=r_min,
             r_max=r_max,
             function=_resolve_scorer(
-                phase.scoring_function,
-                phase.name,
-                ensemble_scorers
+                phase.scoring_function, phase.name, ensemble_scorers
             ),
         )
     return results
@@ -446,8 +445,12 @@ def _process_pdf(
         - results: Dictionary of phase names to raw or fit PDF correlation values.
     """
     results = _raw_pdf_correlations(
-        phases, pdf_data, r_min=r_min, r_max=r_max,
-        ensemble_scorers=raw_ensemble_scorers, cnn_scorer=cnn_scorer,
+        phases,
+        pdf_data,
+        r_min=r_min,
+        r_max=r_max,
+        ensemble_scorers=raw_ensemble_scorers,
+        cnn_scorer=cnn_scorer,
     )
 
     # Do fit and processing on the Raw PDF from the beamline

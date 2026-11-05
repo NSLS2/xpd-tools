@@ -6,9 +6,10 @@ so deprecating pdffit2 is easier.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -21,6 +22,7 @@ _PDF_RMIN = 2.5
 _PDF_QDAMP = 0.031
 _PDF_QBROAD = 0.032
 _PDF_TOLERANCE = 1e-6
+
 
 def fit_pdf_correlations(
     phases: Sequence[Any],

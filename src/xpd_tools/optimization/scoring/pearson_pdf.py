@@ -25,7 +25,8 @@ def pearson(
         - r_min: Minimum r value to consider.
         - r_max: Maximum r value to consider.
 
-    Returns:
+    Returns
+    -------
         - Pearson correlation coefficient between the measured and reference G(r).
     """
     _, g_slice, g_sim_i = _mask_and_interpolate(

@@ -62,9 +62,7 @@ if not _config_path:
 
 _config_path = Path(_config_path).expanduser().resolve()
 if not _config_path.exists():
-    raise FileNotFoundError(
-        f"XPD_HALIDE_CONFIG={_config_path} does not exist."
-    )
+    raise FileNotFoundError(f"XPD_HALIDE_CONFIG={_config_path} does not exist.")
 
 logger.info("Loading halide experiment config from %s", _config_path)
 with open(_config_path, encoding="utf-8") as _f:
@@ -87,8 +85,10 @@ from xpd_tools.optimization.devices import build_halide_devices  # noqa: E402
 
 _mock = os.environ.get("XPD_HALIDE_MOCK", "0").strip().lower() in ("1", "true", "yes")
 if _mock:
-    logger.warning("XPD_HALIDE_MOCK is set -- \
-        using simulated devices, NOT real hardware.")
+    logger.warning(
+        "XPD_HALIDE_MOCK is set -- \
+        using simulated devices, NOT real hardware."
+    )
 
 devices = build_halide_devices(mock=_mock)
 

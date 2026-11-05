@@ -21,10 +21,7 @@ class CnnScorer:
     """A loaded autoencoder-pdf encoder scorer."""
 
     def __init__(
-        self,
-        encoder: ConcEncoder,
-        r_dict: np.ndarray,
-        names: list[str]
+        self, encoder: ConcEncoder, r_dict: np.ndarray, names: list[str]
     ) -> None:
         self._encoder = encoder
         self._r_dict = r_dict
@@ -69,12 +66,9 @@ class CnnScorer:
                 f"cnn: phase names not in the trained dictionary: {', '.join(unknown)}"
             )
 
-        interp_g = np.interp(
-            self._r_dict,
-            r_exp,
-            g_exp,
-            left=0.0,
-            right=0.0).astype("float32")
+        interp_g = np.interp(self._r_dict, r_exp, g_exp, left=0.0, right=0.0).astype(
+            "float32"
+        )
 
         x = torch.tensor(interp_g)[None]
         x = x / (x.norm(dim=-1, keepdim=True) + 1e-6)
@@ -108,25 +102,33 @@ def build_cnn_scorer(dataset_path: str, weights_path: str) -> CnnScorer:
         ) from exc
 
     if not dataset_path or not os.path.isfile(dataset_path):
-        raise ValueError(f"cnn scorer: dataset_path not set \
-                or not found: {dataset_path!r}")
+        raise ValueError(
+            f"cnn scorer: dataset_path not set \
+                or not found: {dataset_path!r}"
+        )
     if not weights_path or not os.path.isfile(weights_path):
-        raise ValueError(f"cnn scorer: weights_path not set \
-                or not found: {weights_path!r}")
+        raise ValueError(
+            f"cnn scorer: weights_path not set \
+                or not found: {weights_path!r}"
+        )
 
     try:
         data = np.load(dataset_path, allow_pickle=True)
         r_dict = data["r"].astype("float32")
     except Exception as exc:
-        raise ValueError(f"cnn scorer: failed to \
-            load dataset_path {dataset_path!r}: {exc}") from exc
+        raise ValueError(
+            f"cnn scorer: failed to \
+            load dataset_path {dataset_path!r}: {exc}"
+        ) from exc
 
     try:
         ckpt = torch.load(weights_path, map_location="cpu", weights_only=False)
         names = list(ckpt["names"])
     except Exception as exc:
-        raise ValueError(f"cnn scorer: failed to \
-            load weights_path {weights_path!r}: {exc}") from exc
+        raise ValueError(
+            f"cnn scorer: failed to \
+            load weights_path {weights_path!r}: {exc}"
+        ) from exc
 
     try:
         encoder = ConcEncoder.from_checkpoint(ckpt, n_r=len(r_dict))

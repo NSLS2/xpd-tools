@@ -1,4 +1,5 @@
 """Phase objective or constraint descriptions for BLOP optimization."""
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -149,14 +150,10 @@ def _phase_constraints(
         tol = phase.fraction_tolerance
         frac_metric = IMetric(name=f"frac_{phase.name}")
         constraints.append(
-            OutcomeConstraint(
-                f"f >= {phase.target_fraction - tol:g}", f=frac_metric
-            )
+            OutcomeConstraint(f"f >= {phase.target_fraction - tol:g}", f=frac_metric)
         )
         constraints.append(
-            OutcomeConstraint(
-                f"f <= {phase.target_fraction + tol:g}", f=frac_metric
-            )
+            OutcomeConstraint(f"f <= {phase.target_fraction + tol:g}", f=frac_metric)
         )
 
     return tuple(constraints)
@@ -185,21 +182,9 @@ def _phases_to_pdf_schema(
                     if scoring_function is None
                     else {"scoring_function": scoring_function}
                 ),
-                **(
-                    {}
-                    if phase.cnn_name is None
-                    else {"cnn_name": phase.cnn_name}
-                ),
-                **(
-                    {}
-                    if phase.role == "objective"
-                    else {"role": phase.role}
-                ),
-                **(
-                    {}
-                    if phase.bound is None
-                    else {"bound": phase.bound}
-                ),
+                **({} if phase.cnn_name is None else {"cnn_name": phase.cnn_name}),
+                **({} if phase.role == "objective" else {"role": phase.role}),
+                **({} if phase.bound is None else {"bound": phase.bound}),
                 **(
                     {}
                     if phase.objective_threshold is None

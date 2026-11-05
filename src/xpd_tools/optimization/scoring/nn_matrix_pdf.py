@@ -29,7 +29,8 @@ def nn_matrix(
         - r_min: Minimum r value to consider.
         - r_max: Maximum r value to consider.
 
-    Returns:
+    Returns
+    -------
         - Non-negative matrix factorization dissimilarity score.
     """
     _, g_slice_exp, g_sim_i = _mask_and_interpolate(

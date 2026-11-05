@@ -51,7 +51,8 @@ def _retry_access(
         - max_retries: Maximum number of retries.
         - retry_delay: Delay between retries in seconds.
 
-    Returns:
+    Returns
+    -------
         - The result of the read operation.
     """
     last_access_error: BaseException | None = None

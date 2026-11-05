@@ -9,8 +9,8 @@ from bluesky import plan_stubs as bps
 from bluesky.run_engine import RunEngine
 from ophyd import Signal
 
-from xpd_tools.optimization.plugins import XrayUvvisEvaluation
 from xpd_tools.optimization.plans import QualityPolicy, create_xray_uvvis_plan
+from xpd_tools.optimization.plugins import XrayUvvisEvaluation
 
 
 def test_simulated_acquisition_evaluates_external_references(

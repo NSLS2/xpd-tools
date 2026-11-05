@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Config persistence
 # ---------------------------------------------------------------------------
 
+
 def save_campaign_config(
     build_agent: BuildAgent,
     name: str,
@@ -81,9 +82,8 @@ def save_campaign_config(
     _write_json(config, archive_path)
     _write_json(config, stable_path)
 
-    logger.info("Campaign config saved: %s (stable copy: %s)",
-        archive_path,
-        stable_path
+    logger.info(
+        "Campaign config saved: %s (stable copy: %s)", archive_path, stable_path
     )
     print(f"Config archived → {archive_path}")
     print(f"Stable copy     → {stable_path}")
@@ -155,6 +155,7 @@ def _write_json(data: Any, path: Path) -> None:
 # Queue server connectivity
 # ---------------------------------------------------------------------------
 
+
 def assert_plan_registered(
     run_agent: Any,
     plan_name: str = "uvvis_acquire",
@@ -188,7 +189,7 @@ def assert_plan_registered(
     # blop stores the REManagerAPI instance as QueueserverClient._rm (not
     # _re_manager_api -- that name never existed in blop's public API).
     try:
-        rm = run_agent._runner._client._rm
+        rm = run_agent._runner._client._rm  # noqa: SLF001
         response = rm.plans_allowed()
         available: dict = response.get("plans_allowed", {})
     except Exception as exc:
@@ -218,6 +219,7 @@ def assert_plan_registered(
 # ---------------------------------------------------------------------------
 # Results / export
 # ---------------------------------------------------------------------------
+
 
 def summarize_campaign(run_agent: Any) -> pd.DataFrame:
     """Return a tidy DataFrame of all completed trials from *run_agent*.

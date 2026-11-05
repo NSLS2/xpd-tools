@@ -38,7 +38,8 @@ class PandASettingsProvider(YamlSettingsProvider):
         """
         Not supported for packaged configs.
 
-        Raises:
+        Raises
+        ------
             - NotImplementedError: Always, since packaged configs are read-only.
         """
         raise NotImplementedError(
@@ -58,7 +59,8 @@ def switch_panda_configuration(
         - configuration_name: str - The name of the configuration to apply (without
           .yaml extension).
 
-    Raises:
+    Raises
+    ------
         - FileNotFoundError: If the specified configuration does not exist.
     """
     provider = PandASettingsProvider()

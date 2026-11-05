@@ -15,7 +15,8 @@ class LocalRunSettings:
         - simulated: build_simulated_tiled_clients kwargs (without mp_api_key, which
           comes from MP_API_KEY); None uses the fake Tiled clients.
         - skip_waits: Make the plans' waits (dilution, wash, settling) instant
-          (legacy.skip_waits); False keeps real timing, e.g. to exercise the refill check.
+          (legacy.skip_waits); False keeps real timing, e.g. to exercise the refill
+          check.
     """
 
     mixer_lengths_cm: tuple[float, ...] = (0.0,)
@@ -24,6 +25,7 @@ class LocalRunSettings:
     skip_waits: bool = True
 
     def __post_init__(self) -> None:
+        """Store mixer_lengths_cm as a tuple."""
         # JSON has no tuples: a list read back from a config becomes a tuple again.
         object.__setattr__(self, "mixer_lengths_cm", tuple(self.mixer_lengths_cm))
 
@@ -49,10 +51,12 @@ class RunSettings:
     local: LocalRunSettings = field(default_factory=LocalRunSettings)
 
     def __post_init__(self) -> None:
+        """Check iterations is a whole number of at least 1."""
         # bool is an int subclass: reject True/False too.
         if type(self.iterations) is not int or self.iterations < 1:
             raise ValueError(
-                f"run.iterations must be a whole number of at least 1, got {self.iterations!r}"
+                "run.iterations must be a whole number of at least 1, "
+                f"got {self.iterations!r}"
             )
         extra = self.extra_initialization_trials
         if extra is not None and (type(extra) is not int or extra < 0):

@@ -23,7 +23,12 @@ def test_create_phase_applies_metric_prefix_and_minimize() -> None:
 def test_phases_to_pdf_schema_resolves_paths_and_matches_load_schema() -> None:
     phases = [
         Phase(name="Wanted", gr="refdata/Wanted.gr", cif="refdata/Wanted.cif"),
-        Phase(name="Impurity", gr="refdata/Impurity.gr", cif="refdata/Impurity.cif", minimize=True),
+        Phase(
+            name="Impurity",
+            gr="refdata/Impurity.gr",
+            cif="refdata/Impurity.cif",
+            minimize=True,
+        ),
     ]
 
     schema = _phases_to_pdf_schema(phases)
@@ -49,6 +54,5 @@ def test_phases_to_pdf_schema_applies_scoring_function_uniformly() -> None:
     schema = _phases_to_pdf_schema(phases, scoring_function="cross_correlation")
 
     assert all(
-        phase["scoring_function"] == "cross_correlation"
-        for phase in schema["phases"]
+        phase["scoring_function"] == "cross_correlation" for phase in schema["phases"]
     )

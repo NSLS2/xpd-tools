@@ -4,7 +4,7 @@ from unittest.mock import call, patch
 
 import pytest
 
-from xpd_tools.optimization.helpers.common import _TiledAccessError, _retry_access
+from xpd_tools.optimization.helpers.common import _retry_access, _TiledAccessError
 
 
 def test_retry_access_sleeps_the_configured_delay_between_attempts() -> None:

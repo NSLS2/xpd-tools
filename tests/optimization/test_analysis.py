@@ -86,7 +86,8 @@ def test_correct_absorbance_wavelength_range_controls_outlier_detection(
     _, excluded = correct_absorbance(
         wavelength, spectra, percent_range=(0, 50), wavelength_range=(210, 700)
     )
-    # Scoring window misses the bump -> all three spectra look alike and are averaged in.
+    # Scoring window misses the bump -> all three spectra look alike and are
+    # averaged in.
     _, included = correct_absorbance(
         wavelength, spectra, percent_range=(0, 50), wavelength_range=(400, 700)
     )

@@ -36,9 +36,7 @@ def test_clear_when_built_but_not_run(make_config, client_for) -> None:
     assert client.post("/api/clear").json()["status"] == "loaded"
 
 
-def test_clear_is_refused_until_a_stop_lands(
-    make_config, client_for, wait_for
-) -> None:
+def test_clear_is_refused_until_a_stop_lands(make_config, client_for, wait_for) -> None:
     """Mid-run (or mid-stop) clear is refused; after Stop ends the run, it works."""
     client = client_for(make_config(iterations=50))
     client.post("/api/build")

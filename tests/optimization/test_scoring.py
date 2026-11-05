@@ -15,7 +15,9 @@ RADIAL = np.linspace(1.0, 25.0, 241)
 REFERENCE = np.sin(RADIAL) + 2.0  # keep strictly positive for NMF
 
 
-def _diverge_beyond(radial: np.ndarray, profile: np.ndarray, cutoff: float) -> np.ndarray:
+def _diverge_beyond(
+    radial: np.ndarray, profile: np.ndarray, cutoff: float
+) -> np.ndarray:
     return np.where(radial <= cutoff, profile, profile + 5.0)
 
 
@@ -114,10 +116,16 @@ def test_ensemble_normalizes_and_flips_lower_is_better_metrics_after_history() -
 def test_ensemble_custom_weights_are_applied() -> None:
     equal = EnsembleGoodnessOfFitScorer().score(RADIAL, REFERENCE, RADIAL, REFERENCE)
     weighted = EnsembleGoodnessOfFitScorer(
-        weights={"pearson": 1.0, "cross_correlation": 0.0, "weighted_profile_r": 0.0, "nn_matrix": 0.0}
+        weights={
+            "pearson": 1.0,
+            "cross_correlation": 0.0,
+            "weighted_profile_r": 0.0,
+            "nn_matrix": 0.0,
+        }
     ).score(RADIAL, REFERENCE, RADIAL, REFERENCE)
 
-    # First call is raw (unnormalized), so weighting only pearson isolates its raw value.
+    # First call is raw (unnormalized), so weighting only pearson isolates its raw
+    # value.
     assert weighted == pytest.approx(pearson(RADIAL, REFERENCE, RADIAL, REFERENCE))
     assert weighted != pytest.approx(equal)
 
@@ -141,7 +149,10 @@ def test_ensemble_empty_weights_dict_means_all_defaults() -> None:
     None falling through to a from-scratch default -- both must land on
     all-1.0, but via the same merge path, not a falsy-dict special case.
     """
-    assert EnsembleGoodnessOfFitScorer(weights={}).weights == EnsembleGoodnessOfFitScorer().weights
+    assert (
+        EnsembleGoodnessOfFitScorer(weights={}).weights
+        == EnsembleGoodnessOfFitScorer().weights
+    )
 
 
 def test_ensemble_rejects_unknown_weight_names() -> None:

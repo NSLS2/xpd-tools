@@ -38,7 +38,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -54,6 +53,7 @@ from xpd_tools.optimization.campaign import (
 # Helpers shared by offline tests
 # ---------------------------------------------------------------------------
 
+
 def _make_uvvis_agent():
     """Minimal UV-Vis BuildAgent matching the real halide notebook config."""
     from xpd_tools.optimization.agent import BuildAgent
@@ -66,30 +66,65 @@ def _make_uvvis_agent():
         http_server_uri="https://xf28id2-xpd-qs1.nsls2.bnl.gov",
         evaluation_method="uvvis",
     )
-    agent.set_dofs([
-        Pump(name="CsPb", id="dds2_p1", bounds=(0, 100)),
-        Pump(name="Br",   id="dds2_p2", bounds=(0, 100)),
-        Pump(name="Cl",   id="dds3_p1", bounds=(0, 100)),
-        Pump(name="I",    id="dds3_p2", bounds=(0, 100)),
-    ])
+    agent.set_dofs(
+        [
+            Pump(name="CsPb", id="dds2_p1", bounds=(0, 100)),
+            Pump(name="Br", id="dds2_p2", bounds=(0, 100)),
+            Pump(name="Cl", id="dds3_p1", bounds=(0, 100)),
+            Pump(name="I", id="dds3_p2", bounds=(0, 100)),
+        ]
+    )
     agent.experiment(
         sources=[
-            FlowSource(dof="infusion_rate_CsPb", pump="dds2_p1",
-                       precursor="CsPb", sample_label="Cs-rich 33mM", loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_Br",   pump="dds2_p2",
-                       precursor="Br",   sample_label="TOABr",         loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_Cl",   pump="dds3_p1",
-                       precursor="Pb",   sample_label="Pb-rich 33mM",  loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_I",    pump="dds3_p2",
-                       precursor="I",    sample_label="I",              loaded_ml=30.0),
+            FlowSource(
+                dof="infusion_rate_CsPb",
+                pump="dds2_p1",
+                precursor="CsPb",
+                sample_label="Cs-rich 33mM",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_Br",
+                pump="dds2_p2",
+                precursor="Br",
+                sample_label="TOABr",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_Cl",
+                pump="dds3_p1",
+                precursor="Pb",
+                sample_label="Pb-rich 33mM",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_I",
+                pump="dds3_p2",
+                precursor="I",
+                sample_label="I",
+                loaded_ml=30.0,
+            ),
         ],
         dilutions=[
-            DilutionStage(pump="dds1_p1", ratio=1.0, position="before_equilibrium",
-                          syringe_ml=20, material="plastic_BD",
-                          target_ml=20, loaded_ml=20.0),
-            DilutionStage(pump="ultra2",  ratio=1.0, position="after_equilibrium",
-                          syringe_ml=100, material="steel",
-                          target_ml=100, loaded_ml=100.0, wait_sec=30),
+            DilutionStage(
+                pump="dds1_p1",
+                ratio=1.0,
+                position="before_equilibrium",
+                syringe_ml=20,
+                material="plastic_BD",
+                target_ml=20,
+                loaded_ml=20.0,
+            ),
+            DilutionStage(
+                pump="ultra2",
+                ratio=1.0,
+                position="after_equilibrium",
+                syringe_ml=100,
+                material="steel",
+                target_ml=100,
+                loaded_ml=100.0,
+                wait_sec=30,
+            ),
         ],
         wash_cycles=[
             WashCycle(pump="ultra1", loaded_ml=30.0),
@@ -112,6 +147,7 @@ def _make_uvvis_agent():
 # ---------------------------------------------------------------------------
 # Tier 1: Offline tests (no queue server, no hardware)
 # ---------------------------------------------------------------------------
+
 
 class TestSaveCampaignConfig:
     def test_archive_file_created(self, tmp_path):
@@ -239,8 +275,8 @@ class TestAssertPlanRegistered:
 
     def test_raises_on_api_error(self):
         agent = MagicMock()
-        agent._runner._client._rm.plans_allowed.side_effect = (
-            ConnectionError("unreachable")
+        agent._runner._client._rm.plans_allowed.side_effect = ConnectionError(
+            "unreachable"
         )
         with pytest.raises(RuntimeError, match="Could not query"):
             assert_plan_registered(agent, "uvvis_acquire")
@@ -254,11 +290,12 @@ class TestSummarizeCampaign:
         mock_agent.ax_client.summarize.return_value = pd.DataFrame(
             {"trial_index": [0, 1], "Peak": [520.0, 540.0]}
         )
-        with patch("xpd_tools.optimization.campaign.Path") as MockPath:
-            MockPath.return_value.__truediv__.return_value = tmp_path / "out.csv"
-            MockPath.return_value.mkdir.return_value = None
+        with patch("xpd_tools.optimization.campaign.Path") as mock_path:
+            mock_path.return_value.__truediv__.return_value = tmp_path / "out.csv"
+            mock_path.return_value.mkdir.return_value = None
             # Use real tmp_path so the CSV actually gets written
             import xpd_tools.optimization.campaign as cm
+
             original_path = cm.Path
             cm.Path = Path
             try:
@@ -274,7 +311,11 @@ class TestSummarizeCampaign:
 # Tier 2: Single-trial live acquisition (queue server + hardware required)
 # ---------------------------------------------------------------------------
 
-_RUN_TRIAL = os.environ.get("XPD_RUN_TRIAL", "0").strip().lower() in ("1", "true", "yes")
+_RUN_TRIAL = os.environ.get("XPD_RUN_TRIAL", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 single_trial = pytest.mark.skipif(
     not _RUN_TRIAL,
@@ -340,12 +381,14 @@ class TestSingleTrialAcquisition:
         """
         # One point: low but nonzero rates so pumps actuate visibly.
         # Values are in ul/min and within the steel 20 mL syringe range.
-        manual_point = [{
-            "infusion_rate_CsPb": 20.0,   # dds2_p1 -- watch this screw
-            "infusion_rate_Br":   20.0,   # dds2_p2
-            "infusion_rate_Cl":   20.0,   # dds3_p1
-            "infusion_rate_I":    20.0,   # dds3_p2
-        }]
+        manual_point = [
+            {
+                "infusion_rate_CsPb": 20.0,  # dds2_p1 -- watch this screw
+                "infusion_rate_Br": 20.0,  # dds2_p2
+                "infusion_rate_Cl": 20.0,  # dds3_p1
+                "infusion_rate_I": 20.0,  # dds3_p2
+            }
+        ]
 
         print("\n" + "=" * 60)
         print("Submitting single trial to queue server...")

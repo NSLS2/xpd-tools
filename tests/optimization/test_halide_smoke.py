@@ -24,22 +24,22 @@ Run on beamline::
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from xpd_tools.optimization.devices import (
+    ConnectionReport,
     build_halide_devices,
     check_halide_connections,
     print_connection_report,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers to build a minimal but fully-wired UV-Vis BuildAgent
 # ---------------------------------------------------------------------------
+
 
 def _make_uvvis_agent():
     """Return a BuildAgent configured for a 4-DOF UV-Vis run (no xray)."""
@@ -53,36 +53,76 @@ def _make_uvvis_agent():
         http_server_uri="https://example.invalid",
         evaluation_method="uvvis",
     )
-    agent.set_dofs([
-        Pump(name="CsPb", id="dds2_p1", bounds=(10, 200)),
-        Pump(name="Br",   id="dds2_p2", bounds=(10, 200)),
-        Pump(name="Cl",   id="dds3_p1", bounds=(10, 200)),
-        Pump(name="I",    id="dds3_p2", bounds=(10, 200)),
-    ])
+    agent.set_dofs(
+        [
+            Pump(name="CsPb", id="dds2_p1", bounds=(10, 200)),
+            Pump(name="Br", id="dds2_p2", bounds=(10, 200)),
+            Pump(name="Cl", id="dds3_p1", bounds=(10, 200)),
+            Pump(name="I", id="dds3_p2", bounds=(10, 200)),
+        ]
+    )
     agent.experiment(
         sources=[
-            FlowSource(dof="infusion_rate_CsPb", pump="dds2_p1",
-                       precursor="CsPbOA", sample_label="CsPb",
-                       syringe_ml=20, material="steel"),
-            FlowSource(dof="infusion_rate_Br",   pump="dds2_p2",
-                       precursor="TOABr",  sample_label="Br",
-                       syringe_ml=20, material="steel"),
-            FlowSource(dof="infusion_rate_Cl",   pump="dds3_p1",
-                       precursor="TOACl",  sample_label="Cl",
-                       syringe_ml=20, material="steel"),
-            FlowSource(dof="infusion_rate_I",    pump="dds3_p2",
-                       precursor="TOAI",   sample_label="I",
-                       syringe_ml=20, material="steel"),
+            FlowSource(
+                dof="infusion_rate_CsPb",
+                pump="dds2_p1",
+                precursor="CsPbOA",
+                sample_label="CsPb",
+                syringe_ml=20,
+                material="steel",
+            ),
+            FlowSource(
+                dof="infusion_rate_Br",
+                pump="dds2_p2",
+                precursor="TOABr",
+                sample_label="Br",
+                syringe_ml=20,
+                material="steel",
+            ),
+            FlowSource(
+                dof="infusion_rate_Cl",
+                pump="dds3_p1",
+                precursor="TOACl",
+                sample_label="Cl",
+                syringe_ml=20,
+                material="steel",
+            ),
+            FlowSource(
+                dof="infusion_rate_I",
+                pump="dds3_p2",
+                precursor="TOAI",
+                sample_label="I",
+                syringe_ml=20,
+                material="steel",
+            ),
         ],
         dilutions=[
-            DilutionStage(pump="dds1_p1", syringe_ml=50, material="steel",
-                          ratio=0.5, position="after_equilibrium", target_ml=40),
-            DilutionStage(pump="ultra2",  syringe_ml=50, material="steel",
-                          ratio=0.5, position="after_equilibrium", target_ml=40),
+            DilutionStage(
+                pump="dds1_p1",
+                syringe_ml=50,
+                material="steel",
+                ratio=0.5,
+                position="after_equilibrium",
+                target_ml=40,
+            ),
+            DilutionStage(
+                pump="ultra2",
+                syringe_ml=50,
+                material="steel",
+                ratio=0.5,
+                position="after_equilibrium",
+                target_ml=40,
+            ),
         ],
         wash_cycles=[
-            WashCycle(pump="ultra1", syringe_ml=50, material="steel",
-                      duration_sec=60, rate_ul_min=500, target_ml=40),
+            WashCycle(
+                pump="ultra1",
+                syringe_ml=50,
+                material="steel",
+                duration_sec=60,
+                rate_ul_min=500,
+                target_ml=40,
+            ),
         ],
     )
     agent.set_uvvis_objectives(
@@ -97,6 +137,7 @@ def _make_uvvis_agent():
 # Tier 1: mock-logic tests (no IOCs)
 # ---------------------------------------------------------------------------
 
+
 class TestBuildHalideDevicesMock:
     """build_halide_devices(mock=True) returns the right shape."""
 
@@ -106,8 +147,13 @@ class TestBuildHalideDevicesMock:
 
     def test_all_pump_keys_present(self, mock_devices):
         expected_pumps = {
-            "dds1_p1", "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2",
-            "ultra1", "ultra2",
+            "dds1_p1",
+            "dds2_p1",
+            "dds2_p2",
+            "dds3_p1",
+            "dds3_p2",
+            "ultra1",
+            "ultra2",
         }
         assert expected_pumps.issubset(mock_devices.keys())
 
@@ -173,11 +219,18 @@ class TestRegisterAcquisitionPlans:
             evaluation_method="xray",
         )
         agent.set_dofs([Pump(name="CsPb", id="dds2_p1", bounds=(10, 200))])
-        agent.experiment(sources=[
-            FlowSource(dof="infusion_rate_CsPb", pump="dds2_p1",
-                       precursor="CsPbOA", sample_label="CsPb",
-                       syringe_ml=20, material="steel"),
-        ])
+        agent.experiment(
+            sources=[
+                FlowSource(
+                    dof="infusion_rate_CsPb",
+                    pump="dds2_p1",
+                    precursor="CsPbOA",
+                    sample_label="CsPb",
+                    syringe_ml=20,
+                    material="steel",
+                ),
+            ]
+        )
         # Patch _validate_before_build so we reach the wrap_xray_run check
         with (
             patch.object(agent, "_validate_before_build", return_value=(True, False)),
@@ -199,7 +252,9 @@ class TestConfigRoundTrip:
         original.to_config(str(config_path))
 
         import json
+
         from xpd_tools.optimization.agent import BuildAgent
+
         with open(config_path) as f:
             config = json.load(f)
         rebuilt = BuildAgent.from_config(config)
@@ -212,6 +267,7 @@ class TestConfigRoundTrip:
         original = _make_uvvis_agent()
         config = original.to_config()
         from xpd_tools.optimization.agent import BuildAgent
+
         rebuilt = BuildAgent.from_config(config)
         assert rebuilt.evaluation_method == "uvvis"
 
@@ -219,6 +275,7 @@ class TestConfigRoundTrip:
         original = _make_uvvis_agent()
         config = original.to_config()
         from xpd_tools.optimization.agent import BuildAgent
+
         rebuilt = BuildAgent.from_config(config)
         source_pumps = {s.pump for s in rebuilt.sources}
         assert source_pumps == {"dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
@@ -309,7 +366,7 @@ class TestCheckHalideConnectionsLiveness:
         assert "COMM" in r.liveness_detail
 
     def test_pump_read_pvs_ignored_when_status_ok(self):
-        """read_infused/read_infuse_rate INVALID does NOT trip liveness when status is OK.
+        """read_infused/read_infuse_rate INVALID doesn't trip liveness if status is OK.
 
         This is the core regression guard: the four read_* records sit permanently
         in INVALID/COMM or INVALID/CALC on this IOC even on healthy pumps.  The
@@ -328,15 +385,23 @@ class TestCheckHalideConnectionsLiveness:
         device.wait_for_connection.return_value = None
         device.read_infuse_rate = self._alarm_sig(25.0)
         device.read_infuse_rate_unit = self._alarm_sig("ul/min")
-        del device.status   # simulate missing attribute
+        del device.status  # simulate missing attribute
         devices = {"dds2_p1": device}
         reports = check_halide_connections(devices, timeout=1.0)
         assert reports["dds2_p1"].alive is None
 
     def test_all_pump_keys_alive_when_status_ok(self):
         """Every pump key reports alive=True when status is NO_ALARM."""
-        pump_keys = ["dds1_p1", "dds1_p2", "dds2_p1", "dds2_p2",
-                     "dds3_p1", "dds3_p2", "ultra1", "ultra2"]
+        pump_keys = [
+            "dds1_p1",
+            "dds1_p2",
+            "dds2_p1",
+            "dds2_p2",
+            "dds3_p1",
+            "dds3_p2",
+            "ultra1",
+            "ultra2",
+        ]
         devices = {k: self._pump(status_sevr=0) for k in pump_keys}
         reports = check_halide_connections(devices, timeout=1.0)
         for k in pump_keys:
@@ -412,9 +477,9 @@ class TestCheckHalideConnectionsLiveness:
         result = print_connection_report(reports)
         out = capsys.readouterr().out
 
-        assert "✓" in out   # pump_ok and led (alive=None → ✓)
-        assert "⚠" in out   # pump_dead
-        assert "✗" in out   # ioc_down
+        assert "✓" in out  # pump_ok and led (alive=None → ✓)
+        assert "⚠" in out  # pump_dead
+        assert "✗" in out  # ioc_down
         assert result is False  # pump_dead (require_alive) + ioc_down
 
     def test_require_alive_false_warns_not_fails(self, capsys):
@@ -460,8 +525,9 @@ class TestDiagnoseConnections:
     """Offline tests for diagnose_connections."""
 
     @staticmethod
-    def _alive_report(name: str) -> "ConnectionReport":
+    def _alive_report(name: str) -> ConnectionReport:
         from xpd_tools.optimization.devices import ConnectionReport
+
         r = ConnectionReport(name)
         r.connected = True
         r.alive = True
@@ -469,8 +535,9 @@ class TestDiagnoseConnections:
         return r
 
     @staticmethod
-    def _dead_report(name: str) -> "ConnectionReport":
+    def _dead_report(name: str) -> ConnectionReport:
         from xpd_tools.optimization.devices import ConnectionReport
+
         r = ConnectionReport(name)
         r.connected = True
         r.alive = False
@@ -478,8 +545,9 @@ class TestDiagnoseConnections:
         return r
 
     @staticmethod
-    def _disconnected_report(name: str) -> "ConnectionReport":
+    def _disconnected_report(name: str) -> ConnectionReport:
         from xpd_tools.optimization.devices import ConnectionReport
+
         r = ConnectionReport(name)
         r.connected = False
         r.error = "timeout"
@@ -490,13 +558,21 @@ class TestDiagnoseConnections:
         """Pump device mock with all diagnostic signal attributes."""
         device = MagicMock()
         device.wait_for_connection.return_value = None
-        for attr in ("status", "read_infuse_rate", "read_infused",
-                     "read_withdrawn", "read_withdraw_rate", "read_target_vol"):
+        for attr in (
+            "status",
+            "read_infuse_rate",
+            "read_infused",
+            "read_withdrawn",
+            "read_withdraw_rate",
+            "read_target_vol",
+        ):
             sig = MagicMock()
             sig.get.return_value = 0.0
-            sev = MagicMock(); sev.get.return_value = 0
+            sev = MagicMock()
+            sev.get.return_value = 0
             sig.alarm_severity = sev
-            sta = MagicMock(); sta.get.return_value = 0
+            sta = MagicMock()
+            sta.get.return_value = 0
             sig.alarm_status = sta
             sig.timestamp = None
             setattr(device, attr, sig)
@@ -524,7 +600,7 @@ class TestDiagnoseConnections:
         diagnose_connections(devices, reports, only_failures=True)
         out = capsys.readouterr().out
         assert "dds2_p1" in out
-        assert "read_infused" in out    # diagnostic signal present
+        assert "read_infused" in out  # diagnostic signal present
         assert "SEVR" in out
 
     def test_only_failures_prints_disconnected_device(self, capsys):
@@ -534,12 +610,20 @@ class TestDiagnoseConnections:
         # Device that fails wait_for_connection
         dead_dev = MagicMock()
         dead_dev.wait_for_connection.side_effect = TimeoutError("no ioc")
-        for attr in ("status", "read_infuse_rate", "read_infused",
-                     "read_withdrawn", "read_withdraw_rate", "read_target_vol"):
+        for attr in (
+            "status",
+            "read_infuse_rate",
+            "read_infused",
+            "read_withdrawn",
+            "read_withdraw_rate",
+            "read_target_vol",
+        ):
             sig = MagicMock()
             sig.get.return_value = 0.0
-            sig.alarm_severity = MagicMock(); sig.alarm_severity.get.return_value = 0
-            sig.alarm_status  = MagicMock(); sig.alarm_status.get.return_value = 0
+            sig.alarm_severity = MagicMock()
+            sig.alarm_severity.get.return_value = 0
+            sig.alarm_status = MagicMock()
+            sig.alarm_status.get.return_value = 0
             sig.timestamp = None
             setattr(dead_dev, attr, sig)
 
@@ -556,17 +640,17 @@ class TestDiagnoseConnections:
 
         devices = {
             "dds2_p1": self._mock_pump(),
-            "ultra1":  self._mock_pump(),
+            "ultra1": self._mock_pump(),
         }
         reports = {
             "dds2_p1": self._alive_report("dds2_p1"),
-            "ultra1":  self._dead_report("ultra1"),
+            "ultra1": self._dead_report("ultra1"),
         }
 
         diagnose_connections(devices, reports, only_failures=False)
         out = capsys.readouterr().out
-        assert "dds2_p1" in out   # healthy — still printed
-        assert "ultra1" in out    # failed — printed
+        assert "dds2_p1" in out  # healthy — still printed
+        assert "ultra1" in out  # failed — printed
 
     def test_reports_none_runs_fresh_check(self, capsys):
         """reports=None triggers an internal check_halide_connections call."""
@@ -579,17 +663,22 @@ class TestDiagnoseConnections:
         # status: INVALID/COMM → liveness fails → device appears in diagnose output
         status_sig = MagicMock()
         status_sig.get.return_value = "?"
-        sev = MagicMock(); sev.get.return_value = 3   # INVALID
-        sta = MagicMock(); sta.get.return_value = 9   # COMM
+        sev = MagicMock()
+        sev.get.return_value = 3  # INVALID
+        sta = MagicMock()
+        sta.get.return_value = 9  # COMM
         status_sig.alarm_severity = sev
         status_sig.alarm_status = sta
         status_sig.timestamp = None
         pump.status = status_sig
 
         for attr in ("read_infuse_rate", "read_infuse_rate_unit"):
-            sig = MagicMock(); sig.get.return_value = 0.0
-            sig.alarm_severity = MagicMock(); sig.alarm_severity.get.return_value = 0
-            sig.alarm_status   = MagicMock(); sig.alarm_status.get.return_value = 0
+            sig = MagicMock()
+            sig.get.return_value = 0.0
+            sig.alarm_severity = MagicMock()
+            sig.alarm_severity.get.return_value = 0
+            sig.alarm_status = MagicMock()
+            sig.alarm_status.get.return_value = 0
             sig.timestamp = None
             setattr(pump, attr, sig)
 
@@ -604,11 +693,13 @@ class TestRealDeviceClasses:
 
     def test_syrng_dds_instantiates(self):
         from xpd_tools.optimization.devices.pumps import SyrngDDS
+
         d = SyrngDDS("TEST:", name="test_dds")
         assert d.name == "test_dds"
 
     def test_syrng_dds_ax_instantiates(self):
         from xpd_tools.optimization.devices.pumps import SyrngDDS, SyrngDDSAxis
+
         parent = SyrngDDS("TEST:", name="test_dds_parent")
         ax = SyrngDDSAxis("TEST:AX:", name="test_dds_ax", parent=parent)
         assert ax.name == "test_dds_ax"
@@ -618,6 +709,7 @@ class TestRealDeviceClasses:
 
     def test_syrng_ultra_instantiates(self):
         from xpd_tools.optimization.devices.pumps import SyrngUltra
+
         d = SyrngUltra("TEST:", name="test_ultra")
         assert d.name == "test_ultra"
         assert hasattr(d, "set_infuse2")
@@ -626,6 +718,7 @@ class TestRealDeviceClasses:
 
     def test_qepro_instantiates(self):
         from xpd_tools.optimization.devices.qepro import QEPro
+
         d = QEPro("TEST:", name="QEPro")
         assert d.name == "QEPro"
         assert hasattr(d, "x_axis")
@@ -634,7 +727,8 @@ class TestRealDeviceClasses:
         assert hasattr(d, "correction")
 
     def test_lights_instantiate(self):
-        from xpd_tools.optimization.devices.lights import FastShutter, LED, UVShutter
+        from xpd_tools.optimization.devices.lights import LED, FastShutter, UVShutter
+
         led = LED("TEST:LED", name="led")
         shutter = UVShutter("TEST:SHT", name="uv_shutter")
         fast = FastShutter("TEST:MTR", name="fast_shutter")
@@ -677,7 +771,7 @@ class TestHalideDeviceConnections:
 
     def test_print_report(self, connection_report, capsys):
         """Always print the full report so CI logs capture the state."""
-        all_ok = print_connection_report(connection_report)
+        print_connection_report(connection_report)
         captured = capsys.readouterr()
         print(captured.out)
         # Don't fail here -- individual signal tests below are the assertions.
@@ -702,16 +796,22 @@ class TestHalideDeviceConnections:
         r = connection_report["fast_shutter"]
         assert r.connected, f"Fast shutter not connected: {r.error}"
 
-    @pytest.mark.parametrize("pump_key", [
-        "dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2",
-        "dds1_p1", "ultra1", "ultra2",
-    ])
+    @pytest.mark.parametrize(
+        "pump_key",
+        [
+            "dds2_p1",
+            "dds2_p2",
+            "dds3_p1",
+            "dds3_p2",
+            "dds1_p1",
+            "ultra1",
+            "ultra2",
+        ],
+    )
     def test_pump_connected(self, connection_report, pump_key):
         r = connection_report[pump_key]
         assert r.connected, f"{pump_key} not connected: {r.error}"
-        assert not r.failed_signals, (
-            f"{pump_key} signal failures: {r.failed_signals}"
-        )
+        assert not r.failed_signals, f"{pump_key} signal failures: {r.failed_signals}"
         assert r.alive is not False, (
             f"{pump_key} IOC up but device not alive: {r.liveness_detail}"
         )
@@ -775,30 +875,66 @@ def _make_beamline_agent():
         ),
     )
 
-    agent.set_dofs([
-        Pump(name="CsPb",  id="dds2_p1", bounds=(0, 100)),
-        Pump(name="TOABr", id="dds2_p2", bounds=(0, 100)),
-        Pump(name="Cl",    id="dds3_p1", bounds=(0, 100)),
-        Pump(name="I",     id="dds3_p2", bounds=(0, 100)),
-    ])
+    agent.set_dofs(
+        [
+            Pump(name="CsPb", id="dds2_p1", bounds=(0, 100)),
+            Pump(name="TOABr", id="dds2_p2", bounds=(0, 100)),
+            Pump(name="Cl", id="dds3_p1", bounds=(0, 100)),
+            Pump(name="I", id="dds3_p2", bounds=(0, 100)),
+        ]
+    )
 
     agent.experiment(
         sources=[
-            FlowSource(dof="infusion_rate_CsPb",  pump="dds2_p1",
-                       precursor="CsPb",  sample_label="Cs-rich 33mM", loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_TOABr", pump="dds2_p2",
-                       precursor="TOABr", sample_label="TOABr",        loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_Cl",    pump="dds3_p1",
-                       precursor="Cl",    sample_label="Pb-rich 33mM", loaded_ml=30.0),
-            FlowSource(dof="infusion_rate_I",     pump="dds3_p2",
-                       precursor="I",     sample_label="I",             loaded_ml=30.0),
+            FlowSource(
+                dof="infusion_rate_CsPb",
+                pump="dds2_p1",
+                precursor="CsPb",
+                sample_label="Cs-rich 33mM",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_TOABr",
+                pump="dds2_p2",
+                precursor="TOABr",
+                sample_label="TOABr",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_Cl",
+                pump="dds3_p1",
+                precursor="Cl",
+                sample_label="Pb-rich 33mM",
+                loaded_ml=30.0,
+            ),
+            FlowSource(
+                dof="infusion_rate_I",
+                pump="dds3_p2",
+                precursor="I",
+                sample_label="I",
+                loaded_ml=30.0,
+            ),
         ],
         dilutions=[
-            DilutionStage(pump="dds1_p1", ratio=1.0, position="before_equilibrium",
-                          syringe_ml=20, material="plastic_BD", target_ml=20, loaded_ml=20.0),
-            DilutionStage(pump="ultra2",  ratio=1.0, position="after_equilibrium",
-                          syringe_ml=100, material="steel", target_ml=100,
-                          loaded_ml=100.0, wait_sec=30),
+            DilutionStage(
+                pump="dds1_p1",
+                ratio=1.0,
+                position="before_equilibrium",
+                syringe_ml=20,
+                material="plastic_BD",
+                target_ml=20,
+                loaded_ml=20.0,
+            ),
+            DilutionStage(
+                pump="ultra2",
+                ratio=1.0,
+                position="after_equilibrium",
+                syringe_ml=100,
+                material="steel",
+                target_ml=100,
+                loaded_ml=100.0,
+                wait_sec=30,
+            ),
         ],
         wash_cycles=[
             WashCycle(pump="ultra1", loaded_ml=30.0),
@@ -809,8 +945,11 @@ def _make_beamline_agent():
     )
 
     agent.quality_policy = QualityPolicy(
-        enabled=True, good_batches=3, max_bad_batches=3,
-        absorbance_shots=10, fluorescence_shots=10,
+        enabled=True,
+        good_batches=3,
+        max_bad_batches=3,
+        absorbance_shots=10,
+        fluorescence_shots=10,
     )
 
     agent.set_run(iterations=50, extra_initialization_trials=5)
@@ -841,10 +980,10 @@ class TestScriptEquivalence:
         agent = _make_beamline_agent()
         fc = agent._acquisition_plan_kwargs()["flow_config"]
         assert fc["dof_to_pump"] == {
-            "infusion_rate_CsPb":  "dds2_p1",
+            "infusion_rate_CsPb": "dds2_p1",
             "infusion_rate_TOABr": "dds2_p2",
-            "infusion_rate_Cl":    "dds3_p1",
-            "infusion_rate_I":     "dds3_p2",
+            "infusion_rate_Cl": "dds3_p1",
+            "infusion_rate_I": "dds3_p2",
         }
 
     def test_flow_config_geometry_fields(self) -> None:

@@ -14,6 +14,7 @@ from xpd_tools.detectors.pilatus4 import (
     Pilatus4ROIMode,
     Pilatus4TriggerMode,
 )
+
 from .qepro import QEPro, QEProTEC
 
 __all__ = [

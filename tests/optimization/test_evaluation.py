@@ -449,7 +449,8 @@ def test_raw_tracked_falls_back_to_raw_on_fit_failure(
     assert "corr_Target" in outcome
     assert "pdf_fit_corr_Target" not in outcome
     assert any(
-        "PDF fitting failed for uid='uid'" in record.message for record in caplog.records
+        "PDF fitting failed for uid='uid'" in record.message
+        for record in caplog.records
     )
 
 

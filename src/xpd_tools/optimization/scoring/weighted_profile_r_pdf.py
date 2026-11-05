@@ -30,7 +30,8 @@ def weighted_profile_r(
         - r_min: The minimum r value to include in the calculation.
         - r_max: The maximum r value to include in the calculation.
 
-    Returns:
+    Returns
+    -------
         - The weighted-profile R-factor (Rw).
     """
     _, g_slice_exp, g_sim_i = _mask_and_interpolate(
@@ -42,6 +43,6 @@ def weighted_profile_r(
     g_sim_i = g_sim_i / np.linalg.norm(g_sim_i)
 
     residual = g_slice_exp - g_sim_i
-    rw = np.sqrt(np.sum(residual ** 2) / np.sum(g_slice_exp ** 2))
+    rw = np.sqrt(np.sum(residual**2) / np.sum(g_slice_exp**2))
 
     return float(rw)

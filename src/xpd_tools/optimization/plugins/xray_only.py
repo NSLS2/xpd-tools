@@ -9,12 +9,12 @@ from typing import Any, Literal
 import numpy as np
 
 from xpd_tools.optimization.helpers.pdf import (
-    _PdfPhaseReference,
     _load_pdf_references,
+    _PdfPhaseReference,
     _process_pdf,
     _read_pdfstream_data,
 )
-from xpd_tools.optimization.scoring import build_cnn_scorer, CnnScorer, EnsembleScorers
+from xpd_tools.optimization.scoring import CnnScorer, EnsembleScorers, build_cnn_scorer
 
 
 class XrayEvaluation:
@@ -131,6 +131,4 @@ class XrayEvaluation:
             if not np.isfinite(value):
                 raise ValueError(f"PDF correlation {name!r} is not finite")
 
-        return [
-            {**pdf_metrics, "_id": suggestion["_id"]} for suggestion in suggestions
-        ]
+        return [{**pdf_metrics, "_id": suggestion["_id"]} for suggestion in suggestions]

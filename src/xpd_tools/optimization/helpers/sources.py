@@ -12,11 +12,15 @@ from typing import Any, Literal
 
 
 def _check_volumes(item: Any) -> None:
-    """loaded_ml fits the syringe and reserve_ml isn't negative (checked at Load/Apply)."""
+    """Check loaded_ml fits the syringe and reserve_ml isn't negative.
+
+    Checked at Load/Apply.
+    """
     name = getattr(item.pump, "name", item.pump)
     if item.loaded_ml is not None and not 0 < item.loaded_ml <= item.syringe_ml:
         raise ValueError(
-            f"{name}: loaded_ml must be > 0 and at most syringe_ml ({item.syringe_ml}), "
+            f"{name}: loaded_ml must be > 0 and at most "
+            f"syringe_ml ({item.syringe_ml}), "
             f"got {item.loaded_ml}"
         )
     if item.reserve_ml < 0:
@@ -39,6 +43,7 @@ class FlowSource:
     reserve_ml: float = 1.0
 
     def __post_init__(self) -> None:
+        """Check the loaded and reserve volumes."""
         _check_volumes(self)
 
 
@@ -58,6 +63,7 @@ class DilutionStage:
     reserve_ml: float = 1.0
 
     def __post_init__(self) -> None:
+        """Check the loaded and reserve volumes."""
         _check_volumes(self)
 
 
@@ -76,4 +82,5 @@ class WashCycle:
     reserve_ml: float = 1.0
 
     def __post_init__(self) -> None:
+        """Check the loaded and reserve volumes."""
         _check_volumes(self)

@@ -103,7 +103,10 @@ def test_counter_units_are_converted(
 
 def test_loaded_volume_must_fit_the_syringe(fake_pumps: Mapping[str, Any]) -> None:
     # Checked when the entry is created, so a config is refused at Load/Apply.
-    with pytest.raises(ValueError, match=r"dds2_p1: loaded_ml must be > 0 and at most syringe_ml \(50.0\)"):
+    with pytest.raises(
+        ValueError,
+        match=r"dds2_p1: loaded_ml must be > 0 and at most syringe_ml \(50.0\)",
+    ):
         _source(fake_pumps["dds2_p1"], loaded_ml=60.0)
     with pytest.raises(ValueError, match="reserve_ml can't be negative"):
         _source(fake_pumps["dds2_p1"], reserve_ml=-1.0)
@@ -136,7 +139,12 @@ def test_clear_plan_passes_queue_server_validation() -> None:
     nspace = {"clear_infused_volumes": clear_infused_volumes, "dds2_p1": pump}
     plans, devices, *_ = po.existing_plans_and_devices_from_nspace(nspace=nspace)
     prepared = po.prepare_plan(
-        {"name": "clear_infused_volumes", "args": [["dds2_p1"]], "kwargs": {}, "user_group": "g"},
+        {
+            "name": "clear_infused_volumes",
+            "args": [["dds2_p1"]],
+            "kwargs": {},
+            "user_group": "g",
+        },
         plans_in_nspace={"clear_infused_volumes": clear_infused_volumes},
         devices_in_nspace={"dds2_p1": pump},
         allowed_plans={"g": plans},

@@ -11,7 +11,6 @@ from ophyd_async.epics.adcore import AreaDetector
 from ophyd_async.fastcs.panda import HDFPanda
 
 from xpd_tools.detectors.utils import get_detector_acq_times
-
 from xpd_tools.flyers import (
     SingleAxisFlyableLogic,
     construct_fly_info_models,

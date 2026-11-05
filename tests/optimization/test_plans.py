@@ -476,7 +476,9 @@ def test_create_xray_screened_plan_gates_without_recording_absorbance(
     pump = fake_pumps["dds2_p1"]
     context = plan_context_factory(
         sources=(_source("CsPb", pump),),
-        quality=QualityPolicy(enabled=True, good_batches=1, max_bad_batches=2, fluorescence_shots=1),
+        quality=QualityPolicy(
+            enabled=True, good_batches=1, max_bad_batches=2, fluorescence_shots=1
+        ),
         xray=XraySettings(exposure=0.1, frame_acq_time=0.1),
     )
     plan = create_xray_screened_plan(context)
@@ -605,9 +607,7 @@ class _CleanupPump:
             raise RuntimeError(f"{self.name} did not stop")
 
 
-def _drive(
-    plan: Any, throw_at: int | None = None, exc: BaseException | None = None
-):
+def _drive(plan: Any, throw_at: int | None = None, exc: BaseException | None = None):
     """Run a plan by hand, throwing `exc` in at message index `throw_at`, as
     RE.stop() does. Returns (messages seen, exception the plan ended with)."""
     messages, index = [], 0

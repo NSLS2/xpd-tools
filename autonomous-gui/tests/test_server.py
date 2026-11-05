@@ -57,8 +57,10 @@ def test_running_edits_are_limited_and_success_criteria_stop_the_run(
     state = client.put("/api/config", json=config).json()
     assert state["editable"] == ["success_criteria"]
     saved = Path(state["config_path"])
-    assert saved != path and json.loads(saved.read_text())["success_criteria"] == (
-        config["success_criteria"]
+    assert (
+        saved != path
+        and json.loads(saved.read_text())["success_criteria"]
+        == (config["success_criteria"])
     )
 
     # The watcher picks up the new criteria mid-run and stops well short of 50.

@@ -1,4 +1,5 @@
 """Helpers for PDF periodic."""
+
 import os
 import re
 
@@ -18,8 +19,7 @@ def _diffpy_to_pymatgen(struct: DiffpyStructure) -> PymatgenStructure:
     """Build a pymatgen Structure from a diffpy one."""
     lat = struct.lattice
     lattice = Lattice.from_parameters(
-        lat.a, lat.b, lat.c,
-        lat.alpha, lat.beta, lat.gamma
+        lat.a, lat.b, lat.c, lat.alpha, lat.beta, lat.gamma
     )
     species = [re.sub(r"[0-9+\-]", "", atom.element) for atom in struct]
     frac_coords = [atom.xyz for atom in struct]

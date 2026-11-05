@@ -1,4 +1,5 @@
 """Periodic G(r) calculator."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -6,14 +7,12 @@ from functools import lru_cache
 import numpy as np
 from pymatgen.core import Structure as PymatgenStructure
 
-DR, DQ = 0.005, 0.01   # pair-histogram and Fourier-filter steps
+DR, DQ = 0.005, 0.01  # pair-histogram and Fourier-filter steps
 
 
 @lru_cache(maxsize=2)
 def _sine_transforms(
-    rmin: float, rmax: float, rstep: float,
-    qmin: float, qmax: float,
-    r_pairs: float
+    rmin: float, rmax: float, rstep: float, qmin: float, qmax: float, r_pairs: float
 ):
     """r-grids and the G(r_fine) -> F(Q) -> G(r) matrices, cached."""
     r_fine = np.arange(DR / 2, r_pairs, DR)
@@ -47,7 +46,7 @@ def _g(
     pair_hist, _ = np.histogram(
         np.linalg.norm(vecs, axis=1),
         bins=np.arange(0.0, r_pairs + DR / 2, DR),
-        weights=w
+        weights=w,
     )
 
     # pair width from two independent displacements
@@ -58,8 +57,10 @@ def _g(
 
     r, r_fine, to_q, to_r = _sine_transforms(rmin, rmax, rstep, qmin, qmax, r_pairs)
 
-    g_fine = np.convolve(pair_hist, kernel, mode="same") / (n_atoms * DR) / r_fine \
+    g_fine = (
+        np.convolve(pair_hist, kernel, mode="same") / (n_atoms * DR) / r_fine
         - 4 * np.pi * n_atoms / volume * r_fine
+    )
     g_fine *= np.clip((r_pairs - r_fine) / 5.0, 0.0, 1.0)
 
     # Fourier-filter to [qmin, qmax]: Qmax termination ripples
@@ -71,9 +72,11 @@ def _pairs(structure: PymatgenStructure, r_max: float) -> tuple[np.ndarray, np.n
     """Cartesian pair vectors within r_max and their Z_i Z_j / <Z>^2 X-ray weights."""
     z = np.array([site.specie.Z for site in structure], dtype=float)
     i, j, images, _ = structure.get_neighbor_list(r_max)
-    vecs = structure.cart_coords[j] \
-        + images @ structure.lattice.matrix \
+    vecs = (
+        structure.cart_coords[j]
+        + images @ structure.lattice.matrix
         - structure.cart_coords[i]
+    )
     return vecs, z[i] * z[j] / z.mean() ** 2
 
 
@@ -119,7 +122,18 @@ def pdf_periodic(
     # strain shortens a distance by at most shrink
     shrink = np.linalg.norm(eps, 2) if eps is not None else 0.0
     vecs, w = _pairs(structure, (rmax + pad) / (1 - shrink))
-    return _g(vecs, w, len(structure), structure.volume, eps,
-              rmin=rmin, rmax=rmax, rstep=rstep,
-              qmin=qmin, qmax=qmax, qdamp=qdamp,
-              u=u, pad=pad)
+    return _g(
+        vecs,
+        w,
+        len(structure),
+        structure.volume,
+        eps,
+        rmin=rmin,
+        rmax=rmax,
+        rstep=rstep,
+        qmin=qmin,
+        qmax=qmax,
+        qdamp=qdamp,
+        u=u,
+        pad=pad,
+    )

@@ -13,10 +13,10 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 from ax.api.protocols import IMetric
+from bluesky.callbacks.zmq import RemoteDispatcher
 from bluesky_adaptive.ax import Objective, OutcomeConstraint, RangeDOF
 from bluesky_adaptive.ax.agent import Agent
 from bluesky_adaptive.ax.queueserver_agent import QueueserverAgent
-from bluesky.callbacks.zmq import RemoteDispatcher
 from bluesky_queueserver_api.http import REManagerAPI
 from tiled.client import from_profile, from_uri
 
@@ -196,8 +196,12 @@ def _check_feasibility(
         - per_constraint: list of dicts with metric/op/bound/satisfied\
             /observed_min/observed_max
     """
-    ops = {"<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b,
-           "<": lambda a, b: a < b, ">": lambda a, b: a > b}
+    ops = {
+        "<=": lambda a, b: a <= b,
+        ">=": lambda a, b: a >= b,
+        "<": lambda a, b: a < b,
+        ">": lambda a, b: a > b,
+    }
 
     parsed = []
     for c in constraints:
@@ -215,16 +219,20 @@ def _check_feasibility(
         finite_mask = col.notna() & np.isfinite(col)
         satisfies = finite_mask & ops[op](col, bound)
         feasible_mask = feasible_mask & satisfies
-        per_constraint.append({
-            "metric": metric,
-            "op": op,
-            "bound": bound,
-            "satisfied": int(satisfies.sum()),
-            "observed_min": float(col[finite_mask].min()) if finite_mask.any()
+        per_constraint.append(
+            {
+                "metric": metric,
+                "op": op,
+                "bound": bound,
+                "satisfied": int(satisfies.sum()),
+                "observed_min": float(col[finite_mask].min())
+                if finite_mask.any()
                 else float("nan"),
-            "observed_max": float(col[finite_mask].max()) if finite_mask.any()
+                "observed_max": float(col[finite_mask].max())
+                if finite_mask.any()
                 else float("nan"),
-        })
+            }
+        )
 
     return {
         "parsed": parsed,
@@ -272,39 +280,40 @@ _INFEASIBILITY_SIGNATURES = (
 class BuildAgent:
     """Agent to screen and build the run agent."""
 
-    def __init__(self,
-                # Queue Server
-                queue_server: bool = True,
-                # HTTP Client
-                http_server_uri: str | None = None,
-                http_api_key: str | None = None,
-                # ZMQ
-                zmq_consumer_address: str | None = None,
-                # Tiled (tiled_uri takes precedence over tiled_profile when set)
-                tiled_profile: str | None = None,
-                tiled_uri: str | None = None,
-                # Tiled sandbox catalog where pdfstream writes analysis results
-                sandbox_uri: str = DEFAULT_SANDBOX_URI,
-                # PDF correlation mode:
-                #   "raw"         -- raw measured-G(r) correlation is the
-                #                    objective; pdffit2 refinement never runs.
-                #   "fit"         -- pdffit2-refined correlation is the
-                #                    objective; a refinement failure is fatal.
-                #   "raw_tracked" -- raw correlation is the objective (like
-                #                    "raw"), but pdffit2 refinement is also
-                #                    attempted every evaluation purely for
-                #                    comparison/tracking -- a refinement
-                #                    failure is logged and evaluation
-                #                    continues with the raw result only.
-                pdf_mode: Literal["raw", "fit", "raw_tracked"] = "raw",
-                # Evaluation Method
-                evaluation_method: str | None = None,
-                # Agent Historical Data
-                agent_data_path: str | None = None,
-                # Optimizer checkpoint (distinct from agent_data_path: this is
-                # blop's own state file, not historical observations to ingest)
-                checkpoint_path: str | Path | None = None,
-        ) -> None:
+    def __init__(
+        self,
+        # Queue Server
+        queue_server: bool = True,
+        # HTTP Client
+        http_server_uri: str | None = None,
+        http_api_key: str | None = None,
+        # ZMQ
+        zmq_consumer_address: str | None = None,
+        # Tiled (tiled_uri takes precedence over tiled_profile when set)
+        tiled_profile: str | None = None,
+        tiled_uri: str | None = None,
+        # Tiled sandbox catalog where pdfstream writes analysis results
+        sandbox_uri: str = DEFAULT_SANDBOX_URI,
+        # PDF correlation mode:
+        #   "raw"         -- raw measured-G(r) correlation is the
+        #                    objective; pdffit2 refinement never runs.
+        #   "fit"         -- pdffit2-refined correlation is the
+        #                    objective; a refinement failure is fatal.
+        #   "raw_tracked" -- raw correlation is the objective (like
+        #                    "raw"), but pdffit2 refinement is also
+        #                    attempted every evaluation purely for
+        #                    comparison/tracking -- a refinement
+        #                    failure is logged and evaluation
+        #                    continues with the raw result only.
+        pdf_mode: Literal["raw", "fit", "raw_tracked"] = "raw",
+        # Evaluation Method
+        evaluation_method: str | None = None,
+        # Agent Historical Data
+        agent_data_path: str | None = None,
+        # Optimizer checkpoint (distinct from agent_data_path: this is
+        # blop's own state file, not historical observations to ingest)
+        checkpoint_path: str | Path | None = None,
+    ) -> None:
         # Queue Server
         self.queue_server = queue_server
         # HTTP Client
@@ -323,11 +332,7 @@ class BuildAgent:
         self.agent_data_path = agent_data_path
 
         # Evaluation Function
-        if evaluation_method not in [
-            "uvvis",
-            "xray",
-            "xray-uvvis",
-            None]:
+        if evaluation_method not in ["uvvis", "xray", "xray-uvvis", None]:
             raise ValueError(
                 "Evaluation method must be 'uvvis', 'xray', or 'xray-uvvis' (or None)."
             )
@@ -355,11 +360,9 @@ class BuildAgent:
         self.plqy: PlqyReference | None = None
         self.fit_settings: SpectraFitSettings | None = None
         self.xray_settings: XraySettings | None = None
-        self.screening: Literal[
-            "unscreened",
-            "screen_only",
-            "screen_and_record"
-        ] | None = None
+        self.screening: (
+            Literal["unscreened", "screen_only", "screen_and_record"] | None
+        ) = None
         self.quality_policy: QualityPolicy | None = None
         self.xray_max_retries: int | None = None
         self.xray_retry_delay: float | None = None
@@ -407,8 +410,9 @@ class BuildAgent:
             by_id: dict[str, list[str]] = {}
             for pump in self.pumps:
                 by_id.setdefault(pump.id, []).append(pump.name)
-            shared = {pump_id: names for pump_id, names in by_id.items()
-                    if len(names) > 1}
+            shared = {
+                pump_id: names for pump_id, names in by_id.items() if len(names) > 1
+            }
             if shared:
                 raise ValueError(
                     "each DOF needs its own pump: "
@@ -433,8 +437,8 @@ class BuildAgent:
                 f"{source.dof}: DOF pump id {pump_for_dof[source.dof]}, "
                 f"flow source pump {source.pump}"
                 for source in self.sources
-                if source.dof in pump_for_dof and
-                    pump_for_dof[source.dof] != source.pump
+                if source.dof in pump_for_dof
+                and pump_for_dof[source.dof] != source.pump
             ]
             if mismatched:
                 raise ValueError(
@@ -451,8 +455,7 @@ class BuildAgent:
                 "they run at the same time, so each needs its own pump"
             )
 
-    def set_dofs(self,
-        pumps: Sequence[Pump]) -> None:
+    def set_dofs(self, pumps: Sequence[Pump]) -> None:
         # Normalized to a list regardless of what sequence type the caller
         # passed in (tuple, list, ...) -- from_config() always rebuilds
         # this as a list, so a hand-built and a config-rebuilt agent would
@@ -461,7 +464,8 @@ class BuildAgent:
         self.dofs = [_create_pump(pump) for pump in pumps]
         self._check_dof_source_alignment()
 
-    def set_xray_objectives(self,
+    def set_xray_objectives(
+        self,
         # Measurement
         max_retries: int = 10,
         retry_delay: float = 2.0,
@@ -480,9 +484,7 @@ class BuildAgent:
         #   "screen_and_record" -- gate runs and its data is also used for
         #                          evaluation (the "xray-uvvis" case).
         screening: Literal[
-            "unscreened",
-            "screen_only",
-            "screen_and_record"
+            "unscreened", "screen_only", "screen_and_record"
         ] = "screen_only",
         use_good_bad: bool = True,
         good_target: int = 2,
@@ -540,17 +542,20 @@ class BuildAgent:
         if objective_function not in _ALL_SCORING_NAMES:
             raise ValueError(f"Invalid objective function: {objective_function}")
         self.objective_function = objective_function
-        if objective_function == "cnn" and \
-            (cnn_dataset_path is None or cnn_weights_path is None):
+        if objective_function == "cnn" and (
+            cnn_dataset_path is None or cnn_weights_path is None
+        ):
             raise ValueError(
                 "objective_function='cnn' requires \
                 cnn_dataset_path and cnn_weights_path"
             )
         # Stored as str so to_config() stays JSON-serializable.
-        self.cnn_dataset_path = None if cnn_dataset_path is None \
-            else str(cnn_dataset_path)
-        self.cnn_weights_path = None if cnn_weights_path is None \
-            else str(cnn_weights_path)
+        self.cnn_dataset_path = (
+            None if cnn_dataset_path is None else str(cnn_dataset_path)
+        )
+        self.cnn_weights_path = (
+            None if cnn_weights_path is None else str(cnn_weights_path)
+        )
 
         # Handle phases -- normalized to a list regardless of what sequence
         # type the caller passed in (see set_dofs's comment).
@@ -575,7 +580,8 @@ class BuildAgent:
         # _assemble_objectives(), which reads self.phases and all role/bound
         # fields set here and in set_uvvis_objectives().
 
-    def set_uvvis_objectives(self,
+    def set_uvvis_objectives(
+        self,
         # Objective Target
         peak_target: float = 450.0,
         peak_tolerance: float = 5.0,
@@ -619,8 +625,11 @@ class BuildAgent:
             absorbance_shots=num_abs,
             fluorescence_shots=num_flu,
         )
-        for name, value in (("max_fwhm_nm", max_fwhm_nm), ("min_plqy", min_plqy),
-                            ("max_peak_distance_nm", max_peak_distance_nm)):
+        for name, value in (
+            ("max_fwhm_nm", max_fwhm_nm),
+            ("min_plqy", min_plqy),
+            ("max_peak_distance_nm", max_peak_distance_nm),
+        ):
             if value is not None and not value > 0:
                 raise ValueError(f"{name} must be positive, got {value}")
 
@@ -837,10 +846,12 @@ class BuildAgent:
         """
         peak = IMetric(name="Peak")
         return (
-            OutcomeConstraint(f"p >= {self.peak_target - self.peak_tolerance:g}",
-                p=peak),
-            OutcomeConstraint(f"p <= {self.peak_target + self.peak_tolerance:g}",
-                p=peak),
+            OutcomeConstraint(
+                f"p >= {self.peak_target - self.peak_tolerance:g}", p=peak
+            ),
+            OutcomeConstraint(
+                f"p <= {self.peak_target + self.peak_tolerance:g}", p=peak
+            ),
         )
 
     def _uvvis_objective_thresholds(self) -> tuple[OutcomeConstraint, ...]:
@@ -857,8 +868,13 @@ class BuildAgent:
         configs = (
             ("log_FWHM", "<=", self.max_fwhm_nm, np.log, self.fwhm_role),
             ("log_PLQY", ">=", self.min_plqy, np.log, self.plqy_role),
-            ("peak_distance", "<=", self.max_peak_distance_nm, float,
-                self.peak_distance_role),
+            (
+                "peak_distance",
+                "<=",
+                self.max_peak_distance_nm,
+                float,
+                self.peak_distance_role,
+            ),
         )
         result = []
         for metric, op, value, transform, _role in configs:
@@ -896,7 +912,7 @@ class BuildAgent:
         if needs_plqy:
             uvvis = (
                 *self._peak_outcome_constraints(),
-                *self._uvvis_objective_thresholds()
+                *self._uvvis_objective_thresholds(),
             )
 
         prefix = self._metric_prefix()
@@ -988,7 +1004,7 @@ class BuildAgent:
                 evaluator_kwargs["pdf_references"] = _write_pdf_references(
                     self.phases,
                     Path(directory),
-                    scoring_function=self.objective_function
+                    scoring_function=self.objective_function,
                 )
                 evaluator_kwargs["pdf_mode"] = self.pdf_mode
                 evaluator_kwargs["r_min"] = self.min_radius
@@ -1082,7 +1098,8 @@ class BuildAgent:
         if not self._is_moo_with_constraints(constraints):
             return
 
-        original_suggest = agent._optimizer.suggest
+        # Wraps bluesky-adaptive's optimizer, which exposes no public hook for this.
+        original_suggest = agent._optimizer.suggest  # noqa: SLF001
 
         def _guarded_suggest(num_points: int | None = None) -> Any:
             try:
@@ -1101,7 +1118,7 @@ class BuildAgent:
                         pass
                 raise
 
-        agent._optimizer.suggest = _guarded_suggest
+        agent._optimizer.suggest = _guarded_suggest  # noqa: SLF001
 
     def _acquisition_plan_kwargs(self) -> dict[str, Any]:
         """Build the config dicts the queueserver acquisition plans expect.
@@ -1148,7 +1165,9 @@ class BuildAgent:
             "syringe_list": [c.syringe_ml for c in wash_cycles],
             # Rate formatted as "NNN ul/min" to match the string the plan passes
             # to set_group_infuse2 — same unit as self.rate_unit.
-            "rate_list": [f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles],
+            "rate_list": [
+                f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles
+            ],
             # All cycles share the same duration; the queueserver WashConfig
             # has a single duration_sec scalar. Use the first cycle's value.
             "duration_sec": wash_cycles[0].duration_sec if wash_cycles else 60.0,
@@ -1179,8 +1198,10 @@ class BuildAgent:
         # xray_config — only for plans that touch the area detector
         # ------------------------------------------------------------------
         xray_plans = {"xray_acquire", "xray_screened_acquire", "xray_uvvis_acquire"}
-        if self._acquisition_plan_name() in xray_plans \
-            and self.xray_settings is not None:
+        if (
+            self._acquisition_plan_name() in xray_plans
+            and self.xray_settings is not None
+        ):
             xs = self.xray_settings
             kwargs["xray_config"] = {
                 "exposure": xs.exposure,
@@ -1216,6 +1237,7 @@ class BuildAgent:
             re_manager_api.set_authorization_key(api_key=self.http_api_key)
         else:
             import logging as _logging
+
             _logging.getLogger(__name__).warning(
                 "build(): no HTTP API key set.  "
                 "QSERVER_HTTP_SERVER_API_KEY is unset or was not forwarded by "
@@ -1456,10 +1478,14 @@ class BuildAgent:
         # Fall back to the stored config values so the JSON round-trip is the
         # single source of truth -- callers that don't override these get the
         # geometry they configured, not a silently hardcoded (30.0,)/1.0.
-        _mixer_lengths_cm = mixer_lengths_cm if mixer_lengths_cm \
-            is not None else self.mixer_lengths_cm
-        _residence_time_ratio = residence_time_ratio if residence_time_ratio \
-            is not None else self.residence_time_ratio
+        _mixer_lengths_cm = (
+            mixer_lengths_cm if mixer_lengths_cm is not None else self.mixer_lengths_cm
+        )
+        _residence_time_ratio = (
+            residence_time_ratio
+            if residence_time_ratio is not None
+            else self.residence_time_ratio
+        )
 
         plan_name = self._acquisition_plan_name()
 
@@ -1543,9 +1569,7 @@ class BuildAgent:
                 ),
                 "screening": self.screening,
                 "quality_policy": (
-                    None
-                    if self.quality_policy is None
-                    else asdict(self.quality_policy)
+                    None if self.quality_policy is None else asdict(self.quality_policy)
                 ),
                 "objective_function": self.objective_function,
                 "min_radius": self.min_radius,
@@ -1577,9 +1601,7 @@ class BuildAgent:
                 # Serialized here (not only in the xray block) so UV-Vis-only
                 # campaigns preserve the PL quality gate across config reload.
                 "quality_policy": (
-                    None
-                    if self.quality_policy is None
-                    else asdict(self.quality_policy)
+                    None if self.quality_policy is None else asdict(self.quality_policy)
                 ),
             },
             "run": asdict(self.run_settings),
@@ -1588,7 +1610,7 @@ class BuildAgent:
             return _json
 
         else:
-            with open(filename, 'w', encoding='utf-8') as f:
+            with open(filename, "w", encoding="utf-8") as f:
                 json.dump(_json, f, ensure_ascii=False, indent=4)
 
     @classmethod

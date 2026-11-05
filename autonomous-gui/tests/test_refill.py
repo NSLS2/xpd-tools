@@ -3,12 +3,11 @@
 import json
 
 from fastapi.testclient import TestClient
-
 from xpd_autonomous_gui.server import Session, _simulation_options, create_app
 
 
 def test_refill_then_continue(make_config, tmp_path, wait_for) -> None:
-    """A short syringe stops the campaign; Refilled clears its counter and finishes it."""
+    """A short syringe stops the campaign; Refilled clears its counter and finishes."""
     path = make_config(iterations=3)
     config = json.loads(path.read_text())
     config["experiment"]["sources"][0]["loaded_ml"] = 3.0  # 2 mL usable (1 mL reserve)
@@ -24,7 +23,9 @@ def test_refill_then_continue(make_config, tmp_path, wait_for) -> None:
     state = wait_for(client, {"refill", "failed", "finished"})
     assert state["status"] == "refill", state["error"]
     assert state["refill"]["pumps"] == ["dds2_p1"]
-    assert state["refill"]["message"].startswith("Refill needed: dds2_p1 (CsPb) has 0.00 mL")
+    assert state["refill"]["message"].startswith(
+        "Refill needed: dds2_p1 (CsPb) has 0.00 mL"
+    )
     assert state["remaining"] == 3
     # Run would start over; the refill has to be acknowledged (or cleared) first.
     assert client.post("/api/run").status_code == 409
@@ -51,7 +52,9 @@ def test_old_config_shows_loaded_ml(make_config, client_for) -> None:
     del config["experiment"]["sources"][0]["reserve_ml"]
     path.write_text(json.dumps(config))
 
-    source = client_for(path).get("/api/state").json()["config"]["experiment"]["sources"][0]
+    source = (
+        client_for(path).get("/api/state").json()["config"]["experiment"]["sources"][0]
+    )
     assert (source["loaded_ml"], source["reserve_ml"]) == (None, 1.0)
 
 
@@ -61,7 +64,11 @@ def test_state_lists_fixed_choices(make_config, client_for) -> None:
     assert "pearson" in choices["xray.objective_function"]
     assert choices["evaluation_method"] == ["uvvis", "xray", "xray-uvvis"]
     assert choices["pdf_mode"] == ["raw", "fit", "raw_tracked"]
-    assert choices["xray.screening"] == ["unscreened", "screen_only", "screen_and_record"]
+    assert choices["xray.screening"] == [
+        "unscreened",
+        "screen_only",
+        "screen_and_record",
+    ]
 
 
 def test_simulation_presets_come_from_the_config(make_config, client_for) -> None:
@@ -91,7 +98,9 @@ def test_uvvis_only_simulation_uses_the_configs_dof_for_phase() -> None:
     simulated = {"dof_for_phase": {"CsPbBr3": "infusion_rate_Br", "CsPbI3": None}}
     config = {
         "evaluation_method": "uvvis",
-        "experiment": {"sources": [{"dof": "infusion_rate_Br"}, {"dof": "infusion_rate_I"}]},
+        "experiment": {
+            "sources": [{"dof": "infusion_rate_Br"}, {"dof": "infusion_rate_I"}]
+        },
         "run": {"local": {"simulated": simulated}},
     }
     presets, choices = _simulation_options(config)
@@ -116,7 +125,10 @@ def test_success_criteria_options_apply(make_config, client_for) -> None:
         "Maximum FWHM and minimum PLQY",
     ]
 
-    config = {**state["config"], "success_criteria": {"min_correlation": 0.8, "poll_interval": 5}}
+    config = {
+        **state["config"],
+        "success_criteria": {"min_correlation": 0.8, "poll_interval": 5},
+    }
     applied = client.put("/api/config", json=config)
     assert applied.status_code == 200, applied.json()
     assert client.post("/api/build").status_code == 200
@@ -143,12 +155,18 @@ def test_rebuild_drops_a_pending_refill(make_config, tmp_path, wait_for) -> None
     assert wait_for(client, {"refill", "failed", "finished"})["status"] == "refill"
 
     rebuilt = client.post("/api/build").json()  # fresh devices: counters at 0
-    assert (rebuilt["status"], rebuilt["refill"], rebuilt["remaining"]) == ("built", None, None)
+    assert (rebuilt["status"], rebuilt["refill"], rebuilt["remaining"]) == (
+        "built",
+        None,
+        None,
+    )
     assert client.post("/api/run").status_code == 200
     assert wait_for(client, {"refill", "failed", "finished"})["status"] == "finished"
 
 
-def test_state_says_building_while_build_runs(make_config, client_for, monkeypatch) -> None:
+def test_state_says_building_while_build_runs(
+    make_config, client_for, monkeypatch
+) -> None:
     """Other pages and tabs see a Build in progress (actions wait for it)."""
     import threading
 
@@ -174,7 +192,10 @@ def test_state_says_building_while_build_runs(make_config, client_for, monkeypat
 
 
 def test_queue_server_refill_clears_counters_there(make_config, tmp_path) -> None:
-    """Queue-server mode: blop's error text is recognised; Refilled asks the worker to clear."""
+    """Queue-server mode: blop's error text is recognised.
+
+    Refilled asks the worker to clear.
+    """
     from concurrent.futures import Future
     from unittest.mock import MagicMock, patch
 
@@ -190,24 +211,35 @@ def test_queue_server_refill_clears_counters_there(make_config, tmp_path) -> Non
 
     agent = MagicMock()
     agent.run.side_effect = run
-    agent.ax_client.summarize.return_value = pd.DataFrame({"trial_status": ["COMPLETED"]})
+    agent.ax_client.summarize.return_value = pd.DataFrame(
+        {"trial_status": ["COMPLETED"]}
+    )
     session.agent = session.stopper = agent
     session.status = "built"
     session.run()
 
     # As blop's QueueserverOptimizationRunner reports a failed acquisition run.
-    futures[0].set_exception(RuntimeError(
-        "Acquisition run 'abc' ended with status 'fail': RefillRequired('Refill needed: "
-        "dds2_p1 (CsPb) has 0.10 mL left, next trial needs ~0.34 mL. pumps to refill: dds2_p1')"
-    ))
+    futures[0].set_exception(
+        RuntimeError(
+            "Acquisition run 'abc' ended with status 'fail': "
+            "RefillRequired('Refill needed: "
+            "dds2_p1 (CsPb) has 0.10 mL left, next trial needs ~0.34 mL. "
+            "pumps to refill: dds2_p1')"
+        )
+    )
     assert session.status == "refill"
     assert session.refill["pumps"] == ["dds2_p1"]
-    assert session.refill["message"].startswith("Refill needed: dds2_p1 (CsPb) has 0.10 mL")
+    assert session.refill["message"].startswith(
+        "Refill needed: dds2_p1 (CsPb) has 0.10 mL"
+    )
 
     with patch("bluesky_queueserver_api.http.REManagerAPI") as api_class:
         session.refilled()
     plan = api_class.return_value.item_execute.call_args.args[0]
-    assert (plan.to_dict()["name"], plan.to_dict()["args"]) == ("clear_infused_volumes", [["dds2_p1"]])
+    assert (plan.to_dict()["name"], plan.to_dict()["args"]) == (
+        "clear_infused_volumes",
+        [["dds2_p1"]],
+    )
     api_class.return_value.wait_for_idle.assert_called_once()
     assert agent.run.call_args.kwargs["iterations"] == 3  # nothing completed yet
     assert session.status == "running"

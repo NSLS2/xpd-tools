@@ -10,8 +10,8 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from bluesky_adaptive.ax.agent import Agent
 from bluesky.run_engine import RunEngine
+from bluesky_adaptive.ax.agent import Agent
 
 from xpd_tools.optimization.agent import BuildAgent, _load_historical_data
 from xpd_tools.optimization.helpers.dofs import Pump
@@ -108,9 +108,7 @@ class TestDofSourceAlignment:
         """
         agent = BuildAgent(evaluation_method="xray")
         agent.set_dofs((_pump(),))
-        agent.experiment(
-            sources=(_source(),), dilutions=(), wash_cycles=()
-        )
+        agent.experiment(sources=(_source(),), dilutions=(), wash_cycles=())
         assert isinstance(agent.pumps, list)
         assert isinstance(agent.sources, list)
         assert isinstance(agent.dilutions, list)
@@ -236,7 +234,9 @@ class TestXrayObjectives:
     ) -> None:
         agent = BuildAgent(evaluation_method="xray")
         with pytest.raises(ValueError, match="cnn_dataset_path and cnn_weights_path"):
-            agent.set_xray_objectives(objective_function="cnn", phases=[phase_factory()])
+            agent.set_xray_objectives(
+                objective_function="cnn", phases=[phase_factory()]
+            )
 
     def test_cnn_paths_reach_evaluator_and_round_trip(
         self, phase_factory: Callable[..., Phase]
@@ -363,15 +363,23 @@ class TestPeakOutcomeConstraints:
         """Ax turns constraints on objective metrics into objective thresholds."""
         agent = _uvvis_agent()
         agent.set_uvvis_objectives(
-            peak_target=650, peak_tolerance=4, plqy=PlqyReference(),
-            max_fwhm_nm=60.0, min_plqy=1e-3, max_peak_distance_nm=50.0,
+            peak_target=650,
+            peak_tolerance=4,
+            plqy=PlqyReference(),
+            max_fwhm_nm=60.0,
+            min_plqy=1e-3,
+            max_peak_distance_nm=50.0,
         )
         thresholds = [str(c) for c in agent._uvvis_objective_thresholds()]
         assert thresholds == [
-            "log_FWHM <= 4.09434", "log_PLQY >= -6.90776", "peak_distance <= 50"
+            "log_FWHM <= 4.09434",
+            "log_PLQY >= -6.90776",
+            "peak_distance <= 50",
         ]
         assert [str(c) for c in agent._outcome_constraints(needs_plqy=True)] == [
-            "Peak >= 646", "Peak <= 654", *thresholds
+            "Peak >= 646",
+            "Peak <= 654",
+            *thresholds,
         ]
 
     def test_objective_thresholds_default_to_none_and_must_be_positive(self) -> None:
@@ -424,9 +432,7 @@ class TestLoadHistoricalData:
         path = tmp_path / "history.csv"
         path.write_text("infusion_rate_CsPb\n50.0\n")
         with pytest.raises(ValueError, match="missing columns: infusion_rate_Br"):
-            _load_historical_data(
-                path, ["infusion_rate_CsPb", "infusion_rate_Br"], []
-            )
+            _load_historical_data(path, ["infusion_rate_CsPb", "infusion_rate_Br"], [])
 
     def test_optional_column_included_when_present(self, tmp_path: Path) -> None:
         path = tmp_path / "history.csv"
@@ -462,7 +468,9 @@ class TestLoadHistoricalData:
         )
         assert rows == [{"infusion_rate_CsPb": 50.0, "log_FWHM": 3.1, "log_PLQY": 0.5}]
 
-    def test_peak_distance_recomputed_from_peak_and_target(self, tmp_path: Path) -> None:
+    def test_peak_distance_recomputed_from_peak_and_target(
+        self, tmp_path: Path
+    ) -> None:
         """A saved peak_distance is relative to the target it was exported with;
         the current target wins."""
         path = tmp_path / "history.csv"
@@ -474,7 +482,9 @@ class TestLoadHistoricalData:
             optional_names=("Peak",),
             peak_target=450.0,
         )
-        assert rows == [{"infusion_rate_CsPb": 50.0, "peak_distance": 10.0, "Peak": 460.0}]
+        assert rows == [
+            {"infusion_rate_CsPb": 50.0, "peak_distance": 10.0, "Peak": 460.0}
+        ]
 
     def test_peak_distance_kept_without_a_target(self, tmp_path: Path) -> None:
         path = tmp_path / "history.csv"
@@ -514,7 +524,9 @@ class TestLoadHistoricalData:
         """A DOF column present only in the header (e.g. a pump the old runs never
         had) empties every row: that's a data/config mismatch, so fail loudly."""
         path = tmp_path / "history.csv"
-        path.write_text("infusion_rate_CsPb,log_FWHM,infusion_rate_I\n50.0,3.1\n60.0,3.0\n")
+        path.write_text(
+            "infusion_rate_CsPb,log_FWHM,infusion_rate_I\n50.0,3.1\n60.0,3.0\n"
+        )
         with pytest.raises(
             ValueError, match=r"every one of 2 .*\(infusion_rate_I: 2\)"
         ):
@@ -612,7 +624,9 @@ class TestConfigRoundTrip:
             min_plqy=1e-3,
             max_peak_distance_nm=50.0,
         )
-        agent.set_success_criteria(min_correlation=0.9, max_fwhm=30.0, min_plqy=0.5, poll_interval=2.0)
+        agent.set_success_criteria(
+            min_correlation=0.9, max_fwhm=30.0, min_plqy=0.5, poll_interval=2.0
+        )
         agent.set_run(
             iterations=12,
             extra_initialization_trials=5,
@@ -620,12 +634,17 @@ class TestConfigRoundTrip:
             local={
                 "mixer_lengths_cm": (0.0, 5.0),
                 "residence_time_ratio": 0.5,
-                "simulated": {"dof_for_phase": {"A": "infusion_rate_CsPb"}, "noise_level": 0.01},
+                "simulated": {
+                    "dof_for_phase": {"A": "infusion_rate_CsPb"},
+                    "noise_level": 0.01,
+                },
             },
         )
         return agent
 
-    def test_to_config_excludes_api_key(self, phase_factory: Callable[..., Phase]) -> None:
+    def test_to_config_excludes_api_key(
+        self, phase_factory: Callable[..., Phase]
+    ) -> None:
         agent = self._full_agent(phase_factory())
         agent.http_api_key = "TOP-SECRET"
         text = json.dumps(agent.to_config())
@@ -711,7 +730,9 @@ class TestBuildEndToEnd:
     def test_xray_succeeds(
         self, phase_factory: Callable[..., Phase], mocked_queueserver: None
     ) -> None:
-        agent = BuildAgent(evaluation_method="xray", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="xray", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_xray_objectives(
@@ -747,7 +768,9 @@ class TestBuildEndToEnd:
         be stored -- see the objective_function dead-wiring bug found in
         review (fixed by threading it through _write_pdf_references).
         """
-        agent = BuildAgent(evaluation_method="xray", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="xray", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_xray_objectives(
@@ -764,7 +787,9 @@ class TestBuildEndToEnd:
     def test_xray_screen_only_succeeds(
         self, phase_factory: Callable[..., Phase], mocked_queueserver: None
     ) -> None:
-        agent = BuildAgent(evaluation_method="xray", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="xray", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_xray_objectives(screening="screen_only", phases=[phase_factory()])
@@ -971,9 +996,15 @@ class TestRunSettings:
             extra_initialization_trials=5,
             generation_strategy={"allow_exceeding_initialization_budget": True},
         )
-        assert agent.configure_generation_strategy(SimpleNamespace(ax_client=client)) == 154
+        assert (
+            agent.configure_generation_strategy(SimpleNamespace(ax_client=client))
+            == 154
+        )
         assert calls == [
-            {"allow_exceeding_initialization_budget": True, "initialization_budget": 159}
+            {
+                "allow_exceeding_initialization_budget": True,
+                "initialization_budget": 159,
+            }
         ]
 
     def test_configure_generation_strategy_leaves_ax_defaults_when_unset(self) -> None:
@@ -983,9 +1014,10 @@ class TestRunSettings:
             configure_generation_strategy=lambda **kwargs: calls.append(kwargs),
         )
         agent = BuildAgent(evaluation_method="uvvis")
-        assert agent.configure_generation_strategy(SimpleNamespace(ax_client=client)) == 0
+        assert (
+            agent.configure_generation_strategy(SimpleNamespace(ax_client=client)) == 0
+        )
         assert calls == []
-
 
 
 def test_old_config_with_phase_simulated_still_loads(
@@ -1001,40 +1033,71 @@ def test_old_config_with_phase_simulated_still_loads(
 
 
 class TestPumpIds:
-    """Each DOF drives its own pump, matching its flow source's; sources aren't dilutions."""
+    """Each DOF drives the pump of its flow source; sources aren't dilutions."""
 
     @staticmethod
-    def _agent(pumps: list[tuple[str, str]], sources: list[tuple[str, str]], dilution=None):
+    def _agent(
+        pumps: list[tuple[str, str]], sources: list[tuple[str, str]], dilution=None
+    ):
         agent = BuildAgent(evaluation_method="uvvis", queue_server=False)
-        agent.set_dofs([Pump(name=name, id=pump_id, bounds=(0, 200)) for name, pump_id in pumps])
+        agent.set_dofs(
+            [Pump(name=name, id=pump_id, bounds=(0, 200)) for name, pump_id in pumps]
+        )
         agent.experiment(
             sources=[
-                FlowSource(dof=f"infusion_rate_{name}", pump=pump, precursor=name, sample_label=name)
+                FlowSource(
+                    dof=f"infusion_rate_{name}",
+                    pump=pump,
+                    precursor=name,
+                    sample_label=name,
+                )
                 for name, pump in sources
             ],
             dilutions=[
-                DilutionStage(pump=dilution, ratio=1.0, position="before_equilibrium",
-                              syringe_ml=20, material="plastic_BD", target_ml=20)
-            ] if dilution else None,
+                DilutionStage(
+                    pump=dilution,
+                    ratio=1.0,
+                    position="before_equilibrium",
+                    syringe_ml=20,
+                    material="plastic_BD",
+                    target_ml=20,
+                )
+            ]
+            if dilution
+            else None,
         )
         return agent
 
     def test_valid_setup_passes(self) -> None:
-        self._agent([("Br", "dds2_p2"), ("I", "dds3_p2")], [("Br", "dds2_p2"), ("I", "dds3_p2")], "dds1_p1")
+        self._agent(
+            [("Br", "dds2_p2"), ("I", "dds3_p2")],
+            [("Br", "dds2_p2"), ("I", "dds3_p2")],
+            "dds1_p1",
+        )
 
     def test_duplicate_pump_id_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="pump id dds2_p2 is used by DOFs Br, I"):
             BuildAgent(evaluation_method="uvvis", queue_server=False).set_dofs(
-                [Pump(name="Br", id="dds2_p2", bounds=(0, 200)),
-                 Pump(name="I", id="dds2_p2", bounds=(0, 200))]
+                [
+                    Pump(name="Br", id="dds2_p2", bounds=(0, 200)),
+                    Pump(name="I", id="dds2_p2", bounds=(0, 200)),
+                ]
             )
 
     def test_dof_pump_must_match_its_source(self) -> None:
-        with pytest.raises(ValueError, match="infusion_rate_I: DOF pump id dds3_p2, flow source pump dds3_p1"):
-            self._agent([("Br", "dds2_p2"), ("I", "dds3_p2")], [("Br", "dds2_p2"), ("I", "dds3_p1")])
+        with pytest.raises(
+            ValueError,
+            match="infusion_rate_I: DOF pump id dds3_p2, flow source pump dds3_p1",
+        ):
+            self._agent(
+                [("Br", "dds2_p2"), ("I", "dds3_p2")],
+                [("Br", "dds2_p2"), ("I", "dds3_p1")],
+            )
 
     def test_source_cannot_also_be_a_dilution(self) -> None:
-        with pytest.raises(ValueError, match="pump dds2_p2 is both a flow source and a dilution"):
+        with pytest.raises(
+            ValueError, match="pump dds2_p2 is both a flow source and a dilution"
+        ):
             self._agent([("Br", "dds2_p2")], [("Br", "dds2_p2")], "dds2_p2")
 
 
@@ -1051,7 +1114,16 @@ def test_extra_initialization_trials_must_be_a_whole_number(extra: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    "bounds", [(300, 200), (10, 10), (-5, 200), (0, float("inf")), (0,), (0, 100, 200), (0, "200")]
+    "bounds",
+    [
+        (300, 200),
+        (10, 10),
+        (-5, 200),
+        (0, float("inf")),
+        (0,),
+        (0, 100, 200),
+        (0, "200"),
+    ],
 )
 def test_pump_bounds_must_be_an_increasing_pair_of_rates(bounds: Any) -> None:
     with pytest.raises(ValueError, match="bounds must be"):
@@ -1093,7 +1165,9 @@ class TestAcquisitionPlanKwargs:
     def _uvvis_agent_full(self) -> BuildAgent:
         from xpd_tools.optimization.helpers.qepro import QualityPolicy
 
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump("CsPb"), _pump("Br", bounds=(10, 300))])
         agent.experiment(
             sources=[_source("CsPb"), _source("Br")],
@@ -1104,8 +1178,11 @@ class TestAcquisitionPlanKwargs:
         )
         agent.set_uvvis_objectives(plqy=PlqyReference())
         agent.quality_policy = QualityPolicy(
-            enabled=True, good_batches=5, max_bad_batches=2,
-            absorbance_shots=8, fluorescence_shots=12,
+            enabled=True,
+            good_batches=5,
+            max_bad_batches=2,
+            absorbance_shots=8,
+            fluorescence_shots=12,
         )
         return agent
 
@@ -1159,13 +1236,20 @@ class TestAcquisitionPlanKwargs:
         agent = self._uvvis_agent_full()
         assert "xray_config" not in agent._acquisition_plan_kwargs()
 
-    def test_xray_config_emitted_for_xray_plan(self, phase_factory: Callable[..., Phase]) -> None:
-        agent = BuildAgent(evaluation_method="xray", http_server_uri="https://example.invalid")
+    def test_xray_config_emitted_for_xray_plan(
+        self, phase_factory: Callable[..., Phase]
+    ) -> None:
+        agent = BuildAgent(
+            evaluation_method="xray", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_xray_objectives(
-            exposure=300.0, frame_acq_time=1.5, no_dark=True,
-            stream_name="scattering", screening="unscreened",
+            exposure=300.0,
+            frame_acq_time=1.5,
+            no_dark=True,
+            stream_name="scattering",
+            screening="unscreened",
             phases=[phase_factory()],
         )
         xc = agent._acquisition_plan_kwargs()["xray_config"]
@@ -1175,7 +1259,9 @@ class TestAcquisitionPlanKwargs:
         assert xc["stream_name"] == "scattering"
 
     def test_do_wash_false_when_no_wash_cycles(self) -> None:
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()], wash_cycles=[])
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1184,7 +1270,9 @@ class TestAcquisitionPlanKwargs:
         assert wc["pump_names"] == []
 
     def test_post_dilute_true_when_dilutions_present(self) -> None:
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()], dilutions=[_dilution("dds1_p1")])
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1195,7 +1283,9 @@ class TestAcquisitionPlanKwargs:
         assert fc["post_dilute_wait_sec"] == 30.0
 
     def test_quality_config_disabled_when_no_quality_policy(self) -> None:
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1204,7 +1294,9 @@ class TestAcquisitionPlanKwargs:
         assert qc["use_good_bad"] is False
 
     def test_flow_geometry_fields_round_trip_through_config(self) -> None:
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(
             sources=[_source()],
@@ -1232,7 +1324,9 @@ class TestAcquisitionPlanKwargs:
     def test_old_config_without_flow_geometry_loads_with_defaults(self) -> None:
         """Configs saved before rate_unit/mixer_lengths_cm/residence_time_ratio existed
         must still load and produce the DEFAULT_FLOW_CONFIG-compatible defaults."""
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1266,13 +1360,16 @@ class TestAcquisitionPlanKwargs:
         captured: list[dict] = []
 
         import xpd_tools.optimization.agent as _agent_mod
+
         original_cls = _agent_mod.QueueserverAgent  # already a Mock from fixture
 
         def _capturing_init(*args: Any, **kwargs: Any) -> Any:
             captured.append(kwargs)
             return original_cls(*args, **kwargs)
 
-        with patch("xpd_tools.optimization.agent.QueueserverAgent", side_effect=_capturing_init):
+        with patch(
+            "xpd_tools.optimization.agent.QueueserverAgent", side_effect=_capturing_init
+        ):
             agent.build()
 
         assert captured, "QueueserverAgent was never called"
@@ -1297,7 +1394,9 @@ class TestAcquisitionPlanKwargs:
 
     def test_tubing_id_round_trips_through_config(self) -> None:
         """tubing_id_mm must survive a to_config/from_config round-trip."""
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()], tubing_id_mm=0.8)
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1309,8 +1408,10 @@ class TestAcquisitionPlanKwargs:
         assert rebuilt.tubing_id_mm == 0.8
 
     def test_old_config_without_tubing_id_loads_with_default(self) -> None:
-        """Configs saved before tubing_id_mm existed must reload with the 1.016 mm default."""
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        """Configs saved before tubing_id_mm reload with the 1.016 mm default."""
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_uvvis_objectives(plqy=PlqyReference())
@@ -1327,7 +1428,9 @@ class TestAcquisitionPlanKwargs:
         Previously quality_policy was only serialized in the xray block, so a
         UV-Vis-only reload silently disabled the quality gate.
         """
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
         agent.set_uvvis_objectives(
@@ -1353,11 +1456,14 @@ class TestAcquisitionPlanKwargs:
         assert rebuilt.quality_policy.absorbance_shots == 8
         assert rebuilt.quality_policy.fluorescence_shots == 12
 
-    def test_register_acquisition_plans_uses_stored_geometry(self, mocked_queueserver: None) -> None:
+    def test_register_acquisition_plans_uses_stored_geometry(
+        self, mocked_queueserver: None
+    ) -> None:
         """register_acquisition_plans must use stored mixer/residence_time/tubing_id,
         not the old hardcoded (30.0,)/1.0/1.016 defaults.
         """
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
+
         from xpd_tools.optimization.helpers.beamline import UvvisPlanContext
 
         agent = self._uvvis_agent_full()
@@ -1383,6 +1489,7 @@ class TestAcquisitionPlanKwargs:
         captured_contexts: list[UvvisPlanContext] = []
 
         import xpd_tools.optimization.agent as _agent_mod
+
         real_create = _agent_mod.create_uvvis_plan
 
         def _capture(ctx: UvvisPlanContext):
@@ -1409,15 +1516,19 @@ class TestAcquisitionPlanKwargs:
         """register_acquisition_plans must raise if rate_unit != 'ul/min'."""
         from unittest.mock import MagicMock
 
-        agent = BuildAgent(evaluation_method="uvvis", http_server_uri="https://example.invalid")
+        agent = BuildAgent(
+            evaluation_method="uvvis", http_server_uri="https://example.invalid"
+        )
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()], rate_unit="ml/min")
         agent.set_uvvis_objectives(plqy=PlqyReference())
 
         fake_devices = {
             "dds-CsPb": MagicMock(),
-            "qepro": MagicMock(), "led": MagicMock(),
-            "uv_shutter": MagicMock(), "fast_shutter": MagicMock(),
+            "qepro": MagicMock(),
+            "led": MagicMock(),
+            "uv_shutter": MagicMock(),
+            "fast_shutter": MagicMock(),
         }
         with pytest.raises(ValueError, match="rate_unit must be 'ul/min'"):
             agent.register_acquisition_plans(fake_devices)

@@ -36,7 +36,8 @@ def classify_pl(
         - height: The minimum height of a peak to be considered a peak.
         - distance: The minimum distance between peaks to be considered separate peaks.
 
-    Returns:
+    Returns
+    -------
         - has_peak: bool - Whether the spectrum has a strong non-LED peak.
         - wavelength: float - The wavelength of the strong non-LED peak.
     """
@@ -67,7 +68,8 @@ def _prepare_spectra(
         - wavelength: The wavelength values of the spectrum.
         - spectra: The intensity values of the spectrum.
 
-    Returns:
+    Returns
+    -------
         - The wavelength and spectra values
     """
     values = np.asarray(spectra, dtype=float)
@@ -110,7 +112,8 @@ def _select_spectra(
         - percent_range: The percent range to use for fitting.
         - weighted: Whether to use weighted fitting.
 
-    Returns:
+    Returns
+    -------
         - A boolean mask indicating which spectra are selected.
     """
     low_wavelength, high_wavelength = wavelength_range
@@ -162,7 +165,8 @@ def _fit_pl_spectrum(
         - maxfev: The maximum number of function evaluations for the fit.
         - r2_window_sigma: The sigma value for the R-squared window.
 
-    Returns:
+    Returns
+    -------
         - The fitted peak parameters (peak, fwhm, pl_integral, r-squared).
     """
     low, high = wavelength_range
@@ -259,7 +263,8 @@ def analyze_pl_spectra(
         - maxfev: The maximum number of function evaluations for the fit.
         - r2_window_sigma: The sigma value for the R-squared window.
 
-    Returns:
+    Returns
+    -------
         - The fitted peak parameters (peak, fwhm, pl_integral, r-squared), or None if
           no valid spectra or strong non-LED peak.
     """
@@ -326,15 +331,16 @@ def _fit_baseline(
         - absorbance: The absorbance values of the spectrum.
         - wavelength_range: The wavelength range to use for fitting.
 
-    Returns:
+    Returns
+    -------
         - coefficients: The coefficients of the fitted baseline.
     """
     start = _nearest_index(wavelength, wavelength_range[0])
     stop = _nearest_index(wavelength, wavelength_range[1])
     if start > stop:
         start, stop = stop, start
-    x = wavelength[start:stop+1]
-    y = absorbance[start:stop+1]
+    x = wavelength[start : stop + 1]
+    y = absorbance[start : stop + 1]
     if x.size < 2 or x[0] == x[-1]:
         raise ValueError("absorbance baseline range must contain two samples")
     return np.asarray(np.polyfit(x, y, 1), dtype=float)
@@ -356,7 +362,8 @@ def correct_absorbance(
         - percent_range: The percentile range to use for filtering.
         - wavelength_range: The wavelength range to use for filtering.
 
-    Returns:
+    Returns
+    -------
         - x: The wavelength values of the filtered spectra.
         - corrected: The baseline-corrected absorbance values of the filtered spectra.
     """
@@ -405,7 +412,8 @@ def calculate_plqy(
         - refractive_index_reference: The refractive index of the reference.
         - plqy_reference: The PLQY value of the reference.
 
-    Returns:
+    Returns
+    -------
         - plqy: float - The calculated PLQY value relative to the reference.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -449,7 +457,8 @@ def pdf_profile(
         - r_max: The maximum radial value to consider.
         - function: The scoring function to use.
 
-    Returns:
+    Returns
+    -------
         - score: float - The similarity/dissimilarity score of the reference PDF profile
           against the experimental radial grid.
     """

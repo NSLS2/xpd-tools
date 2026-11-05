@@ -76,7 +76,9 @@ def test_watch_and_stop_requires_configured_criteria() -> None:
         phases=[Phase(name="Wanted", gr="a.gr", cif="a.cif", minimize=False)]
     )
     with pytest.raises(ValueError, match="set_success_criteria"):
-        watch_and_stop(_FakeAgent(_FakeAxClient([pd.DataFrame()])), _FakeFuture(), agent)
+        watch_and_stop(
+            _FakeAgent(_FakeAxClient([pd.DataFrame()])), _FakeFuture(), agent
+        )
 
 
 def test_watch_and_stop_stops_on_correlation_threshold() -> None:

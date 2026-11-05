@@ -55,6 +55,7 @@ def _rate_unit_converter(r0: str = "ul/min", r1: str = "ul/min") -> float:
 # Harvard DDS pump
 # ---------------------------------------------------------------------------
 
+
 class SyrngDDS(Device):
     """Top-level DDS controller (communication enable/scan rate).
 
@@ -87,18 +88,10 @@ class SyrngDDSAxis(Device):
     pump_stop = Cpt(EpicsSignal, "STOP")
 
     target_vol = Cpt(EpicsSignal, "TVOLUME", kind="config")
-    target_vol_unit = Cpt(
-        EpicsSignal,
-        "TVOLUME:EGU",
-        string=True,
-        kind="config"
-    )
+    target_vol_unit = Cpt(EpicsSignal, "TVOLUME:EGU", string=True, kind="config")
     read_target_vol = Cpt(EpicsSignalRO, "TVOLUME:RBV", kind="config")
     read_target_vol_unit = Cpt(
-        EpicsSignalRO,
-        "TVOLUME:RBV:EGU",
-        string=True,
-        kind="config"
+        EpicsSignalRO, "TVOLUME:RBV:EGU", string=True, kind="config"
     )
 
     clear_infused = Cpt(EpicsSignal, "CIVOLUME")
@@ -110,33 +103,17 @@ class SyrngDDSAxis(Device):
     read_withdrawn_unit = Cpt(EpicsSignalRO, "WVOLUME:RBV:EGU", string=True)
 
     infuse_rate = Cpt(EpicsSignal, "IRATE", kind="hinted")
-    infuse_rate_unit = Cpt(
-        EpicsSignal,
-        "IRATE:EGU",
-        string=True,
-        kind="hinted"
-    )
+    infuse_rate_unit = Cpt(EpicsSignal, "IRATE:EGU", string=True, kind="hinted")
     withdraw_rate = Cpt(EpicsSignal, "WRATE", kind="hinted")
-    withdraw_rate_unit = Cpt(
-        EpicsSignal,
-        "WRATE:EGU",
-        string=True,
-        kind="hinted"
-    )
+    withdraw_rate_unit = Cpt(EpicsSignal, "WRATE:EGU", string=True, kind="hinted")
 
     read_infuse_rate = Cpt(EpicsSignalRO, "IRATE:RBV", kind="hinted")
     read_infuse_rate_unit = Cpt(
-        EpicsSignalRO,
-        "IRATE:RBV:EGU",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "IRATE:RBV:EGU", string=True, kind="hinted"
     )
     read_withdraw_rate = Cpt(EpicsSignalRO, "WRATE:RBV", kind="hinted")
     read_withdraw_rate_unit = Cpt(
-        EpicsSignalRO,
-        "WRATE:RBV:EGU",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "WRATE:RBV:EGU", string=True, kind="hinted"
     )
 
     max_infuse = Cpt(EpicsSignal, "IRATE:MAX", kind="hinted")
@@ -149,17 +126,11 @@ class SyrngDDSAxis(Device):
 
     read_max_infuse = Cpt(EpicsSignalRO, "IRATE:MAX:RBV", kind="hinted")
     read_max_infuse_unit = Cpt(
-        EpicsSignalRO,
-        "IRATE:MAX:RBV:EGU",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "IRATE:MAX:RBV:EGU", string=True, kind="hinted"
     )
     read_min_infuse = Cpt(EpicsSignalRO, "IRATE:MIN:RBV", kind="hinted")
     read_min_infuse_unit = Cpt(
-        EpicsSignalRO,
-        "IRATE:MIN:RBV:EGU",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "IRATE:MIN:RBV:EGU", string=True, kind="hinted"
     )
 
     target_time = Cpt(EpicsSignal, "TTIME", kind="hinted")
@@ -324,6 +295,7 @@ class SyrngDDSAxis(Device):
 # Harvard Ultra pump
 # ---------------------------------------------------------------------------
 
+
 class SyrngUltra(Device):
     """Harvard Ultra syringe pump.
 
@@ -334,35 +306,18 @@ class SyrngUltra(Device):
     """
 
     status = Cpt(EpicsSignalRO, "STATUS", string=True)
-    communication = Cpt(
-        EpicsSignal,
-        "DISABLE",
-        string=True,
-        kind="config"
-    )
-    update_pump = Cpt(
-        EpicsSignal,
-        "UPDATE.SCAN",
-        string=True,
-        kind="config")
+    communication = Cpt(EpicsSignal, "DISABLE", string=True, kind="config")
+    update_pump = Cpt(EpicsSignal, "UPDATE.SCAN", string=True, kind="config")
 
     pump_infuse = Cpt(EpicsSignal, "IRUN")
     pump_withdraw = Cpt(EpicsSignal, "WRUN")
     pump_stop = Cpt(EpicsSignal, "STOP")
 
     target_vol = Cpt(EpicsSignal, "TVOLUME", kind="config")
-    target_vol_unit = Cpt(
-        EpicsSignal,
-        "TVOLUMEUNITS",
-        string=True,
-        kind="config"
-    )
+    target_vol_unit = Cpt(EpicsSignal, "TVOLUMEUNITS", string=True, kind="config")
     read_target_vol = Cpt(EpicsSignalRO, "TVOLUME:RBV", kind="config")
     read_target_vol_unit = Cpt(
-        EpicsSignalRO,
-        "TVOLUMEUNITS:RBV",
-        string=True,
-        kind="config"
+        EpicsSignalRO, "TVOLUMEUNITS:RBV", string=True, kind="config"
     )
 
     clear_infused = Cpt(EpicsSignal, "CLEARINFUSED")
@@ -374,33 +329,17 @@ class SyrngUltra(Device):
     read_withdrawn_unit = Cpt(EpicsSignalRO, "WVOLUMEUNITS:RBV", string=True)
 
     infuse_rate = Cpt(EpicsSignal, "IRATE", kind="hinted")
-    infuse_rate_unit = Cpt(
-        EpicsSignal,
-        "IRATEUNITS",
-        string=True,
-        kind="hinted"
-    )
+    infuse_rate_unit = Cpt(EpicsSignal, "IRATEUNITS", string=True, kind="hinted")
     withdraw_rate = Cpt(EpicsSignal, "WRATE", kind="hinted")
-    withdraw_rate_unit = Cpt(
-        EpicsSignal,
-        "WRATEUNITS",
-        string=True,
-        kind="hinted"
-    )
+    withdraw_rate_unit = Cpt(EpicsSignal, "WRATEUNITS", string=True, kind="hinted")
 
     read_infuse_rate = Cpt(EpicsSignalRO, "IRATE:RBV", kind="hinted")
     read_infuse_rate_unit = Cpt(
-        EpicsSignalRO,
-        "IRATEUNITS:RBV",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "IRATEUNITS:RBV", string=True, kind="hinted"
     )
     read_withdraw_rate = Cpt(EpicsSignalRO, "WRATE:RBV", kind="hinted")
     read_withdraw_rate_unit = Cpt(
-        EpicsSignalRO,
-        "WRATEUNITS:RBV",
-        string=True,
-        kind="hinted"
+        EpicsSignalRO, "WRATEUNITS:RBV", string=True, kind="hinted"
     )
 
     target_time = Cpt(EpicsSignal, "TTIME", kind="hinted")

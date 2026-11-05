@@ -26,7 +26,8 @@ def _mask_and_interpolate(
         - r_max: Maximum r value for masking.
         - scorer: Name of the scorer calling this function.
 
-    Returns:
+    Returns
+    -------
         - r_slice: Masked r values.
         - g_slice: Masked G(r) values.
         - g_sim_i: Interpolated G(r) values.

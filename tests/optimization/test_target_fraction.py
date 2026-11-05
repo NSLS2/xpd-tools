@@ -8,7 +8,10 @@ import pandas as pd
 import pytest
 
 from xpd_tools.optimization.agent import BuildAgent, _load_historical_data
-from xpd_tools.optimization.helpers.pdf import _load_pdf_references, _raw_pdf_correlations
+from xpd_tools.optimization.helpers.pdf import (
+    _load_pdf_references,
+    _raw_pdf_correlations,
+)
 from xpd_tools.optimization.helpers.phases import Phase, _write_pdf_references
 
 
@@ -25,7 +28,9 @@ def test_cnn_reports_fraction_and_squared_distance(tmp_path: Path) -> None:
         Phase(name="CsPbBr3", gr="a.gr", cif="a.cif", target_fraction=0.6),
         Phase(name="Cs4PbBr6", gr="b.gr", cif="b.cif"),
     ]
-    refs = _load_pdf_references(_write_pdf_references(phases, tmp_path, scoring_function="cnn"))
+    refs = _load_pdf_references(
+        _write_pdf_references(phases, tmp_path, scoring_function="cnn")
+    )
     assert [p.target_fraction for p in refs] == [0.6, None]
 
     r = np.linspace(1, 30, 100)
@@ -52,10 +57,12 @@ def _cnn_agent(phases: list[Phase], fraction_mode: bool = True) -> BuildAgent:
 
 
 def test_fraction_mode_targets_with_constraints() -> None:
-    agent = _cnn_agent([
-        Phase(name="A", gr="", cif="", target_fraction=0.6, fraction_tolerance=0.1),
-        Phase(name="B", gr="", cif="", target_fraction=0.2),
-    ])
+    agent = _cnn_agent(
+        [
+            Phase(name="A", gr="", cif="", target_fraction=0.6, fraction_tolerance=0.1),
+            Phase(name="B", gr="", cif="", target_fraction=0.2),
+        ]
+    )
     assert [(o.name, o.minimize) for o in agent.objectives] == [
         ("frac_dist_A", True),
         ("frac_dist_B", True),
@@ -87,7 +94,9 @@ def test_without_fraction_mode_raw_fractions_are_optimized() -> None:
 )
 def test_fraction_mode_must_match_targets(target, fraction_mode, match) -> None:
     with pytest.raises(ValueError, match=match):
-        _cnn_agent([Phase(name="A", gr="", cif="", target_fraction=target)], fraction_mode)
+        _cnn_agent(
+            [Phase(name="A", gr="", cif="", target_fraction=target)], fraction_mode
+        )
 
 
 def test_fraction_mode_requires_cnn() -> None:
@@ -95,7 +104,9 @@ def test_fraction_mode_requires_cnn() -> None:
         BuildAgent(evaluation_method="xray").set_xray_objectives(fraction_mode=True)
 
 
-def test_cnn_history_recomputes_distance_and_ignores_correlations(tmp_path: Path) -> None:
+def test_cnn_history_recomputes_distance_and_ignores_correlations(
+    tmp_path: Path,
+) -> None:
     agent = _cnn_agent([Phase(name="A", gr="", cif="", target_fraction=0.6)])
     objectives = [o.name for o in agent.objectives]
     csv = tmp_path / "history.csv"
@@ -114,23 +125,48 @@ def test_cnn_history_recomputes_distance_and_ignores_correlations(tmp_path: Path
 @pytest.mark.parametrize(
     ("phase", "match"),
     [
-        ({"scoring_function": "pearson", "gr_path": "x.gr", "target_fraction": 0.5}, "requires scoring_function"),
+        (
+            {"scoring_function": "pearson", "gr_path": "x.gr", "target_fraction": 0.5},
+            "requires scoring_function",
+        ),
         ({"scoring_function": "cnn", "target_fraction": 1.5}, r"in \[0, 1\]"),
-        ({"scoring_function": "cnn", "target_fraction": 0.5, "minimize": True}, "own direction"),
+        (
+            {"scoring_function": "cnn", "target_fraction": 0.5, "minimize": True},
+            "own direction",
+        ),
     ],
 )
-def test_target_fraction_rejects_bad_config(tmp_path: Path, phase: dict, match: str) -> None:
+def test_target_fraction_rejects_bad_config(
+    tmp_path: Path, phase: dict, match: str
+) -> None:
     (tmp_path / "x.gr").write_text("1 0\n2 1\n")
     config = tmp_path / "c.json"
-    config.write_text(json.dumps({"schema_version": 1, "phases": [{"name": "A", "minimize": False, **phase}]}))
+    config.write_text(
+        json.dumps(
+            {"schema_version": 1, "phases": [{"name": "A", "minimize": False, **phase}]}
+        )
+    )
     with pytest.raises(ValueError, match=match):
         _load_pdf_references(config)
 
 
 def test_target_fractions_must_not_sum_above_one(tmp_path: Path) -> None:
     config = tmp_path / "c.json"
-    config.write_text(json.dumps({"schema_version": 1, "phases": [
-        {"name": n, "minimize": False, "scoring_function": "cnn", "target_fraction": 0.6} for n in "AB"
-    ]}))
+    config.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "phases": [
+                    {
+                        "name": n,
+                        "minimize": False,
+                        "scoring_function": "cnn",
+                        "target_fraction": 0.6,
+                    }
+                    for n in "AB"
+                ],
+            }
+        )
+    )
     with pytest.raises(ValueError, match="sum to 1.2"):
         _load_pdf_references(config)

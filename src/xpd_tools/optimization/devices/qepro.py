@@ -110,4 +110,4 @@ class QEPro(Device):
             return int(old_value) == 1 and int(value) == 0
 
         self.acquire.set(1)
-        return SubscriptionStatus(self.acquire._readback, acquisition_done)
+        return SubscriptionStatus(self.acquire._readback, acquisition_done)  # noqa: SLF001

@@ -67,6 +67,7 @@ def build_halide_devices(*, mock: bool = False) -> dict[str, Any]:
     """
     if mock:
         from xpd_tools.optimization.legacy.devices import build_xpd_objects
+
         return build_xpd_objects()
 
     dds1 = SyrngDDS(_DDS1_PREFIX, name="DDS1")
@@ -141,6 +142,7 @@ class ConnectionReport:
         self.liveness_detail: str = ""
 
     def __repr__(self) -> str:
+        """Summarize the connection state in one line."""
         if not self.connected:
             status = "FAIL"
         elif self.alive is False:
@@ -160,24 +162,28 @@ class ConnectionReport:
 # Pump device keys — both DDS axes and Ultra pumps share the same readback
 # attribute names (read_infused, read_withdrawn, read_infuse_rate, read_withdraw_rate).
 _PUMP_KEYS = {
-    "dds1_p1", "dds1_p2",
-    "dds2_p1", "dds2_p2",
-    "dds3_p1", "dds3_p2",
-    "ultra1",  "ultra2",
+    "dds1_p1",
+    "dds1_p2",
+    "dds2_p1",
+    "dds2_p2",
+    "dds3_p1",
+    "dds3_p2",
+    "ultra1",
+    "ultra2",
 }
 
 # EPICS alarm status code → human-readable name (subset most relevant to device comms)
 _EPICS_STAT: dict[int, str] = {
-    0:  "NO_ALARM",
-    1:  "READ",
-    2:  "WRITE",
-    3:  "HIHI",
-    4:  "HIGH",
-    5:  "LOLO",
-    6:  "LOW",
-    7:  "STATE",
-    8:  "COS",
-    9:  "COMM",
+    0: "NO_ALARM",
+    1: "READ",
+    2: "WRITE",
+    3: "HIHI",
+    4: "HIGH",
+    5: "LOLO",
+    6: "LOW",
+    7: "STATE",
+    8: "COS",
+    9: "COMM",
     10: "TIMEOUT",
     11: "HW_LIMIT",
     12: "CALC",
@@ -278,6 +284,7 @@ def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
         No liveness probe possible.  alive = None.
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     try:
@@ -285,15 +292,21 @@ def _check_liveness(key: str, device: Any, report: ConnectionReport) -> None:
             sig = getattr(device, _PUMP_LIVENESS_SIGNAL, None)
             if sig is None:
                 report.alive = None
-                report.liveness_detail = f"{_PUMP_LIVENESS_SIGNAL!r} attribute not found"
+                report.liveness_detail = (
+                    f"{_PUMP_LIVENESS_SIGNAL!r} attribute not found"
+                )
             else:
                 sevr = _epics_sevr(sig)
                 if sevr is None:
                     report.alive = None
-                    report.liveness_detail = f"{_PUMP_LIVENESS_SIGNAL}: alarm_severity unavailable"
+                    report.liveness_detail = (
+                        f"{_PUMP_LIVENESS_SIGNAL}: alarm_severity unavailable"
+                    )
                 else:
                     stat = _epics_stat(sig)
-                    stat_name = _EPICS_STAT.get(stat, str(stat)) if stat is not None else "?"
+                    stat_name = (
+                        _EPICS_STAT.get(stat, str(stat)) if stat is not None else "?"
+                    )
                     try:
                         val = sig.get()
                     except Exception:
@@ -389,11 +402,11 @@ def check_halide_connections(
         "dds2_p2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds3_p1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
         "dds3_p2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        "ultra1":  ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        "ultra2":  ["status", "read_infuse_rate", "read_infuse_rate_unit"],
-        "qepro":   ["x_axis", "output", "spectrum_type", "correction"],
-        "led":     [],
-        "uv_shutter":   [],
+        "ultra1": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
+        "ultra2": ["status", "read_infuse_rate", "read_infuse_rate_unit"],
+        "qepro": ["x_axis", "output", "spectrum_type", "correction"],
+        "led": [],
+        "uv_shutter": [],
         "fast_shutter": [],
     }
 
@@ -489,16 +502,72 @@ _EPICS_SEVR: dict[int, str] = {
 # Diagnostic PV attributes per device role — broader than the liveness probe.
 # These are read for the per-PV triage table only, never written.
 _DIAG_SIGNALS: dict[str, list[str]] = {
-    "dds1_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "dds1_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "dds2_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "dds2_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "dds3_p1":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "dds3_p2":    ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "ultra1":     ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "ultra2":     ["status", "read_infuse_rate", "read_infused", "read_withdrawn", "read_withdraw_rate", "read_target_vol"],
-    "qepro":      ["device_connected", "status", "status_msg", "x_axis", "output"],
-    "led":        [],   # bare EpicsSignal — handled separately
+    "dds1_p1": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "dds1_p2": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "dds2_p1": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "dds2_p2": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "dds3_p1": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "dds3_p2": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "ultra1": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "ultra2": [
+        "status",
+        "read_infuse_rate",
+        "read_infused",
+        "read_withdrawn",
+        "read_withdraw_rate",
+        "read_target_vol",
+    ],
+    "qepro": ["device_connected", "status", "status_msg", "x_axis", "output"],
+    "led": [],  # bare EpicsSignal — handled separately
     "uv_shutter": [],
     "fast_shutter": [],
 }
@@ -516,11 +585,15 @@ def _diag_one_signal(name: str, sig: Any) -> None:
 
     # Severity
     sevr_int = _epics_sevr(sig)
-    sevr_str = _EPICS_SEVR.get(sevr_int, str(sevr_int)) if sevr_int is not None else "n/a"
+    sevr_str = (
+        _EPICS_SEVR.get(sevr_int, str(sevr_int)) if sevr_int is not None else "n/a"
+    )
 
     # Status
     stat_int = _epics_stat(sig)
-    stat_str = _EPICS_STAT.get(stat_int, str(stat_int)) if stat_int is not None else "n/a"
+    stat_str = (
+        _EPICS_STAT.get(stat_int, str(stat_int)) if stat_int is not None else "n/a"
+    )
 
     # Timestamp age
     ts = getattr(sig, "timestamp", None)
@@ -538,7 +611,10 @@ def _diag_one_signal(name: str, sig: Any) -> None:
         val_repr = val_repr[:37] + "..."
 
     flag = "  ← INVALID" if sevr_int == 3 else ""
-    print(f"      {name:<28}  val={val_repr:<42}  SEVR={sevr_str:<8}  STAT={stat_str:<10}  {age}{flag}")
+    print(
+        f"      {name:<28}  val={val_repr:<42}  "
+        f"SEVR={sevr_str:<8}  STAT={stat_str:<10}  {age}{flag}"
+    )
 
 
 def diagnose_connections(
@@ -600,12 +676,10 @@ def diagnose_connections(
     # Select which device keys to diagnose
     if only_failures:
         targets = {
-            key for key, r in reports.items()
-            if isinstance(r, ConnectionReport) and (
-                not r.connected
-                or bool(r.failed_signals)
-                or r.alive is False
-            )
+            key
+            for key, r in reports.items()
+            if isinstance(r, ConnectionReport)
+            and (not r.connected or bool(r.failed_signals) or r.alive is False)
         }
     else:
         targets = {key for key in reports if isinstance(reports[key], ConnectionReport)}
@@ -626,7 +700,7 @@ def diagnose_connections(
         glyph = "✗" if (not r.connected or r.failed_signals) else "⚠"
         print(f"  {glyph}  {key}  —  {r.liveness_detail or r.error or ''}")
         print(f"      {'signal':<28}  {'value':<44}  {'SEVR':<12}  {'STAT':<12}  age")
-        print(f"      {'-'*28}  {'-'*44}  {'-'*12}  {'-'*12}  {'-'*12}")
+        print(f"      {'-' * 28}  {'-' * 44}  {'-' * 12}  {'-' * 12}  {'-' * 12}")
 
         sig_names = _DIAG_SIGNALS.get(key, [])
 

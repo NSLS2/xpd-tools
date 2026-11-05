@@ -1,6 +1,5 @@
 """Ensemble PDF goodness-of-fit scorer."""
 
-
 import numpy as np
 from numpy.typing import ArrayLike
 
@@ -24,12 +23,14 @@ class EnsembleGoodnessOfFitScorer:
             "pearson",
             "cross_correlation",
             "weighted_profile_r",
-            "nn_matrix"
+            "nn_matrix",
         )
         if weights:
             unknown = sorted(set(weights) - set(metric_names))
             if unknown:
-                raise ValueError(f"weights has unknown metric names: {', '.join(unknown)}")
+                raise ValueError(
+                    f"weights has unknown metric names: {', '.join(unknown)}"
+                )
         # Merge over the defaults rather than replacing outright -- an
         # empty dict must mean "no overrides" (all-1.0), and a partial
         # dict must override only the named metrics, not drop the rest.
@@ -61,9 +62,7 @@ class EnsembleGoodnessOfFitScorer:
         r_max: float = 20.0,
     ) -> float:
         raw = {
-            "pearson": pearson(
-                r_exp, g_exp, r_sim, g_sim, r_min=r_min, r_max=r_max
-            ),
+            "pearson": pearson(r_exp, g_exp, r_sim, g_sim, r_min=r_min, r_max=r_max),
             "cross_correlation": cross_correlation(
                 r_exp, g_exp, r_sim, g_sim, r_min=r_min, r_max=r_max
             ),

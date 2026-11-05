@@ -120,7 +120,9 @@ class FakePump(Device):
             raise RuntimeError(f"failed to stop {self.name}")
         if self._infusing_since is not None:
             minutes = (time.monotonic() - self._infusing_since) / 60
-            infused = self.read_infused.get() + self.read_infuse_rate.get() / 1000 * minutes
+            infused = (
+                self.read_infused.get() + self.read_infuse_rate.get() / 1000 * minutes
+            )
             self._infusing_since = None
             yield from bps.mv(self.read_infused, infused)
         yield from bps.mv(self.status, "Stopped")

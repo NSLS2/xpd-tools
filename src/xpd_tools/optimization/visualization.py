@@ -25,6 +25,7 @@ HC_EV_NM = 1239.841984  # Planck's constant × c, in eV·nm
 # Band-gap ↔ wavelength conversion utilities
 # ---------------------------------------------------------------------------
 
+
 def wavelength_nm(bandgap_ev: float | np.ndarray) -> float | np.ndarray:
     """Convert photon energy / optical band gap in eV to wavelength in nm."""
     return HC_EV_NM / np.asarray(bandgap_ev)
@@ -43,7 +44,7 @@ def bandgap_ev(wavelength: float | np.ndarray) -> float | np.ndarray:
 def wavelength_color(wavelength: float) -> str:
     """Approximate visible-light hex colour; UV and IR are deliberately pale."""
     if wavelength < 380:
-        return "#eadcff"   # ultraviolet
+        return "#eadcff"  # ultraviolet
     if wavelength < 440:
         return "#6c5ce7"
     if wavelength < 490:
@@ -56,12 +57,13 @@ def wavelength_color(wavelength: float) -> str:
         return "#f2ce31"
     if wavelength <= 700:
         return "#f07824"
-    return "#ffd6cf"       # infrared
+    return "#ffd6cf"  # infrared
 
 
 # ---------------------------------------------------------------------------
 # Main plot
 # ---------------------------------------------------------------------------
+
 
 def plot_bandgap_wavelength(
     df: pd.DataFrame,
@@ -117,8 +119,12 @@ def plot_bandgap_wavelength(
     for lower, upper in zip(wavelengths[:-1], wavelengths[1:], strict=False):
         mid = (lower + upper) / 2
         ax.axhspan(
-            bandgap_ev(upper), bandgap_ev(lower),
-            color=wavelength_color(mid), alpha=0.33, linewidth=0, zorder=0,
+            bandgap_ev(upper),
+            bandgap_ev(lower),
+            color=wavelength_color(mid),
+            alpha=0.33,
+            linewidth=0,
+            zorder=0,
         )
 
     index = df["trial_index"].to_numpy()
@@ -138,16 +144,10 @@ def plot_bandgap_wavelength(
         ax.axhline(energy, color=color, linewidth=2)
         ax.text(0.03, energy + 0.035, label, color=color, weight="bold")
 
-    ax.text(0.5, e_max - 0.15, "ultraviolet",
-        ha="center",
-        color="#6a1b9a",
-        weight="bold"
+    ax.text(
+        0.5, e_max - 0.15, "ultraviolet", ha="center", color="#6a1b9a", weight="bold"
     )
-    ax.text(0.5, e_min + 0.08, "infrared",
-        ha="center",
-        color="#b71c1c",
-        weight="bold"
-    )
+    ax.text(0.5, e_min + 0.08, "infrared", ha="center", color="#b71c1c", weight="bold")
 
     ax.set_xlim(0, 1)
     ax.set_xticks([])

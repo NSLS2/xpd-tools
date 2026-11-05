@@ -1,3 +1,4 @@
+"""Degrees of freedom (pumps) the optimizer varies."""
 
 from dataclasses import dataclass
 from math import isfinite
@@ -15,6 +16,7 @@ class Pump:
     parameter_type: str = "float"
 
     def __post_init__(self) -> None:
+        """Store bounds as a tuple."""
         # Normalize to a tuple regardless of what sequence type the caller
         # passed in -- keeps a hand-built Pump and a from_config()-rebuilt
         # one equal regardless of which the caller used.
@@ -24,7 +26,9 @@ class Pump:
             isinstance(v, (int, float)) and not isinstance(v, bool) and isfinite(v)
             for v in self.bounds
         )
-        if not (numbers and len(self.bounds) == 2 and 0 <= self.bounds[0] < self.bounds[1]):
+        if not (
+            numbers and len(self.bounds) == 2 and 0 <= self.bounds[0] < self.bounds[1]
+        ):
             raise ValueError(
                 f"pump {self.name!r}: bounds must be [lower, upper] rates with "
                 f"0 <= lower < upper, got {list(self.bounds)}"
