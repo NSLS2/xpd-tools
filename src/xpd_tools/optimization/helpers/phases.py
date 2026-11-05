@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ax.api.protocols import IMetric
-from blop.ax import Objective, OutcomeConstraint
+from bluesky_adaptive.ax import Objective, OutcomeConstraint
 
 
 @dataclass(frozen=True, kw_only=True)

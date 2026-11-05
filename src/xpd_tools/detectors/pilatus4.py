@@ -32,7 +32,7 @@ from ophyd_async.epics.adcore import (
     NDFileHDF5IO,
     NDPluginBaseIO,
     prepare_exposures,
-    trigger_info_from_num_images,
+    trigger_info_from_driver,
 )
 from ophyd_async.epics.core import (
     PvSuffix,
@@ -343,7 +343,7 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
 
     async def default_trigger_info(self):
         """Get default trigger info based on the number of images to acquire."""
-        return await trigger_info_from_num_images(self.driver)
+        return await trigger_info_from_driver(self.driver.num_images)
 
 
 class Pilatus4DetectorMock(DeviceMock["Pilatus4Detector"]):

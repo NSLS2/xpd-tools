@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from blop.ax.agent import Agent
+from bluesky_adaptive.ax.agent import Agent
 from bluesky.run_engine import RunEngine
 
 from xpd_tools.optimization.agent import BuildAgent, _load_historical_data
@@ -48,8 +48,8 @@ def mocked_queueserver() -> None:
         "xpd_tools.optimization.agent.from_profile",
         "xpd_tools.optimization.agent.REManagerAPI",
         "xpd_tools.optimization.agent.RemoteDispatcher",
-        "blop.ax.queueserver_agent.QueueserverClient",
-        "blop.ax.queueserver_agent.QueueserverOptimizationRunner",
+        "bluesky_adaptive.ax.queueserver_agent.QueueserverClient",
+        "bluesky_adaptive.ax.queueserver_agent.QueueserverOptimizationRunner",
     ]
     patchers = [patch(target) for target in targets]
     for patcher in patchers:

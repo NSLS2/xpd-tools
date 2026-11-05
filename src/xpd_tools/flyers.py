@@ -10,24 +10,24 @@ from ophyd_async.core import (
 )
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
 
-from xpd_tools.motors import get_encoder_value_from_pos
-
 
 class SingleAxisFlyscanInfo(ConfinedModel):
-    """
-    Information for a single axis flyscan.
+    """Information for a single axis flyscan.
 
-    Attributes:
-        - start: int - The start position for the flyscan, in encoder counts
-        - num_pulses: int - The number of pulses to send during the flyscan
-        - direction: PandaPcompDirection - The direction of the flyscan, either positive
-          or negative
-        - pulse_width: float | int - The width of each pulse, in counts for position
-          based scans, s for time based
-        - pulse_step: float | int - The step between pulses, in counts for position
-          based scans, s for time based
-        - time_based: bool - If true, equally spaced in time triggers. Otherwise,
-          equally spaced in position
+    Attributes
+    ----------
+    start : int
+        The start position for the flyscan, in encoder counts
+    num_pulses : int
+        The number of pulses to send during the flyscan
+    direction : PandaPcompDirection
+        The direction of the flyscan, either positive or negative
+    pulse_width : float | int
+        The width of each pulse, in counts for position based scans, s for time based
+    pulse_step : float | int
+        The step between pulses, in counts for position based scans, s for time based
+    time_based : bool
+        If true, equally spaced in time triggers. Otherwise, equally spaced in position
     """
 
     start: int
@@ -43,15 +43,34 @@ class SingleAxisFlyscanInfo(ConfinedModel):
 
 
 class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
-    """Controller for a single axis flyscan."""
+    """Controller for a single axis flyscan.
 
-    def __init__(self, panda: CommonPandaBlocks) -> None:
+    The PandA is wired with one chain per encoder axis, INENCn -> CALCn -> PCOMPn.
+    Every PCOMPn.OUT is ORed together into PULSE1, which alone drives the
+    detector TTL outputs and PCAP. Scanning another axis therefore only selects
+    which numbered blocks to program, with no rewiring of the PandA.
+
+    Parameters
+    ----------
+    panda : CommonPandaBlocks
+        The PandA producing the triggers.
+    panda_encoder : int, default 1
+        Encoder axis of the scanned motor: position compare and the position
+        calculation use the PCOMP and CALC blocks with this number. PULSE1 is
+        shared by all axes and always drives the capture.
+    """
+
+    def __init__(self, panda: CommonPandaBlocks, panda_encoder: int = 1) -> None:
         self.panda = panda
+        self._panda_encoder = panda_encoder
+        self.pcomp = panda.pcomp[1]
+        self.calc = panda.calc[panda_encoder]  # type: ignore
+        self.pulse = panda.pulse[1]
 
     async def on_prepare(self, value: SingleAxisFlyscanInfo):
-        pcomp = self.panda.pcomp[1]
-        pulse = self.panda.pulse[1]
-        calc = self.panda.calc[1]  # type: ignore
+        pcomp = self.pcomp
+        pulse = self.pulse
+        calc = self.calc
         coros = [
             pcomp.dir.set(value.direction),
             pcomp.start.set(value.start),
@@ -59,6 +78,7 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
             calc.out_units.set(value.position_dataset_units),
             calc.out_scale.set(value.position_scale),
             calc.out_offset.set(value.position_offset),
+            self.pcomp.inp.set(f"CALC{self._panda_encoder}.OUT"),  # type: ignore
         ]
         if not value.time_based:
             coros.extend(
@@ -87,13 +107,13 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
         await asyncio.gather(*coros)
 
     async def on_kickoff(self, ctx: None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, True, timeout=1)
+        await wait_for_value(self.pcomp.active, True, timeout=1)
 
     async def on_complete(self, ctx: None) -> None:
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=None)
+        await wait_for_value(self.pcomp.active, False, timeout=None)
 
     async def on_stop(self):
-        await wait_for_value(self.panda.pcomp[1].active, False, timeout=1)
+        await wait_for_value(self.pcomp.active, False, timeout=1)
 
 
 def calculate_move_time_for_flyscan(
@@ -102,50 +122,31 @@ def calculate_move_time_for_flyscan(
     num_images: int,
     acquire_period: float,
 ) -> float:
-    """
-    Calculate the time for a motor move during a flyscan.
+    """Calculate the time for a motor move during a flyscan.
 
     The motor travel and acquisition happen concurrently. The total time is
     whichever takes longer: the motor travel time or the total acquisition time.
 
-    Args:
-        - travel_distance: float - The distance the motor will travel during the
-          flyscan.
-        - max_motor_velocity: float - The maximum velocity of the motor.
-        - num_images: int - The number of images to acquire during the flyscan.
-        - acquire_period: float - The acquisition period for a single image, including
-          any overhead.
+    Parameters
+    ----------
+    travel_distance : float
+        The distance the motor will travel during the flyscan.
+    max_motor_velocity : float
+        The maximum velocity of the motor.
+    num_images : int
+        The number of images to acquire during the flyscan.
+    acquire_period : float
+        The acquisition period for a single image, including any overhead.
 
-    Returns:
-        - float - The time for the motor move during the flyscan.
+    Returns
+    -------
+    float
+        The time for the motor move during the flyscan.
     """
     fastest_possible_move_time = travel_distance / max_motor_velocity
     total_acq_time = num_images * acquire_period
 
     return max(fastest_possible_move_time, total_acq_time)
-
-
-def get_zero_encoder_position(
-    current_position: float,
-    start_position: float,
-    encoder_resolution: float,
-    current_encoder_value: int,
-):
-    """
-    Calculate the encoder position corresponding to 0 degrees.
-
-    Args:
-        - current_position: float - The current position of the motor.
-        - start_position: float - The start position of the flyscan.
-        - encoder_resolution: float - The resolution of the encoder in counts per
-          degree.
-        - current_encoder_value: int - The current encoder value.
-
-    Returns:
-        - int - The encoder position corresponding to 0 degrees.
-    """
-    dist_to_start_in_cts = (current_position - start_position) / encoder_resolution
-    return int(current_encoder_value - dist_to_start_in_cts)
 
 
 def construct_fly_info_models(
@@ -155,50 +156,60 @@ def construct_fly_info_models(
     stop_position: float,
     encoder_resolution: float,
     max_motor_velocity: float,
-    encoder_pos_at_zero: int = 0,
+    current_position: float,
+    current_encoder_value: int,
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
     position_dataset_name: str = "Angle",
     position_dataset_units: str = "deg",
 ) -> tuple[SingleAxisFlyscanInfo, FlyMotorInfo]:
-    """
-    Construct the fly info models for a single axis flyscan.
+    """Construct the fly info models for a single axis flyscan.
 
-    Args:
-        - num_pulses: int - The number of pulses to send during the flyscan.
-        - max_exposure_time: float - The maximum exposure time for a single image.
-        - start_position: float - The start position of the flyscan.
-        - stop_position: float - The stop position of the flyscan.
-        - encoder_resolution: float - The resolution of the encoder in counts per
-          degree.
-        - max_motor_velocity: float - The maximum velocity of the motor.
-        - encoder_pos_at_zero: int - The encoder position corresponding to 0 degrees.
-          (default: 0)
-        - acq_time_overhead: float - An overhead time per image to add to each
-          acquisition. (default: 0.001)
-        - time_based: bool - If true, equally spaced in time triggers. Otherwise,
-          equally spaced in position. (default: False)
-        - position_dataset_name: str - The name of the dataset for the position values.
-          (default: "Angle")
-        - position_dataset_units: str - The units of the dataset for the position
-          values. (default: "deg")
+    The PandA encoder value and the EPICS motor position are read together, and the
+    position compare start is placed relative to that pair. The captured position
+    is scaled so that it matches the EPICS motor position.
 
-    Returns:
-        - tuple[SingleAxisFlyscanInfo, FlyMotorInfo] - The fly info models for a single
-          axis flyscan.
+    Parameters
+    ----------
+    num_pulses : int
+        The number of pulses to send during the flyscan.
+    max_exposure_time : float
+        The maximum exposure time for a single image.
+    start_position : float
+        The start position of the flyscan.
+    stop_position : float
+        The stop position of the flyscan.
+    encoder_resolution : float
+        The resolution of the encoder in degrees per count.
+    max_motor_velocity : float
+        The maximum velocity of the motor.
+    current_position : float
+        The EPICS motor position when ``current_encoder_value`` was read.
+    current_encoder_value : int
+        The PandA encoder value (position compare input) at ``current_position``.
+    acq_time_overhead : float, default 0.001
+        An overhead time per image to add to each acquisition.
+    time_based : bool, default False
+        If true, equally spaced in time triggers. Otherwise, equally spaced in position.
+    position_dataset_name : str, default "Angle"
+        The name of the dataset for the position values.
+    position_dataset_units : str, default "deg"
+        The units of the dataset for the position values.
+
+    Returns
+    -------
+    tuple[SingleAxisFlyscanInfo, FlyMotorInfo]
+        The fly info models for a single axis flyscan.
     """
-    # Get the start and stop positions in encoder counts,
-    # given the count value at zero.
-    start_in_counts = get_encoder_value_from_pos(
-        start_position, encoder_resolution, encoder_pos_at_zero
-    )
-    stop_in_counts = get_encoder_value_from_pos(
-        stop_position, encoder_resolution, encoder_pos_at_zero
+    # Get the start position in PandA encoder counts, relative to the encoder value
+    # read at the current motor position.
+    start_in_counts = current_encoder_value + round(
+        (start_position - current_position) / encoder_resolution
     )
 
     # Compute the number of encoder counts the motor will travel during the flyscan,
     # and the time it will take to complete the move.
-    travel_counts = abs(stop_in_counts - start_in_counts)
+    travel_counts = abs(round((stop_position - start_position) / encoder_resolution))
     move_time = calculate_move_time_for_flyscan(
         abs(stop_position - start_position),
         max_motor_velocity,
@@ -244,7 +255,7 @@ def construct_fly_info_models(
         position_dataset_name=position_dataset_name,
         position_dataset_units=position_dataset_units,
         position_scale=encoder_resolution,
-        position_offset=(-1 * encoder_pos_at_zero * encoder_resolution),
+        position_offset=current_position - current_encoder_value * encoder_resolution,
     )
 
     motor_info = FlyMotorInfo(
