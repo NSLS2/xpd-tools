@@ -12,8 +12,12 @@ A profile collection registers these from one short startup file::
 
 The host side then builds its agent with ``build_agent.build(send_config=True)``,
 so every queued step carries ``config=build_agent.to_config()``.  Each worker
-plan rebuilds a `BuildAgent` from that config, binds it to the worker's devices
-and runs the matching xpd-tools plan.  The bound plan is cached per
+plan reads the plan settings out of that config, binds them to the worker's
+devices and runs the matching xpd-tools plan.
+
+The worker runs plans only: the optimizer (blop/bluesky-adaptive, Ax, torch)
+stays with the agent on the workstation, so nothing here imports
+`xpd_tools.optimization.agent`.  The bound plan is cached per
 ``(plan name, config)``, so cross-step state (infused volumes, quality signals)
 carries across the steps of one campaign and starts fresh when the config
 changes (e.g. a syringe swap).
@@ -25,7 +29,24 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Mapping, MutableMapping
+from dataclasses import replace
 from typing import Any
+
+from xpd_tools.optimization.plans import (
+    DilutionStage,
+    FlowSource,
+    QualityPolicy,
+    SpectraFitSettings,
+    UvvisPlanContext,
+    WashCycle,
+    XrayPlanContext,
+    XraySettings,
+    XrayUvvisPlanContext,
+    create_uvvis_plan,
+    create_xray_plan,
+    create_xray_screened_plan,
+    create_xray_uvvis_plan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +57,17 @@ WORKER_PLAN_NAMES = (
     "xray_uvvis_acquire",
 )
 _XRAY_PLAN_NAMES = frozenset(WORKER_PLAN_NAMES) - {"uvvis_acquire"}
+_PLAN_FACTORIES: dict[str, Callable[[Any], Callable[..., Any]]] = {
+    "uvvis_acquire": create_uvvis_plan,
+    "xray_acquire": create_xray_plan,
+    "xray_screened_acquire": create_xray_screened_plan,
+    "xray_uvvis_acquire": create_xray_uvvis_plan,
+}
+
+# BuildAgent's defaults for configs that predate these keys.
+_DEFAULT_MIXER_LENGTHS_CM = (30.0,)
+_DEFAULT_RESIDENCE_TIME_RATIO = 1.0
+_DEFAULT_TUBING_ID_MM = 1.016
 
 
 def config_fingerprint(config: Mapping[str, Any]) -> str:
@@ -43,6 +75,95 @@ def config_fingerprint(config: Mapping[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(config, sort_keys=True, default=str).encode()
     ).hexdigest()
+
+
+def plan_name_for_config(config: Mapping[str, Any]) -> str:
+    """Return the worker plan a `BuildAgent.to_config()` dict selects."""
+    method = config["evaluation_method"]
+    if method == "uvvis":
+        return "uvvis_acquire"
+    if method == "xray-uvvis":
+        return "xray_uvvis_acquire"
+    screening = config["xray"]["screening"]
+    if screening == "unscreened":
+        return "xray_acquire"
+    if screening == "screen_only":
+        return "xray_screened_acquire"
+    return "xray_uvvis_acquire"
+
+
+def plan_context_from_config(
+    plan_name: str,
+    config: Mapping[str, Any],
+    devices: Mapping[str, Any],
+    wrap_xray_run: Callable[[Any, bool], Any] | None,
+) -> UvvisPlanContext | XrayPlanContext | XrayUvvisPlanContext:
+    """Build the context `BuildAgent._build_plan_context` would, from its config."""
+    experiment = config["experiment"]
+    xray = config["xray"]
+    uvvis = config["uvvis"]
+
+    def bind(item: Any) -> Any:
+        return replace(item, pump=devices[item.pump])
+
+    quality = uvvis.get("quality_policy") or xray.get("quality_policy")
+    mixer = experiment.get("mixer_lengths_cm")
+    residence = experiment.get("residence_time_ratio")
+    tubing = experiment.get("tubing_id_mm")
+    common = {
+        "sources": tuple(bind(FlowSource(**s)) for s in experiment["sources"] or ()),
+        "dilutions": tuple(
+            bind(DilutionStage(**d)) for d in experiment["dilutions"] or ()
+        ),
+        "wash_cycles": tuple(
+            bind(WashCycle(**w)) for w in experiment["wash_cycles"] or ()
+        ),
+        "quality": QualityPolicy(**quality)
+        if quality
+        else QualityPolicy(enabled=False),
+        "mixer_lengths_cm": (
+            tuple(mixer) if mixer is not None else _DEFAULT_MIXER_LENGTHS_CM
+        ),
+        "residence_time_ratio": (
+            residence if residence is not None else _DEFAULT_RESIDENCE_TIME_RATIO
+        ),
+        "tubing_id_mm": tubing if tubing is not None else _DEFAULT_TUBING_ID_MM,
+    }
+    fit_settings = (
+        SpectraFitSettings(**uvvis["fit_settings"])
+        if uvvis.get("fit_settings")
+        else SpectraFitSettings()
+    )
+    if plan_name == "uvvis_acquire":
+        return UvvisPlanContext(
+            qepro=devices["qepro"],
+            led=devices["led"],
+            uv_shutter=devices["uv_shutter"],
+            fast_shutter=devices["fast_shutter"],
+            fit_settings=fit_settings,
+            **common,
+        )
+    settings = XraySettings(**xray["settings"]) if xray.get("settings") else None
+    if plan_name == "xray_acquire":
+        return XrayPlanContext(
+            led=devices["led"],
+            fast_shutter=devices["fast_shutter"],
+            xray_detector=devices["xray_detector"],
+            wrap_xray_run=wrap_xray_run,
+            xray=settings,
+            **common,
+        )
+    return XrayUvvisPlanContext(
+        qepro=devices["qepro"],
+        led=devices["led"],
+        uv_shutter=devices["uv_shutter"],
+        fast_shutter=devices["fast_shutter"],
+        xray_detector=devices["xray_detector"],
+        wrap_xray_run=wrap_xray_run,
+        xray=settings,
+        fit_settings=fit_settings,
+        **common,
+    )
 
 
 def register_worker_plans(
@@ -86,29 +207,32 @@ def register_worker_plans(
     def bound_plan(plan_name: str, config: Mapping[str, Any]) -> Callable[..., Any]:
         key = (plan_name, config_fingerprint(config))
         if key not in cache:
-            from xpd_tools.optimization.agent import BuildAgent
-
-            agent = BuildAgent.from_config(config)
-            expected = agent._acquisition_plan_name()  # noqa: SLF001
+            expected = plan_name_for_config(config)
             if expected != plan_name:
                 raise ValueError(
                     f"{plan_name} was queued, but the config it carries selects "
-                    f"{expected} (evaluation_method={agent.evaluation_method!r})."
+                    f"{expected} (evaluation_method={config['evaluation_method']!r})."
                 )
-            if plan_name in _XRAY_PLAN_NAMES and "xray_detector" not in devices:
-                raise ValueError(
-                    f"{plan_name} needs an X-ray detector: pass xray_detector= "
-                    "to register_worker_plans()."
-                )
-            wrap = wrap_xray_run if plan_name in _XRAY_PLAN_NAMES else None
+            if plan_name in _XRAY_PLAN_NAMES:
+                if "xray_detector" not in devices:
+                    raise ValueError(
+                        f"{plan_name} needs an X-ray detector: pass xray_detector= "
+                        "to register_worker_plans()."
+                    )
+                if wrap_xray_run is None:
+                    raise ValueError(
+                        f"{plan_name} needs wrap_xray_run= (dark frames) "
+                        "passed to register_worker_plans()."
+                    )
+            context = plan_context_from_config(
+                plan_name, config, devices, wrap_xray_run
+            )
             logger.info(
                 "Binding %s for a new campaign config (sources=%s)",
                 plan_name,
-                [source.pump for source in agent.sources or ()],
+                [source["pump"] for source in config["experiment"]["sources"] or ()],
             )
-            cache[key] = agent.register_acquisition_plans(devices, wrap_xray_run=wrap)[
-                plan_name
-            ]
+            cache[key] = _PLAN_FACTORIES[plan_name](context)
         return cache[key]
 
     def make_plan(plan_name: str) -> Callable[..., Any]:

@@ -9,7 +9,7 @@ from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from tiled.queries import Eq
@@ -19,10 +19,12 @@ from xpd_tools.optimization.helpers.common import _retry_access, _TiledAccessErr
 from xpd_tools.optimization.pdffit import fit_pdf_correlations
 from xpd_tools.optimization.scoring import (
     _ALL_SCORING_NAMES,
-    CnnScorer,
     EnsembleScorers,
     _resolve_scorer,
 )
+
+if TYPE_CHECKING:
+    from xpd_tools.optimization.scoring import CnnScorer
 
 logger = logging.getLogger(__name__)
 
