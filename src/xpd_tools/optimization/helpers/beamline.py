@@ -9,6 +9,8 @@ from typing import Any
 from xpd_tools.optimization.helpers.qepro import QualityPolicy, SpectraFitSettings
 from xpd_tools.optimization.helpers.sources import DilutionStage, FlowSource, WashCycle
 
+_DEFAULT_TUBING_ID_MM = 1.016  # 1/25" ID PEEK tubing standard at the beamline
+
 
 def _normalize_context_sequences(context: Any) -> None:
     # Normalize to tuples regardless of what sequence type the caller
@@ -43,12 +45,15 @@ class XrayUvvisPlanContext:
     wash_cycles: tuple[WashCycle, ...]
     mixer_lengths_cm: tuple[float, ...] = (30.0,)
     residence_time_ratio: float = 1.0
+    tubing_id_mm: float = _DEFAULT_TUBING_ID_MM
     quality: QualityPolicy = QualityPolicy()
     xray: XraySettings = XraySettings()
     fit_settings: SpectraFitSettings = SpectraFitSettings()
 
     def __post_init__(self) -> None:
+        """Populate class attributes to tuples."""
         _normalize_context_sequences(self)
+
 
 @dataclass(frozen=True, kw_only=True)
 class XrayPlanContext:
@@ -63,11 +68,14 @@ class XrayPlanContext:
     wash_cycles: tuple[WashCycle, ...]
     mixer_lengths_cm: tuple[float, ...] = (30.0,)
     residence_time_ratio: float = 1.0
+    tubing_id_mm: float = _DEFAULT_TUBING_ID_MM
     quality: QualityPolicy = QualityPolicy()
     xray: XraySettings = XraySettings()
 
     def __post_init__(self) -> None:
+        """Populate class attributes to tuples."""
         _normalize_context_sequences(self)
+
 
 @dataclass(frozen=True, kw_only=True)
 class UvvisPlanContext:
@@ -82,8 +90,10 @@ class UvvisPlanContext:
     wash_cycles: tuple[WashCycle, ...]
     mixer_lengths_cm: tuple[float, ...] = (30.0,)
     residence_time_ratio: float = 1.0
+    tubing_id_mm: float = _DEFAULT_TUBING_ID_MM
     quality: QualityPolicy = QualityPolicy()
     fit_settings: SpectraFitSettings = SpectraFitSettings()
 
     def __post_init__(self) -> None:
+        """Populate class attributes to tuples."""
         _normalize_context_sequences(self)

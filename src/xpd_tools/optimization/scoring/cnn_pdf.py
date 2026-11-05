@@ -1,17 +1,24 @@
 """Top phase-match confidence from the trained autoencoder-pdf encoder."""
 
+from __future__ import annotations
+
 import os
 import warnings
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
 from numpy.typing import ArrayLike
 
+if TYPE_CHECKING:
+    # Only needed by type checkers; autoencoder-pdf is not yet on PyPI so we
+    # never import it at module load time.  The real import is deferred to
+    # build_cnn_scorer() where the package is actually required.
+    from autoencoder_pdf.training.conc_encoder import ConcEncoder
+
 
 class CnnScorer:
     """A loaded autoencoder-pdf encoder scorer."""
-
-    from autoencoder_pdf.training.conc_encoder import ConcEncoder
 
     def __init__(
         self,
@@ -41,7 +48,8 @@ class CnnScorer:
             - r_min: Minimum r value the measured data should cover (warns if not).
             - r_max: Maximum r value the measured data should cover (warns if not).
 
-        Returns:
+        Returns
+        -------
             - {phase_name: predicted fraction} for each requested name.
         """
         r_exp = np.asarray(r_exp, dtype=float)
@@ -49,7 +57,8 @@ class CnnScorer:
 
         if r_exp.min() > r_min or r_exp.max() < r_max:
             warnings.warn(
-                f"cnn: measured r-range {r_exp.min():.2f}-{r_exp.max():.2f} does not cover "
+                f"cnn: measured r-range {r_exp.min():.2f}-{r_exp.max():.2f} \
+                    does not cover "
                 f"r_min={r_min}, r_max={r_max}; out-of-range r is zero-filled.",
                 stacklevel=2,
             )
@@ -83,31 +92,48 @@ def build_cnn_scorer(dataset_path: str, weights_path: str) -> CnnScorer:
         - dataset_path: Path to the trained dataset_pc.npz.
         - weights_path: Path to the trained amortized_encoder.pt.
 
-    Returns:
+    Returns
+    -------
         - A CnnScorer ready for repeated .score(...) calls.
     """
+    # Deferred import: autoencoder-pdf is not on PyPI yet, so we only require
+    # it here (at call time) rather than at module import time.
+    try:
+        from autoencoder_pdf.training.conc_encoder import ConcEncoder
+    except ImportError as exc:
+        raise ImportError(
+            "objective_function='cnn' requires the 'autoencoder-pdf' package, "
+            "which is not yet available on PyPI.  Install it manually or via the "
+            "'cnn' optional-dependency group: pip install 'xpd-tools[cnn]'."
+        ) from exc
+
     if not dataset_path or not os.path.isfile(dataset_path):
-        raise ValueError(f"cnn scorer: dataset_path not set or not found: {dataset_path!r}")
+        raise ValueError(f"cnn scorer: dataset_path not set \
+                or not found: {dataset_path!r}")
     if not weights_path or not os.path.isfile(weights_path):
-        raise ValueError(f"cnn scorer: weights_path not set or not found: {weights_path!r}")
+        raise ValueError(f"cnn scorer: weights_path not set \
+                or not found: {weights_path!r}")
 
     try:
         data = np.load(dataset_path, allow_pickle=True)
         r_dict = data["r"].astype("float32")
     except Exception as exc:
-        raise ValueError(f"cnn scorer: failed to load dataset_path {dataset_path!r}: {exc}") from exc
+        raise ValueError(f"cnn scorer: failed to \
+            load dataset_path {dataset_path!r}: {exc}") from exc
 
     try:
         ckpt = torch.load(weights_path, map_location="cpu", weights_only=False)
         names = list(ckpt["names"])
     except Exception as exc:
-        raise ValueError(f"cnn scorer: failed to load weights_path {weights_path!r}: {exc}") from exc
+        raise ValueError(f"cnn scorer: failed to \
+            load weights_path {weights_path!r}: {exc}") from exc
 
     try:
         encoder = ConcEncoder.from_checkpoint(ckpt, n_r=len(r_dict))
     except Exception as exc:
         raise ValueError(
-            f"cnn scorer: weights at {weights_path!r} don't match the ConcEncoder architecture: {exc}"
+            f"cnn scorer: weights at {weights_path!r} don't match \
+                the ConcEncoder architecture: {exc}"
         ) from exc
 
     return CnnScorer(encoder, r_dict, names)
