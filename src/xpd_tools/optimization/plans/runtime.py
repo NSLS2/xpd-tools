@@ -16,7 +16,11 @@ from bluesky.utils import RunEngineControlException
 from ophyd import Signal
 
 from xpd_tools.optimization.analysis import classify_pl
-from xpd_tools.optimization.helpers.beamline import XrayUvvisPlanContext
+from xpd_tools.optimization.helpers.beamline import (
+    UvvisPlanContext,
+    XrayPlanContext,
+    XrayUvvisPlanContext,
+)
 from xpd_tools.optimization.helpers.sources import DilutionStage, FlowSource, WashCycle
 from xpd_tools.optimization.plans.metadata import _device_name
 from xpd_tools.optimization.plans.volumes import VolumeTracker
@@ -195,7 +199,7 @@ def _run_pump_sequence_and_measure(
 
 
 def _measure_uvvis(
-    context: XrayUvvisPlanContext,
+    context: XrayUvvisPlanContext | UvvisPlanContext,
     stream: Literal["fluorescence", "absorbance"],
     shots: int,
     *,
@@ -261,7 +265,7 @@ def _emit_quality_event(signals: Mapping[str, Signal], result: Mapping[str, Any]
 
 
 def _measure_pl_with_quality_gate(
-    context: XrayUvvisPlanContext,
+    context: XrayUvvisPlanContext | UvvisPlanContext,
     signals: Mapping[str, Signal],
 ):
     """
@@ -325,7 +329,7 @@ def _measure_pl_with_quality_gate(
             return
 
 
-def _prepare_xray_detector(context: XrayUvvisPlanContext):
+def _prepare_xray_detector(context: XrayUvvisPlanContext | XrayPlanContext):
     """Configure the area detector and return scan-plan metadata."""
     yield from bps.mv(
         context.xray_detector.cam.acquire_time,
@@ -362,7 +366,7 @@ def _prepare_xray_detector(context: XrayUvvisPlanContext):
     }
 
 
-def _measure_scattering(context: XrayUvvisPlanContext):
+def _measure_scattering(context: XrayUvvisPlanContext | XrayPlanContext):
     """Collect one scattering event and always close the fast shutter."""
 
     def acquire():
@@ -376,7 +380,10 @@ def _measure_scattering(context: XrayUvvisPlanContext):
     )
 
 
-def _cleanup_devices(context: XrayUvvisPlanContext, started: Sequence[Any]):
+def _cleanup_devices(
+    context: XrayUvvisPlanContext | XrayPlanContext | UvvisPlanContext,
+    started: Sequence[Any],
+):
     """Attempt every pump and optical safe-state action before raising failures."""
     errors: list[Exception] = []
     for pump in reversed(_unique_devices(started)):

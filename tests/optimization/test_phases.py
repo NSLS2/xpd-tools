@@ -13,10 +13,12 @@ def test_create_phase_applies_metric_prefix_and_minimize() -> None:
     phase = Phase(name="Wanted", gr="a.gr", cif="a.cif", minimize=True)
 
     raw = _create_phase(phase, metric_prefix="corr_")
+    assert raw is not None
     assert raw.name == "corr_Wanted"
     assert raw.minimize is True
 
     fit = _create_phase(phase, metric_prefix="pdf_fit_corr_")
+    assert fit is not None
     assert fit.name == "pdf_fit_corr_Wanted"
 
 

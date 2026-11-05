@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -157,7 +157,10 @@ def build_simulated_tiled_clients(
                 2) Sum over all phases corrected for phase weights to get GR_G.
                 3) Add any prescribed noise to disrupt the system.
             """
-            gr_g = sum(weights[name] * phase_grs[name] for name in weights)
+            # sum() starts from int 0; with any weight this is an ndarray.
+            gr_g = cast(
+                np.ndarray, sum(weights[name] * phase_grs[name] for name in weights)
+            )
             if noise_level:
                 gr_g = gr_g + np.random.normal(0.0, noise_level, size=gr_g.shape)
             sandbox_client.insert(

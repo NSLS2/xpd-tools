@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from math import isfinite
+from typing import Literal
 
 from bluesky_adaptive.ax import RangeDOF
 
@@ -13,7 +14,7 @@ class Pump:
     name: str
     id: str
     bounds: tuple[float, float]
-    parameter_type: str = "float"
+    parameter_type: Literal["float", "int"] = "float"
 
     def __post_init__(self) -> None:
         """Store bounds as a tuple."""

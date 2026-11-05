@@ -277,6 +277,7 @@ class TestConfigRoundTrip:
         from xpd_tools.optimization.agent import BuildAgent
 
         rebuilt = BuildAgent.from_config(config)
+        assert rebuilt.sources is not None
         source_pumps = {s.pump for s in rebuilt.sources}
         assert source_pumps == {"dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
 

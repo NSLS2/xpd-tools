@@ -50,7 +50,8 @@ def nn_matrix(
     x = np.vstack([p, q])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ConvergenceWarning)
-        model = NMF(n_components=1, init="nndsvd", random_state=42, max_iter=500)
+        # sklearn is unannotated; pyright infers n_components: str from "auto".
+        model = NMF(n_components=1, init="nndsvd", random_state=42, max_iter=500)  # pyright: ignore[reportArgumentType]
         model.fit_transform(x)
 
     return float(model.reconstruction_err_)

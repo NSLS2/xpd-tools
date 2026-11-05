@@ -7,11 +7,15 @@ from typing import Any
 
 import numpy as np
 
-from xpd_tools.optimization.helpers.beamline import XrayUvvisPlanContext
+from xpd_tools.optimization.helpers.beamline import (
+    UvvisPlanContext,
+    XrayPlanContext,
+    XrayUvvisPlanContext,
+)
 
 
 def _preflight(
-    context: XrayUvvisPlanContext,
+    context: XrayUvvisPlanContext | XrayPlanContext | UvvisPlanContext,
     suggestions: Sequence[Mapping[str, Any]],
     *,
     plan_name: str,

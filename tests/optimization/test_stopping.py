@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from concurrent.futures import Future
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -77,7 +78,9 @@ def test_watch_and_stop_requires_configured_criteria() -> None:
     )
     with pytest.raises(ValueError, match="set_success_criteria"):
         watch_and_stop(
-            _FakeAgent(_FakeAxClient([pd.DataFrame()])), _FakeFuture(), agent
+            _FakeAgent(_FakeAxClient([pd.DataFrame()])),
+            cast("Future[Any]", _FakeFuture()),
+            agent,
         )
 
 
@@ -95,7 +98,7 @@ def test_watch_and_stop_stops_on_correlation_threshold() -> None:
     fake_agent = _FakeAgent(_FakeAxClient(frames))
     future = _FakeFuture()
 
-    thread = watch_and_stop(fake_agent, future, build_agent)
+    thread = watch_and_stop(fake_agent, cast("Future[Any]", future), build_agent)
     thread.join(timeout=5.0)
 
     assert not thread.is_alive()
@@ -113,7 +116,7 @@ def test_watch_and_stop_stops_on_fwhm_plqy_pairing() -> None:
     fake_agent = _FakeAgent(_FakeAxClient(frames))
     future = _FakeFuture()
 
-    thread = watch_and_stop(fake_agent, future, build_agent)
+    thread = watch_and_stop(fake_agent, cast("Future[Any]", future), build_agent)
     thread.join(timeout=5.0)
 
     assert not thread.is_alive()
@@ -145,7 +148,7 @@ def test_watch_and_stop_treats_both_criteria_as_independent_or_not_and() -> None
     fake_agent = _FakeAgent(_FakeAxClient([frame]))
     future = _FakeFuture()
 
-    thread = watch_and_stop(fake_agent, future, build_agent)
+    thread = watch_and_stop(fake_agent, cast("Future[Any]", future), build_agent)
     thread.join(timeout=5.0)
 
     assert not thread.is_alive()
@@ -162,7 +165,7 @@ def test_watch_and_stop_exits_cleanly_when_future_resolves_without_success() -> 
     fake_agent = _FakeAgent(_FakeAxClient([pd.DataFrame({"corr_Wanted": [0.5]})]))
     future = _FakeFuture()
 
-    thread = watch_and_stop(fake_agent, future, build_agent)
+    thread = watch_and_stop(fake_agent, cast("Future[Any]", future), build_agent)
     time.sleep(0.05)  # let it poll a few times without ever succeeding
     future.resolve()
     thread.join(timeout=5.0)

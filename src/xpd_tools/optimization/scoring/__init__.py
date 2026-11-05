@@ -49,7 +49,7 @@ EnsembleScorers = dict[str, "EnsembleGoodnessOfFitScorer"]
 
 def _resolve_scorer(
     scoring_function: str, phase_name: str, ensemble_scorers: EnsembleScorers
-) -> Callable[[], float]:
+) -> Callable[..., float]:
     """Return the callable to score one phase's G(r) profile."""
     if scoring_function == "ensemble":
         if phase_name not in ensemble_scorers:

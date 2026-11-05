@@ -197,6 +197,7 @@ class TestLoadCampaignConfig:
         agent = _make_uvvis_agent()
         path = save_campaign_config(agent, "rt", directory=tmp_path)
         rebuilt = load_campaign_config(path)
+        assert rebuilt.pumps is not None
         ids = {p.id for p in rebuilt.pumps}
         assert ids == {"dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
 
@@ -204,6 +205,7 @@ class TestLoadCampaignConfig:
         agent = _make_uvvis_agent()
         path = save_campaign_config(agent, "rt", directory=tmp_path)
         rebuilt = load_campaign_config(path)
+        assert rebuilt.sources is not None
         pumps = {s.pump for s in rebuilt.sources}
         assert pumps == {"dds2_p1", "dds2_p2", "dds3_p1", "dds3_p2"}
 

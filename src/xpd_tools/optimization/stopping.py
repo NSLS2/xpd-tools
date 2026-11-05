@@ -58,6 +58,10 @@ def watch_and_stop(
         while not future.done():
             # Re-read each poll so criteria changed mid-run take effect.
             criteria = build_agent.success_criteria
+            if criteria is None:  # set_success_criteria() never resets it to None
+                raise ValueError(
+                    "build_agent.success_criteria was cleared while watching"
+                )
             df = agent.ax_client.summarize(trial_statuses=["completed"])
 
             if criteria.min_correlation is not None:

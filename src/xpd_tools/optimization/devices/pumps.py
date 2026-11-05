@@ -9,11 +9,28 @@ that are only used internally are kept private.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import numpy as np
 import pandas as pd
 from bluesky import plan_stubs as bps
+from bluesky.protocols import Movable
 from ophyd import Component as Cpt
 from ophyd import Device, EpicsSignal, EpicsSignalRO
+
+# ---------------------------------------------------------------------------
+# Typing helper (private)
+# ---------------------------------------------------------------------------
+
+
+def _movable(signal: EpicsSignal) -> Movable[Any]:
+    """Type an ophyd signal as the bluesky ``Movable`` that ``bps.abs_set`` takes.
+
+    ophyd's ``Status`` does not satisfy bluesky's ``Status`` protocol (a
+    third-party typing gap), so this only casts: *signal* is returned as is.
+    """
+    return cast("Movable[Any]", signal)
+
 
 # ---------------------------------------------------------------------------
 # Unit helpers (private)
@@ -250,8 +267,10 @@ class SyrngDDSAxis(Device):
                         ({target_vol * c:.3f} mL) "
                     f"exceeds syringe size {size} mL."
                 )
-            yield from bps.abs_set(self.target_vol_unit, target_unit, wait=True)
-            yield from bps.abs_set(self.target_vol, target_vol, wait=True)
+            yield from bps.abs_set(
+                _movable(self.target_vol_unit), target_unit, wait=True
+            )
+            yield from bps.abs_set(_movable(self.target_vol), target_vol, wait=True)
 
         min_rate, max_rate = rate_range[size]
         const_max = _rate_unit_converter(r0=infuse_unit, r1="ml/min")
@@ -272,20 +291,20 @@ class SyrngDDSAxis(Device):
                     {size} mL {syringe_material} syringe."
             )
 
-        yield from bps.abs_set(self.infuse_rate_unit, infuse_unit, wait=True)
-        yield from bps.abs_set(self.infuse_rate, infuse_rate, wait=True)
+        yield from bps.abs_set(_movable(self.infuse_rate_unit), infuse_unit, wait=True)
+        yield from bps.abs_set(_movable(self.infuse_rate), infuse_rate, wait=True)
         yield from bps.sleep(1)
 
     def infuse_pump2(self, clear: bool = False):
         """Start infusion. Bluesky plan."""
         if clear:
             yield from bps.mv(self.clear_infused, 1, self.clear_withdrawn, 1)
-        yield from bps.abs_set(self.pump_infuse, 1, wait=True)
+        yield from bps.abs_set(_movable(self.pump_infuse), 1, wait=True)
         yield from bps.sleep(1)
 
     def stop_pump2(self, clear: bool = False):
         """Stop pump. Bluesky plan."""
-        yield from bps.abs_set(self.pump_stop, 1, wait=True)
+        yield from bps.abs_set(_movable(self.pump_stop), 1, wait=True)
         if clear:
             yield from bps.mv(self.clear_infused, 1, self.clear_withdrawn, 1)
         yield from bps.sleep(1)
@@ -435,8 +454,10 @@ class SyrngUltra(Device):
                         ({target_vol * c:.3f} mL) "
                     f"exceeds syringe size {size} mL."
                 )
-            yield from bps.abs_set(self.target_vol_unit, target_unit, wait=True)
-            yield from bps.abs_set(self.target_vol, target_vol, wait=True)
+            yield from bps.abs_set(
+                _movable(self.target_vol_unit), target_unit, wait=True
+            )
+            yield from bps.abs_set(_movable(self.target_vol), target_vol, wait=True)
 
         if size not in rate_range:
             raise ValueError(
@@ -462,22 +483,22 @@ class SyrngUltra(Device):
                     mL {syringe_material} syringe."
             )
 
-        yield from bps.abs_set(self.infuse_rate_unit, infuse_unit, wait=True)
-        yield from bps.abs_set(self.infuse_rate, infuse_rate, wait=True)
+        yield from bps.abs_set(_movable(self.infuse_rate_unit), infuse_unit, wait=True)
+        yield from bps.abs_set(_movable(self.infuse_rate), infuse_rate, wait=True)
         yield from bps.sleep(1)
 
     def infuse_pump2(self, clear: bool = False):
         """Start infusion. Bluesky plan."""
         if clear:
-            yield from bps.abs_set(self.clear_infused, 1, wait=True)
-            yield from bps.abs_set(self.clear_withdrawn, 1, wait=True)
-        yield from bps.abs_set(self.pump_infuse, 1, wait=True)
+            yield from bps.abs_set(_movable(self.clear_infused), 1, wait=True)
+            yield from bps.abs_set(_movable(self.clear_withdrawn), 1, wait=True)
+        yield from bps.abs_set(_movable(self.pump_infuse), 1, wait=True)
         yield from bps.sleep(1)
 
     def stop_pump2(self, clear: bool = False):
         """Stop pump. Bluesky plan."""
-        yield from bps.abs_set(self.pump_stop, 1, wait=True)
+        yield from bps.abs_set(_movable(self.pump_stop), 1, wait=True)
         if clear:
-            yield from bps.abs_set(self.clear_infused, 1, wait=True)
-            yield from bps.abs_set(self.clear_withdrawn, 1, wait=True)
+            yield from bps.abs_set(_movable(self.clear_infused), 1, wait=True)
+            yield from bps.abs_set(_movable(self.clear_withdrawn), 1, wait=True)
         yield from bps.sleep(1)

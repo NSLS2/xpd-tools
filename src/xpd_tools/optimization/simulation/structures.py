@@ -2,11 +2,12 @@
 
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from mp_api.client import MPRester
 
-GR_METHOD = "periodic"
+GR_METHOD: Literal["periodic", "ezpit"] = "periodic"
 
 
 @dataclass
@@ -106,6 +107,8 @@ class MPAPIUser:
                 formula=formula, fields=["material_id", "energy_above_hull"]
             )
             mid = min(docs, key=lambda d: d.energy_above_hull).material_id
+        if mid is None:
+            raise ValueError("_fetch needs a formula or a material id")
         return mpr.get_structure_by_material_id(mid)
 
     def load(self):

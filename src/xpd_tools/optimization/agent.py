@@ -8,7 +8,7 @@ import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -156,7 +156,8 @@ def _load_historical_data(
             len(values),
             detail,
         )
-    return values[keep].to_dict(orient="records")
+    # Boolean-mask row selection; the numpy mask hides the DataFrame type.
+    return cast(pd.DataFrame, values[keep]).to_dict(orient="records")
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +216,7 @@ def _check_feasibility(
     for metric, op, bound in parsed:
         if metric not in df.columns:
             continue
-        col = df[metric]
+        col = cast(pd.Series, df[metric])
         finite_mask = col.notna() & np.isfinite(col)
         satisfies = finite_mask & ops[op](col, bound)
         feasible_mask = feasible_mask & satisfies
@@ -423,7 +424,8 @@ class BuildAgent:
                 )
         if self.dofs is None or self.sources is None:
             return
-        dof_names = {dof.name for dof in self.dofs}
+        # set_dofs always names its DOFs.
+        dof_names = {cast(str, dof.name) for dof in self.dofs}
         source_names = {source.dof for source in self.sources}
         if dof_names != source_names:
             raise ValueError(
@@ -845,13 +847,15 @@ class BuildAgent:
         Only relevant for UV-Vis and xray-UVVis evaluation methods.
         """
         peak = IMetric(name="Peak")
+        peak_target, peak_tolerance = self.peak_target, self.peak_tolerance
+        if peak_target is None or peak_tolerance is None:
+            raise ValueError(
+                "set_uvvis_objectives(...) must be called before the Peak "
+                "constraints are built"
+            )
         return (
-            OutcomeConstraint(
-                f"p >= {self.peak_target - self.peak_tolerance:g}", p=peak
-            ),
-            OutcomeConstraint(
-                f"p <= {self.peak_target + self.peak_tolerance:g}", p=peak
-            ),
+            OutcomeConstraint(f"p >= {peak_target - peak_tolerance:g}", p=peak),
+            OutcomeConstraint(f"p <= {peak_target + peak_tolerance:g}", p=peak),
         )
 
     def _uvvis_objective_thresholds(self) -> tuple[OutcomeConstraint, ...]:
@@ -996,6 +1000,11 @@ class BuildAgent:
         with tempfile.TemporaryDirectory() as directory:
             evaluator_kwargs: dict[str, Any] = {}
             if needs_pdf:
+                if self.phases is None:  # _validate_before_build() rejects this
+                    raise ValueError(
+                        f"evaluation_method={self.evaluation_method!r} requires "
+                        "phases; call set_xray_objectives(phases=...) first"
+                    )
                 evaluator_kwargs["sandbox_client"] = (
                     sandbox_client
                     if sandbox_client is not None
@@ -1039,14 +1048,21 @@ class BuildAgent:
                 evaluator_kwargs["xray_retry_delay"] = self.xray_retry_delay
                 evaluator_kwargs["fit_settings"] = self.fit_settings
 
-            return _EVALUATORS[self.evaluation_method](**evaluator_kwargs)
+            # A None method is left to fail the lookup with KeyError, as before.
+            evaluator_cls = _EVALUATORS[cast(str, self.evaluation_method)]
+            return evaluator_cls(**evaluator_kwargs)
 
     def _seed_historical_data(self, agent: Any, needs_plqy: bool) -> None:
         if self.agent_data_path is None:
             return
+        if self.dofs is None:  # _validate_before_build() rejects this
+            raise ValueError(
+                "set_dofs(...) must be called before build()/build_local()"
+            )
+        # set_dofs always names its DOFs.
         historical = _load_historical_data(
             self.agent_data_path,
-            [dof.name for dof in self.dofs],
+            [cast(str, dof.name) for dof in self.dofs],
             [objective.name for objective in self.objectives],
             optional_names=(
                 *(("Peak",) if needs_plqy else ()),
@@ -1212,7 +1228,7 @@ class BuildAgent:
 
         return kwargs
 
-    def build(self, *, send_config: bool = False) -> None:
+    def build(self, *, send_config: bool = False) -> QueueserverAgent:
         """Build the agent for use in a queueserver environment.
 
         This method should only be called when `queue_server=True`,
@@ -1264,9 +1280,14 @@ class BuildAgent:
                 raise
             except Exception:
                 pass
-        document_dispatcher = RemoteDispatcher(self.zmq_consumer_address)
+        # Passed through unchanged, None included, as before.
+        document_dispatcher = RemoteDispatcher(cast(str, self.zmq_consumer_address))
 
         constraints = self._outcome_constraints(needs_plqy)
+        if self.dofs is None:  # _validate_before_build() rejects this
+            raise ValueError(
+                "set_dofs(...) must be called before build()/build_local()"
+            )
         agent = QueueserverAgent(
             re_manager_api,
             document_dispatcher,
@@ -1308,6 +1329,11 @@ class BuildAgent:
         def _bind_pump(item: Any) -> Any:
             return replace(item, pump=devices[item.pump])
 
+        if self.sources is None:
+            raise ValueError(
+                "experiment(...) must be called before the plan context is built"
+            )
+
         common = {
             "sources": tuple(_bind_pump(source) for source in self.sources),
             "dilutions": tuple(_bind_pump(stage) for stage in self.dilutions or ()),
@@ -1335,7 +1361,8 @@ class BuildAgent:
                 fast_shutter=devices["fast_shutter"],
                 xray_detector=devices["xray_detector"],
                 wrap_xray_run=wrap_xray_run,
-                xray=self.xray_settings,
+                # Passed through unchanged, None included, as before.
+                xray=cast(XraySettings, self.xray_settings),
                 **common,
             )
         # "xray_screened_acquire" or "xray_uvvis_acquire" -- both need the
@@ -1348,7 +1375,8 @@ class BuildAgent:
             fast_shutter=devices["fast_shutter"],
             xray_detector=devices["xray_detector"],
             wrap_xray_run=wrap_xray_run,
-            xray=self.xray_settings,
+            # Passed through unchanged, None included, as before.
+            xray=cast(XraySettings, self.xray_settings),
             fit_settings=fit_settings,
             **common,
         )
@@ -1401,6 +1429,10 @@ class BuildAgent:
         acquisition_plan = _LOCAL_PLAN_FACTORIES[self._acquisition_plan_name()](context)
 
         constraints = self._outcome_constraints(needs_plqy)
+        if self.dofs is None:  # _validate_before_build() rejects this
+            raise ValueError(
+                "set_dofs(...) must be called before build()/build_local()"
+            )
         agent = Agent(
             sensors=(),
             dofs=self.dofs,
@@ -1511,6 +1543,10 @@ class BuildAgent:
 
         return plans
 
+    @overload
+    def to_config(self, filename: None = None) -> dict[str, Any]: ...
+    @overload
+    def to_config(self, filename: str) -> None: ...
     def to_config(self, filename: str | None = None) -> dict[str, Any] | None:
         """Compile the current configuration into a JSON-able dict.
 

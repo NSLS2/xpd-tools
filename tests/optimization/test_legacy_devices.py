@@ -94,6 +94,7 @@ def test_build_xpd_objects_drives_build_local_end_to_end(
         residence_time_ratio=0.0,
     )
 
+    assert built.acquisition_plan is not None
     RE(built.acquisition_plan([{"_id": 1, "infusion_rate_CsPb": 25}], []))
 
     assert any(name == "start" for name, _ in documents)

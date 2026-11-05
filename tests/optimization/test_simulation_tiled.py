@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from bluesky.run_engine import RunEngine
+from bluesky.run_engine import RunEngine, RunEngineResult
 from ophyd import Signal
 
 from xpd_tools.optimization.helpers.beamline import XrayPlanContext, XraySettings
@@ -104,6 +104,7 @@ def test_build_simulated_tiled_clients_mixes_phase_pdfs(
     plan = create_xray_plan(context)
 
     result = RE(plan([{"_id": 1, "infusion_rate_CsPb": 25.0}], []))
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     # Only infusion_rate_CsPb was suggested -- Br's weight is 0, so the
@@ -161,6 +162,7 @@ def test_build_simulated_tiled_clients_synthesizes_pl_peak_from_band_gap(
             [],
         )
     )
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     # Only infusion_rate_CsPb was suggested -- Br's weight is 0, so the
@@ -239,6 +241,7 @@ def test_build_simulated_tiled_clients_makes_plqy_finite_end_to_end(
             [],
         )
     )
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     evaluation = UvvisEvaluation(
@@ -314,6 +317,7 @@ def test_build_simulated_tiled_clients_mixes_per_phase_fwhm_and_absorbance(
             [],
         )
     )
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     fl = tiled_client[run_uid]["fluorescence"].read()
@@ -382,6 +386,7 @@ def test_build_simulated_tiled_clients_clamps_extreme_band_gap_to_a_fittable_pea
             [],
         )
     )
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     fl = tiled_client[run_uid]["fluorescence"].read()
@@ -460,6 +465,7 @@ def test_build_simulated_tiled_clients_pl_phases_restricts_pl_mix(
             [],
         )
     )
+    assert isinstance(result, RunEngineResult)
     run_uid = result.plan_result
 
     fl = tiled_client[run_uid]["fluorescence"].read()
@@ -483,7 +489,9 @@ def _pl_peak_nm(
     context = plan_context_factory(
         quality=QualityPolicy(enabled=False, absorbance_shots=1, fluorescence_shots=1)
     )
-    run_uid = RE(create_xray_uvvis_plan(context)([{"_id": 1, **rates}], [])).plan_result
+    result = RE(create_xray_uvvis_plan(context)([{"_id": 1, **rates}], []))
+    assert isinstance(result, RunEngineResult)
+    run_uid = result.plan_result
     fl = tiled_client[run_uid]["fluorescence"].read()
     x_axis = fl["QEPro_x_axis"].values.reshape(-1)
     return float(x_axis[int(np.argmax(fl["QEPro_output"].values.reshape(-1)))])

@@ -34,11 +34,14 @@ class EnsembleGoodnessOfFitScorer:
         # Merge over the defaults rather than replacing outright -- an
         # empty dict must mean "no overrides" (all-1.0), and a partial
         # dict must override only the named metrics, not drop the rest.
-        self.weights = {**dict.fromkeys(metric_names, 1.0), **(weights or {})}
-        self._n = dict.fromkeys(metric_names, 0)
-        self._mean = dict.fromkeys(metric_names, 0.0)
+        self.weights: dict[str, float] = {
+            **dict.fromkeys(metric_names, 1.0),
+            **(weights or {}),
+        }
+        self._n: dict[str, int] = dict.fromkeys(metric_names, 0)
+        self._mean: dict[str, float] = dict.fromkeys(metric_names, 0.0)
         # Welford's running sum-of-squared-deviations
-        self._m2 = dict.fromkeys(metric_names, 0.0)
+        self._m2: dict[str, float] = dict.fromkeys(metric_names, 0.0)
 
     def _update_and_normalize(self, name: str, value: float) -> float:
         n = self._n[name] + 1

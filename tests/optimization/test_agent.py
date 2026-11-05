@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
+from types import FunctionType, SimpleNamespace
+from typing import Any, Literal, cast
 from unittest.mock import patch
 
 import numpy as np
@@ -19,6 +19,7 @@ from xpd_tools.optimization.helpers.phases import Phase
 from xpd_tools.optimization.helpers.qepro import PlqyReference, SpectraFitSettings
 from xpd_tools.optimization.helpers.run import RunSettings
 from xpd_tools.optimization.plans import DilutionStage, FlowSource, WashCycle
+from xpd_tools.optimization.plugins import XrayEvaluation
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def phase_factory(tmp_path: Path) -> Callable[..., Phase]:
 
 
 @pytest.fixture
-def mocked_queueserver() -> None:
+def mocked_queueserver() -> Iterator[None]:
     """Patch every network/queueserver call BuildAgent.build() can make."""
     targets = [
         "xpd_tools.optimization.agent.from_uri",
@@ -60,7 +61,7 @@ def mocked_queueserver() -> None:
 
 
 @pytest.fixture
-def mocked_local() -> None:
+def mocked_local() -> Iterator[None]:
     """Patch the Tiled calls build_local() can still make for evaluation --
     no queue server or ZMQ dispatcher involved on this path at all."""
     targets = [
@@ -86,6 +87,13 @@ def _source(name: str = "CsPb") -> FlowSource:
         precursor=f"precursor-{name}",
         sample_label=name,
     )
+
+
+def _plan_name(agent: Agent) -> str:
+    """Return the name of the plan function `agent` acquires with."""
+    plan = agent.acquisition_plan
+    assert plan is not None
+    return cast(FunctionType, plan).__name__
 
 
 def _uvvis_agent(**kwargs: Any) -> BuildAgent:
@@ -118,12 +126,14 @@ class TestDofSourceAlignment:
         agent = BuildAgent(evaluation_method="uvvis")
         agent.set_dofs([_pump()])
         agent.experiment(sources=[_source()])
+        assert agent.dofs is not None
         assert agent.dofs[0].name == "infusion_rate_CsPb"
 
     def test_sources_then_matching_dofs_ok(self) -> None:
         agent = BuildAgent(evaluation_method="uvvis")
         agent.experiment(sources=[_source()])
         agent.set_dofs([_pump()])
+        assert agent.dofs is not None
         assert agent.dofs[0].name == "infusion_rate_CsPb"
 
     def test_mismatch_raises_when_second_call_is_experiment(self) -> None:
@@ -159,6 +169,7 @@ class TestUvvisObjectives:
                 excitation_wavelength_nm=400, solvent_refractive_index=1.5
             )
         )
+        assert agent.plqy is not None
         assert agent.plqy.reference_type == "quinine"
         assert agent.plqy.excitation_wavelength_nm == 400
         assert agent.plqy.solvent_refractive_index == 1.5
@@ -169,6 +180,7 @@ class TestUvvisObjectives:
             plqy=PlqyReference(),
             fit_settings=SpectraFitSettings(pl_screen_key_height=50),
         )
+        assert agent.fit_settings is not None
         assert agent.fit_settings.pl_screen_key_height == 50
         assert agent.fit_settings.pl_wavelength_range == (400.0, 800.0)
 
@@ -191,6 +203,7 @@ class TestSuccessCriteria:
     def test_stores_min_correlation(self) -> None:
         agent = BuildAgent(evaluation_method="xray")
         agent.set_success_criteria(min_correlation=0.9, poll_interval=1.0)
+        assert agent.success_criteria is not None
         assert agent.success_criteria.min_correlation == 0.9
         assert agent.success_criteria.max_fwhm is None
         assert agent.success_criteria.min_plqy is None
@@ -199,6 +212,7 @@ class TestSuccessCriteria:
     def test_stores_fwhm_plqy_pair(self) -> None:
         agent = BuildAgent(evaluation_method="uvvis")
         agent.set_success_criteria(max_fwhm=30.0, min_plqy=0.5)
+        assert agent.success_criteria is not None
         assert agent.success_criteria.min_correlation is None
         assert agent.success_criteria.max_fwhm == 30.0
         assert agent.success_criteria.min_plqy == 0.5
@@ -215,6 +229,7 @@ class TestXrayObjectives:
             stream_name="custom",
             phases=[phase_factory()],
         )
+        assert agent.xray_settings is not None
         assert agent.xray_settings.exposure == 300.0
         assert agent.xray_settings.frame_acq_time == 1.0
         assert agent.xray_settings.no_dark is True
@@ -286,7 +301,9 @@ class TestXrayObjectives:
 
     @pytest.mark.parametrize("screening", ["screen_only", "screen_and_record"])
     def test_screened_modes_build_quality_policy(
-        self, screening: str, phase_factory: Callable[..., Phase]
+        self,
+        screening: Literal["screen_only", "screen_and_record"],
+        phase_factory: Callable[..., Phase],
     ) -> None:
         agent = BuildAgent(evaluation_method="xray")
         agent.set_xray_objectives(
@@ -298,6 +315,7 @@ class TestXrayObjectives:
             num_flu=12,
             phases=[phase_factory()],
         )
+        assert agent.quality_policy is not None
         assert agent.quality_policy.enabled is False
         assert agent.quality_policy.good_batches == 5
         assert agent.quality_policy.max_bad_batches == 1
@@ -552,19 +570,22 @@ def test_pump_bounds_normalizes_to_tuple() -> None:
     from_config() always rebuilds it as a tuple, so a hand-built Pump using
     a list would silently mismatch. See Pump.__post_init__.
     """
-    assert Pump(name="CsPb", id="dds2_p1", bounds=[10, 200]).bounds == (10, 200)
-    assert isinstance(Pump(name="CsPb", id="dds2_p1", bounds=[10, 200]).bounds, tuple)
+    # A list on purpose: the field is typed as a tuple.
+    bounds = cast(Any, [10, 200])
+    assert Pump(name="CsPb", id="dds2_p1", bounds=bounds).bounds == (10, 200)
+    assert isinstance(Pump(name="CsPb", id="dds2_p1", bounds=bounds).bounds, tuple)
 
 
 def test_spectra_fit_settings_ranges_normalize_to_tuple() -> None:
     """Same fragility as Pump.bounds, for SpectraFitSettings's four range
     fields -- see SpectraFitSettings.__post_init__.
     """
+    # Lists on purpose: the fields are typed as tuples.
     settings = SpectraFitSettings(
-        pl_percent_range=[40, 100],
-        pl_wavelength_range=[400, 800],
-        absorbance_percent_range=[10, 70],
-        absorbance_wavelength_range=[210, 700],
+        pl_percent_range=cast(Any, [40, 100]),
+        pl_wavelength_range=cast(Any, [400, 800]),
+        absorbance_percent_range=cast(Any, [10, 70]),
+        absorbance_wavelength_range=cast(Any, [210, 700]),
     )
     assert settings.pl_percent_range == (40, 100)
     assert settings.pl_wavelength_range == (400, 800)
@@ -755,8 +776,10 @@ class TestBuildEndToEnd:
         assert agent.to_config()["pdf_mode"] == "raw_tracked"
 
         built = agent.build()
+        assert isinstance(built.evaluation_function, XrayEvaluation)
         assert built.evaluation_function.pdf_mode == "raw_tracked"
         # raw_tracked optimizes against the raw correlation, like "raw".
+        assert agent.phases is not None
         assert {obj.name for obj in agent.objectives} == {
             f"corr_{phase.name}" for phase in agent.phases
         }
@@ -779,6 +802,7 @@ class TestBuildEndToEnd:
             phases=[phase_factory()],
         )
         built = agent.build()
+        assert isinstance(built.evaluation_function, XrayEvaluation)
         assert all(
             phase.scoring_function == "cross_correlation"
             for phase in built.evaluation_function.phases
@@ -846,7 +870,7 @@ class TestBuildLocal:
             wrap_xray_run=lambda plan, no_dark: plan,
         )
         assert isinstance(built, Agent)
-        assert built.acquisition_plan.__name__ == "uvvis_acquire"
+        assert _plan_name(built) == "uvvis_acquire"
 
     def test_xray_unscreened_builds_local_agent(
         self,
@@ -870,7 +894,7 @@ class TestBuildLocal:
             },
             wrap_xray_run=lambda plan, no_dark: plan,
         )
-        assert built.acquisition_plan.__name__ == "xray_acquire"
+        assert _plan_name(built) == "xray_acquire"
 
     def test_xray_screen_only_builds_local_agent(
         self,
@@ -897,7 +921,7 @@ class TestBuildLocal:
             },
             wrap_xray_run=lambda plan, no_dark: plan,
         )
-        assert built.acquisition_plan.__name__ == "xray_screened_acquire"
+        assert _plan_name(built) == "xray_screened_acquire"
 
     def test_xray_uvvis_builds_local_agent(
         self,
@@ -925,7 +949,7 @@ class TestBuildLocal:
             },
             wrap_xray_run=lambda plan, no_dark: plan,
         )
-        assert built.acquisition_plan.__name__ == "xray_uvvis_acquire"
+        assert _plan_name(built) == "xray_uvvis_acquire"
 
     def test_acquisition_plan_actually_runs_with_a_real_run_engine(
         self,
@@ -966,6 +990,7 @@ class TestBuildLocal:
             residence_time_ratio=0.0,
         )
 
+        assert built.acquisition_plan is not None
         RE(built.acquisition_plan([{"_id": 1, "infusion_rate_CsPb": 25}], []))
 
         assert any(name == "start" for name, _ in documents)
@@ -1029,6 +1054,7 @@ def test_old_config_with_phase_simulated_still_loads(
         {**phase, "simulated": False} for phase in config["xray"]["phases"]
     ]
     agent = BuildAgent.from_config(config)
+    assert agent.phases is not None
     assert all(not hasattr(phase, "simulated") for phase in agent.phases)
 
 

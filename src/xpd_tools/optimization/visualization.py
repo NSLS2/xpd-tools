@@ -10,13 +10,14 @@ Typical import::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast, overload
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 if TYPE_CHECKING:
-    import matplotlib.pyplot as plt
     import pandas as pd
+    from matplotlib.figure import Figure
 
 HC_EV_NM = 1239.841984  # Planck's constant × c, in eV·nm
 
@@ -26,12 +27,20 @@ HC_EV_NM = 1239.841984  # Planck's constant × c, in eV·nm
 # ---------------------------------------------------------------------------
 
 
-def wavelength_nm(bandgap_ev: float | np.ndarray) -> float | np.ndarray:
+@overload
+def wavelength_nm(bandgap_ev: float) -> float: ...
+@overload
+def wavelength_nm(bandgap_ev: ArrayLike) -> float | np.ndarray: ...
+def wavelength_nm(bandgap_ev: ArrayLike) -> float | np.ndarray:
     """Convert photon energy / optical band gap in eV to wavelength in nm."""
     return HC_EV_NM / np.asarray(bandgap_ev)
 
 
-def bandgap_ev(wavelength: float | np.ndarray) -> float | np.ndarray:
+@overload
+def bandgap_ev(wavelength: float) -> float: ...
+@overload
+def bandgap_ev(wavelength: ArrayLike) -> float | np.ndarray: ...
+def bandgap_ev(wavelength: ArrayLike) -> float | np.ndarray:
     """Convert wavelength in nm to photon energy in eV.
 
     Returns ``inf`` for zero wavelength (physically correct limit; matplotlib
@@ -72,7 +81,7 @@ def plot_bandgap_wavelength(
     e_max: float = 4.2,
     save: str | None = None,
     references: list[tuple[float, str]] | None = None,
-) -> plt.Figure:
+) -> Figure:
     """Plot trial peak wavelengths on a band-gap (eV) vs trial-index axis.
 
     Each trial is coloured by the approximate visible colour corresponding to
@@ -118,9 +127,10 @@ def plot_bandgap_wavelength(
     wavelengths = np.linspace(wavelength_nm(e_max), wavelength_nm(e_min), 500)
     for lower, upper in zip(wavelengths[:-1], wavelengths[1:], strict=False):
         mid = (lower + upper) / 2
+        # lower/upper are scalar elements of `wavelengths`.
         ax.axhspan(
-            bandgap_ev(upper),
-            bandgap_ev(lower),
+            cast(float, bandgap_ev(upper)),
+            cast(float, bandgap_ev(lower)),
             color=wavelength_color(mid),
             alpha=0.33,
             linewidth=0,

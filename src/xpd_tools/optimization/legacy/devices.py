@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from bluesky import plan_stubs as bps
@@ -120,8 +120,10 @@ class FakePump(Device):
             raise RuntimeError(f"failed to stop {self.name}")
         if self._infusing_since is not None:
             minutes = (time.monotonic() - self._infusing_since) / 60
+            # Both signals hold floats from construction on.
             infused = (
-                self.read_infused.get() + self.read_infuse_rate.get() / 1000 * minutes
+                cast(float, self.read_infused.get())
+                + cast(float, self.read_infuse_rate.get()) / 1000 * minutes
             )
             self._infusing_since = None
             yield from bps.mv(self.read_infused, infused)

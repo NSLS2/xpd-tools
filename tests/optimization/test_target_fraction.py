@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,9 @@ from xpd_tools.optimization.helpers.pdf import (
     _raw_pdf_correlations,
 )
 from xpd_tools.optimization.helpers.phases import Phase, _write_pdf_references
+
+if TYPE_CHECKING:
+    from xpd_tools.optimization.scoring import CnnScorer
 
 
 class _FakeCnn:
@@ -35,7 +39,10 @@ def test_cnn_reports_fraction_and_squared_distance(tmp_path: Path) -> None:
 
     r = np.linspace(1, 30, 100)
     scores = _raw_pdf_correlations(
-        refs, {"gr_r": r, "gr_G": np.sin(r)}, ensemble_scorers={}, cnn_scorer=_FakeCnn()
+        refs,
+        {"gr_r": r, "gr_G": np.sin(r)},
+        ensemble_scorers={},
+        cnn_scorer=cast("CnnScorer", _FakeCnn()),
     )
     assert scores == pytest.approx(
         {"frac_CsPbBr3": 0.7, "frac_dist_CsPbBr3": 0.01, "frac_Cs4PbBr6": 0.3}

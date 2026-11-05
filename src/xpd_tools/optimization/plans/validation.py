@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from xpd_tools.optimization.helpers.beamline import XrayUvvisPlanContext
+from xpd_tools.optimization.helpers.beamline import (
+    XrayPlanContext,
+    XrayUvvisPlanContext,
+)
 
 
 def _require_finite_nonnegative(value: float, field: str) -> None:
@@ -12,7 +15,7 @@ def _require_finite_nonnegative(value: float, field: str) -> None:
         raise ValueError(f"{field} must be finite and non-negative")
 
 
-def _validate_context(context: XrayUvvisPlanContext) -> None:
+def _validate_context(context: XrayUvvisPlanContext | XrayPlanContext) -> None:
     """Validate static process configuration before constructing a plan."""
     if context.xray_detector is None:
         raise ValueError("xray_detector is required")
