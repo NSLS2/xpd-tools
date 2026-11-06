@@ -1,10 +1,10 @@
-# XPD-D Device Map Proposal — Answers to Q1–Q7
+# XPD-D Device Map Proposal — Questions Q1–Q5
 
-**For:** Mehmet Topsakal (XPD-D tomography MVP, sprint week ~2026-11-02)  
+**For:** Kyle Brogan (with Mehmet Topsakal; XPD-D tomography MVP)  
 **Date:** 2026-11-05  
 **Status:** Proposal for review and adjustment  
 
-This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo-hextools-migration` task. These are starting points for discussion on sprint week day 1; Mehmet should revise as needed based on current beamline configuration and user needs.
+This document proposes answers to questions Q1–Q5 from the `xpdd-tomo-hextools-migration` task, to confirm with Kyle. They are starting points; adjust them to the current beamline configuration and user needs.
 
 ---
 
@@ -14,13 +14,11 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 |---|---|---|---|---|---|
 | `detectors` | Kinetix / Phantom | `pilatus1` | — | Pilatus4 2M (XF:28ID2-ES{Pilatus4-Det:1}) | Phase 1 detector; IRIS & Xpress3 follow in later phases |
 | `panda` | `panda` | `panda1` | — | XF:28ID2-ES{PANDA:1}: | Configured; encoder `calc.1.inpa = INENC1.VAL` ✓ |
-| `rot_motor` | `RotationMotor` | `amPhi` or `twister` | **Q1** | **Phi2 spinner** (`XF:28IDD-ES:2{Stg:Stack-Ax:Phi2}Mtr`) | Alternative: Twister if used; encoder zero position TBD during sprint |
+| `rot_motor` | `RotationMotor` | `amPhi` or `twister` | **Q1** | **Phi2 spinner** (`XF:28IDD-ES:2{Stg:Stack-Ax:Phi2}Mtr`) | Alternative: Twister if used; encoder zero position to be measured at the beamline |
 | out-of-beam move | `sample_tower.x1` | `amBaseX` | **Q2** | **Move amBaseX +10mm** | Clears sample for dark/flat. Confirm travel and direction. |
 | `fe_shutter` / `photon_shutter` | HEX shutters | — | **Q3** | **None (operator-managed)** | Plans call with `use_shutter=False`; hextools PR to make optional |
 | stream name | `primary` | `tomo` | **Q4** | **Use 'tomo'** | Reconstruction pipeline expects this; confirm with data team |
 | plans | — | — | **Q5** | **Full suite** | Fly, dark/flat, radiography, N-D loops; all needed for beamtime |
-| — | — | — | **Q6** | **TBD Mehmet** | Beamline time: days 3–4 (no beam vs with beam) for sprint week |
-| — | — | — | **Q7** | **Week 2026-11-02** | Confirm timing + Kyle's availability |
 
 ---
 
@@ -30,7 +28,7 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 
 - **PV:** `XF:28IDD-ES:2{Stg:Stack-Ax:Phi2}Mtr`
 - **Type:** `RotationMotor` (ophyd-async, with encoder feedback)
-- **Encoder zero position:** Measure during sprint week day 1 on beamline. Current placeholder: `encoder_pos_at_zero=0`
+- **Encoder zero position:** Measure at the beamline. Current placeholder: `encoder_pos_at_zero=0`
 - **Alternative:** Twister (`XF:28IDD-ES:2{Twister}Mtr`) if experiments require dual rotation capability or Phi2 is unavailable.
 
 **Action:** Measure and hardcode `encoder_pos_at_zero` once beamline confirms homing position.
@@ -45,7 +43,7 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 - **Flat field position:** Move +10 mm (or confirm distance needed based on beam footprint)
 - **Function:** `tomo_dark_flat()` plan uses this motor to clear the sample before taking dark and flat images
 
-**Action:** Confirm exact travel distance and direction during sprint week day 1.
+**Action:** Confirm exact travel distance and direction at the beamline.
 
 ---
 
@@ -91,37 +89,11 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 
 ---
 
-## Q6: Beamline Time Availability
-
-**Proposal:** TBD — Mehmet to specify.
-
-- **Sprint week days 3–4:** Need beamline access for real scans (with beam preferred, but no-beam dry-run acceptable first)
-- **Rehearsal period (11-09 → 11-20):** Additional availability for users to practice scans before freeze (11-20)
-
-**Action:** Mehmet to provide beamline calendar; AJ coordinates with beamline scheduler.
-
----
-
-## Q7: Sprint Week Timing and Team
-
-**Proposal:** Week of **2026-11-02 → 2026-11-06** (Mon–Fri).
-
-- **Attendees:** Mehmet (primary), AJ (hextools integration), Kyle (optional; QueueServer work elsewhere)
-- **Format:** 1–2 hours/day in-person or video sync
-- **Day 1 (11-02):** Walk through hextools plans, settle device map, confirm Q1–Q2 measurements
-- **Day 2–5:** Profile instantiation, mock tests, dry-run on beamline, real scans, runbook
-
-**Action:** Mehmet to confirm dates and availability.
-
----
-
 ## Next Steps
 
-1. **Mehmet reviews and provides feedback** on this proposal (adjust any Q1–Q7 answers)
-2. **AJ prepares hextools PR** (shutters optional, generic motors, mock tests)
-3. **Sprint week day 1:** Hands-on measurement of encoder zero, motor travel, confirm device map
-4. **Days 2–5:** Profile instantiation, CI testing, beamline validation
-5. **11-20:** Code freeze; deploy locked environment
+1. **Kyle (with Mehmet) confirms or adjusts** the Q1–Q5 answers
+2. **AJ prepares the hextools PR** (shutters optional, generic motors, mock tests)
+3. **At the beamline:** measure the encoder zero and motor travel, confirm the device map
 
 ---
 
@@ -135,4 +107,4 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 ---
 
 **Author:** AJ Sligar (DAD Duo)  
-**Status:** Open for Mehmet's input and adjustment
+**Status:** Open for Kyle's and Mehmet's input
