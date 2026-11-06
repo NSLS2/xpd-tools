@@ -555,11 +555,11 @@ async def test_stop_uses_the_controllers_stop(
     psylo: Psylotech, rotation: PsylotechRotation
 ):
     """Stopping a moving axis presses ActuatorStop rather than starting a new move."""
-    set_mock_attr(psylo.actuator_stop, "trigger", AsyncMock())
+    stop = set_mock_attr(psylo.actuator_stop, "trigger", AsyncMock())
     await rotation.movable_logic.enable_actuators()
     set_mock_value(rotation.user_setpoint, 5.0)  # commanded, not yet arrived
     await rotation.stop()
-    psylo.actuator_stop.trigger.assert_awaited_once()
+    stop.assert_awaited_once()
     assert await rotation.user_setpoint.get_value() == 5.0
     assert await psylo.actuator_enabled.get_value() == EnabledDisabled.DISABLED
 
@@ -568,7 +568,9 @@ async def test_axial_move_sets_the_controllers_displacement_limits(
     psylo: Psylotech,
 ):
     axial = psylo.load.axial
-    set_mock_attr(psylo.displacement_limits_apply, "trigger", AsyncMock())
+    apply_displacement = set_mock_attr(
+        psylo.displacement_limits_apply, "trigger", AsyncMock()
+    )
     await axial.set(0.001)
     get_mock_put(psylo.displacement_limit_lower).assert_called_with(
         PsylotechAxial.LOW_LIMIT
@@ -576,18 +578,20 @@ async def test_axial_move_sets_the_controllers_displacement_limits(
     get_mock_put(psylo.displacement_limit_upper).assert_called_with(
         PsylotechAxial.HIGH_LIMIT
     )
-    psylo.displacement_limits_apply.trigger.assert_awaited_once()
+    apply_displacement.assert_awaited_once()
 
 
 async def test_load_move_sets_the_controllers_load_limits(
     psylo: Psylotech, load_frame: tuple[PsylotechAxial, PsylotechLoad]
 ):
     _, load = load_frame
-    set_mock_attr(psylo.load_limits_apply, "trigger", AsyncMock())
-    set_mock_attr(psylo.displacement_limits_apply, "trigger", AsyncMock())
+    apply_load = set_mock_attr(psylo.load_limits_apply, "trigger", AsyncMock())
+    apply_displacement = set_mock_attr(
+        psylo.displacement_limits_apply, "trigger", AsyncMock()
+    )
     set_mock_value(load.high_limit, 3000.0)
     await load.set(50.0)
     get_mock_put(psylo.load_limit_lower).assert_called_with(PsylotechLoad.LOW_LIMIT)
     get_mock_put(psylo.load_limit_upper).assert_called_with(3000.0)
-    psylo.load_limits_apply.trigger.assert_awaited_once()
-    psylo.displacement_limits_apply.trigger.assert_awaited_once()
+    apply_load.assert_awaited_once()
+    apply_displacement.assert_awaited_once()
