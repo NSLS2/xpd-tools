@@ -556,12 +556,16 @@ async def test_stop_uses_the_controllers_stop(
 ):
     """Stopping a moving axis presses ActuatorStop rather than starting a new move."""
     stop = set_mock_attr(psylo.actuator_stop, "trigger", AsyncMock())
-    await rotation.movable_logic.enable_actuators()
-    set_mock_value(rotation.user_setpoint, 5.0)  # commanded, not yet arrived
+    # The rotation only arrives when the test says so
+    callback_on_mock_put(rotation.user_setpoint, lambda value: None)
+    moving = asyncio.ensure_future(rotation.set(5.0))
+    await asyncio.sleep(0.05)
     await rotation.stop()
     stop.assert_awaited_once()
     assert await rotation.user_setpoint.get_value() == 5.0
     assert await psylo.actuator_enabled.get_value() == EnabledDisabled.DISABLED
+    with pytest.raises(RuntimeError, match="stopped"):
+        await moving
 
 
 async def test_axial_move_sets_the_controllers_displacement_limits(
@@ -595,3 +599,75 @@ async def test_load_move_sets_the_controllers_load_limits(
     get_mock_put(psylo.load_limit_upper).assert_called_with(3000.0)
     apply_load.assert_awaited_once()
     apply_displacement.assert_awaited_once()
+
+
+async def test_move_after_a_power_down_timeout_waits_for_it(
+    psylo: Psylotech, rotation: PsylotechRotation, monkeypatch: pytest.MonkeyPatch
+):
+    """A power-down that outlived its timeout must land before the next power-up."""
+    monkeypatch.setattr("xpd_tools.psylotech.ACTUATOR_ENABLE_TIMEOUT", 0.1)
+    axial = psylo.load.axial
+    events: list[str] = []
+    loop = asyncio.get_running_loop()
+
+    def _enable(value: EnableDisable):
+        events.append(value.value)
+        if value == EnableDisable.ENABLE:
+            set_mock_value(psylo.actuator_enabled, EnabledDisabled.ENABLED)
+        else:
+
+            def _off():
+                events.append("powered down")
+                set_mock_value(psylo.actuator_enabled, EnabledDisabled.DISABLED)
+
+            # Only the first power-down outlives its timeout
+            loop.call_later(0.15 if "Disable" not in events[:-1] else 0.0, _off)
+
+    def _axial_move(value: float):
+        events.append("axial moves")
+        set_mock_value(axial.user_readback, value)
+
+    callback_on_mock_put(psylo.actuator_enable, _enable)
+    callback_on_mock_put(axial.user_setpoint, _axial_move)
+
+    with pytest.raises(PsylotechError, match="powered down"):
+        await rotation.set(1.0)
+    await axial.set(0.001)
+    moved = events.index("axial moves")
+    assert "powered down" in events[:moved]
+    assert events[moved - 1] == EnableDisable.ENABLE.value
+
+
+async def test_stopping_an_idle_axis_leaves_another_moving(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    """An interrupted axis's stale setpoint must not stop another axis's move."""
+    stop = set_mock_attr(psylo.actuator_stop, "trigger", AsyncMock())
+    axial = psylo.load.axial
+    set_mock_value(rotation.user_setpoint, 5.0)  # left behind by an interrupted move
+    callback_on_mock_put(axial.user_setpoint, lambda value: None)
+    moving = asyncio.ensure_future(axial.set(0.001))
+    await asyncio.sleep(0.05)
+    await rotation.unstage()
+    stop.assert_not_awaited()
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    set_mock_value(axial.user_readback, 0.001)
+    await moving
+
+
+async def test_load_limits_failure_keeps_a_running_axial_move_powered(
+    psylo: Psylotech, load_frame: tuple[PsylotechAxial, PsylotechLoad]
+):
+    """A load move failing in setup must not release another move's power."""
+    axial, load = load_frame
+    callback_on_mock_put(axial.user_setpoint, lambda value: None)
+    moving = asyncio.ensure_future(axial.set(0.001))
+    await asyncio.sleep(0.05)
+    set_mock_attr(
+        psylo.load_limits_apply, "trigger", AsyncMock(side_effect=RuntimeError("IOC"))
+    )
+    with pytest.raises(RuntimeError, match="IOC"):
+        await load.set(50.0)
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    set_mock_value(axial.user_readback, 0.001)
+    await moving

@@ -82,6 +82,9 @@ class ActuatorPower:
         #: Serializes taking and releasing the power with the writes they make, so
         #: an axis can't start while the last user's power-down is still pending.
         self.lock = asyncio.Lock()
+        #: A power-down was asked for but not confirmed within its timeout; the
+        #: next power-up waits for it to land first.
+        self.shutdown_pending = False
 
 
 @dataclass(frozen=True)
@@ -148,10 +151,30 @@ class PsylotechMovableLogic(MovableLogic[float]):
     actuator_stop: TriggerableCommand
     #: Moves of this axis using the actuator power.
     held: int = field(default=0, init=False)
+    #: Whether this axis has a move in progress (between setpoint and arrival).
+    moving: bool = field(default=False, init=False)
 
     async def _power_up(self) -> None:
-        """Write ENABLE unless the actuators already report enabled, then wait."""
-        if await self.actuator_enabled.get_value() != EnabledDisabled.ENABLED:
+        """Write ENABLE unless the actuators already report enabled, then wait.
+
+        After an unconfirmed power-down the readback may still say enabled, so the
+        power-down must land first and ENABLE is then always written.
+        """
+        if self.power.shutdown_pending:
+            try:
+                await wait_for_value(
+                    self.actuator_enabled,
+                    EnabledDisabled.DISABLED,
+                    timeout=ACTUATOR_ENABLE_TIMEOUT,
+                )
+            except TimeoutError as error:
+                raise PsylotechError(
+                    "The last Psylotech power-down is still not confirmed; check the "
+                    "controller before moving."
+                ) from error
+            self.power.shutdown_pending = False
+            await self.actuator_enable.set(EnableDisable.ENABLE)
+        elif await self.actuator_enabled.get_value() != EnabledDisabled.ENABLED:
             await self.actuator_enable.set(EnableDisable.ENABLE)
         await wait_for_value(
             self.actuator_enabled,
@@ -193,6 +216,7 @@ class PsylotechMovableLogic(MovableLogic[float]):
                         timeout=ACTUATOR_ENABLE_TIMEOUT,
                     )
                 except TimeoutError as error:
+                    self.power.shutdown_pending = True
                     raise PsylotechError(
                         "Psylotech actuators did not report powered down within "
                         f"{ACTUATOR_ENABLE_TIMEOUT} s."
@@ -203,11 +227,10 @@ class PsylotechMovableLogic(MovableLogic[float]):
 
         Stage and unstage also call this, so it must not touch an idle axis,
         except to power down actuators a prepared fly scan left enabled.
+        ActuatorStop halts every axis, so it is only sent for a move this axis has
+        in progress, not judged from a setpoint an interrupted move left behind.
         """
-        setpoint, readback = await asyncio.gather(
-            self.setpoint.get_value(), self.readback.get_value()
-        )
-        if not isclose(setpoint, readback, rel_tol=0.0, abs_tol=self.tolerance):
+        if self.moving:
             # The setpoint PV starts a composite move in the IOC, so writing the
             # readback to it would move again; the controller's stop halts motion.
             await self.actuator_stop.trigger()
@@ -253,14 +276,18 @@ class PsylotechMovableLogic(MovableLogic[float]):
 
         The actuators must already be powered.
         """
-        await self.setpoint.set(new_position)
-        await wait_for_value(
-            self.readback,
-            lambda value: isclose(
-                value, new_position, rel_tol=0.0, abs_tol=self.tolerance
-            ),
-            timeout=timeout(),
-        )
+        self.moving = True
+        try:
+            await self.setpoint.set(new_position)
+            await wait_for_value(
+                self.readback,
+                lambda value: isclose(
+                    value, new_position, rel_tol=0.0, abs_tol=self.tolerance
+                ),
+                timeout=timeout(),
+            )
+        finally:
+            self.moving = False
 
     async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
         try:
@@ -690,14 +717,15 @@ class PsylotechLoadLogic(MovableLogic[float]):
         # (position, load, direction the load was driven) before a step
         previous: tuple[float, float, float] | None = None
         slipping = 0  # steps in a row where the load hardly responded
+        high, low = await asyncio.gather(
+            self.high_limit.get_value(), self.low_limit.get_value()
+        )
+        # Our limits are checked here between steps; the controller enforces its
+        # own continuously, so send it the same ones. Done before the power is
+        # taken, so a failure here can't release a share held by another move.
+        await self.controller_limits.apply(low, high)
+        await self.axial.apply_controller_limits()
         try:
-            high, low = await asyncio.gather(
-                self.high_limit.get_value(), self.low_limit.get_value()
-            )
-            # Our limits are checked here between steps; the controller enforces its
-            # own continuously, so send it the same ones.
-            await self.controller_limits.apply(low, high)
-            await self.axial.apply_controller_limits()
             await self.axial.enable_actuators()
             move_timeout = timeout()
             loop = asyncio.get_running_loop()
