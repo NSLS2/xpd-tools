@@ -32,10 +32,11 @@ one? For each: which PandA encoder input, and the encoder resolution.
 Which detectors take the tomography images, and is each triggered by the PandA: Pilatus4, IRIS (Kinetix),
 Xspress3?
 
-- **Proposed:** Pilatus4 and IRIS, both PandA-triggered; Xspress3 from nslsii (NSLS2/nslsii#269) if it's needed
-  in a tomography scan.
-- **Leads to:** a profile PR adding the Xspress3 device (and any missing trigger setup), with mock tests of a fly
-  scan using each detector.
+- **Already known:** Jakub added the Xspress3 ophyd object and flew it with and without the Pilatus4
+  (2026-11-06). The Xspress3 Mini's trigger input is **TTL1**, not TTL0.
+- **Proposed:** Pilatus4, IRIS and Xspress3, all PandA-triggered.
+- **Leads to:** Jakub's Xspress3 device in the XPD-D profile (his PR), and mock tests of a fly scan with each
+  detector.
 
 ## Q3: Dark and flat fields
 
