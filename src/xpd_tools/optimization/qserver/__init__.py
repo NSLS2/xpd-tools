@@ -89,6 +89,12 @@ XRAY_UVVIS_NAMES = (
 #: Names startup/98-xpd-tools.py defined in the profile namespace.
 ACQUIRE_VARIANTS_NAMES = ("uvvis_acquire", "xray_acquire")
 
+# What each module defines itself, taken before any install(): everything else in
+# its globals was handed over by install() and is replaced on the next call.
+_OWN_NAMES = {
+    module: frozenset(vars(module)) for module in (xray_uvvis, acquire_variants)
+}
+
 
 def install(namespace: MutableMapping[str, Any]) -> None:
     """Hand the profile's names to the copied plans and export the plans.
@@ -111,12 +117,21 @@ def install(namespace: MutableMapping[str, Any]) -> None:
 
     for module in (xray_uvvis, acquire_variants):
         module_vars = vars(module)
-        module_vars.update(profile)
+        own = _OWN_NAMES[module]
+        # Drop what an earlier install() handed over, so nothing stale survives.
+        for name in [name for name in module_vars if name not in own]:
+            del module_vars[name]
         # Run-time look-ups by name (e.g. pumps in _resolve_pumps) used to see the
-        # whole profile namespace; give them everything the profile has now.
-        for name, value in namespace.items():
-            if not name.startswith("__"):
-                module_vars.setdefault(name, value)
+        # whole profile namespace; give them everything the profile has now,
+        # without replacing what the module defines itself.
+        module_vars.update(
+            {
+                name: value
+                for name, value in namespace.items()
+                if not name.startswith("__") and name not in own
+            }
+        )
+        module_vars.update(profile)
     # 98 relied on 97's names and on bps/bpp from the profile namespace.
     vars(acquire_variants).update(
         {name: getattr(xray_uvvis, name) for name in XRAY_UVVIS_NAMES},
