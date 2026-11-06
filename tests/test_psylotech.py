@@ -489,3 +489,60 @@ async def test_load_series_records_the_load_frame_it_moved(
     )
 
     assert starts[0]["psylotech_load"] == pytest.approx(30.0, abs=1.0)
+
+
+async def test_kickoff_restores_power_lost_after_prepare(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    """Power dropping between prepare and kickoff is restored, not double-counted."""
+    writes = _record_actuator_writes(psylo)
+    await rotation.prepare(
+        FlyMotorInfo(start_position=0.0, end_position=10.0, time_for_move=10.0)
+    )
+    set_mock_value(psylo.actuator_enabled, EnabledDisabled.DISABLED)
+    await rotation.kickoff()
+    await rotation.complete()
+    assert writes == [EnableDisable.ENABLE, EnableDisable.ENABLE, EnableDisable.DISABLE]
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.DISABLED
+    # Nothing is left holding the power: the next move powers up again
+    await rotation.set(1.0)
+    assert writes[-2:] == [EnableDisable.ENABLE, EnableDisable.DISABLE]
+
+
+async def test_move_waits_for_a_pending_power_down(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    """An axis starting while the last one powers down waits, then powers up."""
+    axial = psylo.load.axial
+    events: list[str] = []
+    loop = asyncio.get_running_loop()
+
+    def _enable(value: EnableDisable):
+        events.append(value.value)
+        if value == EnableDisable.ENABLE:
+            set_mock_value(psylo.actuator_enabled, EnabledDisabled.ENABLED)
+        else:
+            # The controller takes a while to report the power down
+
+            def _off():
+                events.append("powered down")
+                set_mock_value(psylo.actuator_enabled, EnabledDisabled.DISABLED)
+
+            loop.call_later(0.1, _off)
+
+    def _axial_move(value: float):
+        events.append("axial moves")
+        set_mock_value(axial.user_readback, value)
+
+    callback_on_mock_put(psylo.actuator_enable, _enable)
+    callback_on_mock_put(axial.user_setpoint, _axial_move)
+
+    rotating = asyncio.ensure_future(rotation.set(1.0))
+    while EnableDisable.DISABLE.value not in events:
+        await asyncio.sleep(0.001)
+    await axial.set(0.001)
+    await rotating
+    await asyncio.sleep(0.2)
+    moved = events.index("axial moves")
+    assert "powered down" in events[:moved]
+    assert events[moved - 1] == EnableDisable.ENABLE.value

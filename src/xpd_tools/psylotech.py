@@ -73,6 +73,9 @@ class ActuatorPower:
 
     def __init__(self) -> None:
         self.users = 0
+        #: Serializes taking and releasing the power with the writes they make, so
+        #: an axis can't start while the last user's power-down is still pending.
+        self.lock = asyncio.Lock()
 
 
 @dataclass(frozen=True)
@@ -114,11 +117,9 @@ class PsylotechMovableLogic(MovableLogic[float]):
     #: Moves of this axis using the actuator power.
     held: int = field(default=0, init=False)
 
-    async def enable_actuators(self) -> None:
-        """Power the actuators and wait for them to report enabled."""
-        self.held += 1
-        self.power.users += 1
-        if self.power.users == 1:
+    async def _power_up(self) -> None:
+        """Write ENABLE unless the actuators already report enabled, then wait."""
+        if await self.actuator_enabled.get_value() != EnabledDisabled.ENABLED:
             await self.actuator_enable.set(EnableDisable.ENABLE)
         await wait_for_value(
             self.actuator_enabled,
@@ -126,13 +127,44 @@ class PsylotechMovableLogic(MovableLogic[float]):
             timeout=ACTUATOR_ENABLE_TIMEOUT,
         )
 
+    async def enable_actuators(self) -> None:
+        """Take a share of the actuator power and wait for it to be on."""
+        async with self.power.lock:
+            self.held += 1
+            self.power.users += 1
+            await self._power_up()
+
+    async def ensure_actuators(self) -> None:
+        """Make sure the power this axis holds is on, taking a share if it has none.
+
+        A prepared fly scan already holds a share; if the power dropped since,
+        it is restored without counting the axis twice.
+        """
+        if not self.held:
+            await self.enable_actuators()
+            return
+        async with self.power.lock:
+            await self._power_up()
+
     async def disable_actuators(self) -> None:
-        """Release this axis's use of the actuators; power down if none remain."""
-        if self.held:
-            self.held -= 1
-            self.power.users -= 1
-        if self.power.users == 0:
-            await self.actuator_enable.set(EnableDisable.DISABLE)
+        """Release this axis's share of the power; power down if none remain."""
+        async with self.power.lock:
+            if self.held:
+                self.held -= 1
+                self.power.users -= 1
+            if self.power.users == 0:
+                await self.actuator_enable.set(EnableDisable.DISABLE)
+                try:
+                    await wait_for_value(
+                        self.actuator_enabled,
+                        EnabledDisabled.DISABLED,
+                        timeout=ACTUATOR_ENABLE_TIMEOUT,
+                    )
+                except TimeoutError as error:
+                    raise PsylotechError(
+                        "Psylotech actuators did not report powered down within "
+                        f"{ACTUATOR_ENABLE_TIMEOUT} s."
+                    ) from error
 
     async def stop(self) -> None:
         """Stop the axis, but only if it is moving.
@@ -272,8 +304,7 @@ class PsylotechRotationLogic(
             # The fly move bypasses the move checks, so repeat them here: the
             # controller may have disconnected since prepare succeeded.
             await self.check_move(target)
-            if await self.actuator_enabled.get_value() != EnabledDisabled.ENABLED:
-                await self.enable_actuators()
+            await self.ensure_actuators()
             if ctx.fly_info.timeout == CALCULATE_TIMEOUT:
                 initial = await self.readback.get_value()
                 timeout = await self.calculate_timeout(initial, target)
