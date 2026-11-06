@@ -15,7 +15,8 @@ read from `src/xpd_tools/profiles/xpdd.py`; please correct them.
 - `RotationMotor` for `amPhi` (PandA encoder 1); stage motors `amBaseX/Y`, `amTopX/Z`
 - Detectors: `pilatus1` (Pilatus4), `iris1` (Kinetix); `panda1`
 - Mock tests for the fly-scan core (`tests/test_flyers.py`, `tests/test_plans.py`, `tests/test_motors.py`)
-- Open fly-scan fixes: #17 (encoder anchored at zero), #18 (encoder counts per revolution)
+- The encoder fixes from #24 (merged): counts per revolution and anchoring at the motor's current position.
+  #17 and #18 targeted the code #24 replaced and now conflict with `main`.
 
 ## Q1: Rotation stage
 
@@ -23,8 +24,8 @@ Which stage do the Nov–Dec experiments rotate on: `amPhi` (Phi2), the air bear
 one? For each: which PandA encoder input, and the encoder resolution.
 
 - **Proposed:** `amPhi` only, PandA encoder 1, as in the profile today.
-- **Leads to:** a profile PR adding or fixing each `RotationMotor`, with a mock fly-scan test per stage; merging
-  #17 and #18 once they're checked on that stage.
+- **Leads to:** a profile PR adding or fixing each `RotationMotor`, with a mock fly-scan test per stage, and a
+  dry-run fly scan on that stage at the beamline (ascending and descending).
 
 ## Q2: Detectors
 
