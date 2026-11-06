@@ -671,3 +671,22 @@ async def test_load_limits_failure_keeps_a_running_axial_move_powered(
     assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
     set_mock_value(axial.user_readback, 0.001)
     await moving
+
+
+async def test_a_move_that_times_out_is_stopped(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    """A failed move is stopped even while another axis keeps the power on."""
+    stop = set_mock_attr(psylo.actuator_stop, "trigger", AsyncMock())
+    axial = psylo.load.axial
+    # The prepared rotation holds the power, so the failed move doesn't cut it
+    await rotation.prepare(
+        FlyMotorInfo(start_position=0.0, end_position=10.0, time_for_move=10.0)
+    )
+    callback_on_mock_put(axial.user_setpoint, lambda value: None)
+    with pytest.raises(TimeoutError):
+        await axial.set(0.001, timeout=0.2)
+    stop.assert_awaited_once()
+    assert not axial.movable_logic.moving
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    await rotation.unstage()

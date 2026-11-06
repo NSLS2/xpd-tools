@@ -233,6 +233,8 @@ class PsylotechMovableLogic(MovableLogic[float]):
         if self.moving:
             # The setpoint PV starts a composite move in the IOC, so writing the
             # readback to it would move again; the controller's stop halts motion.
+            # Clearing `moving` first tells go_to() the stop has been sent.
+            self.moving = False
             await self.actuator_stop.trigger()
             await self.disable_actuators()
         elif self.held or (
@@ -286,6 +288,14 @@ class PsylotechMovableLogic(MovableLogic[float]):
                 ),
                 timeout=timeout(),
             )
+        except BaseException:
+            # A move that failed or was cancelled may still be under way, and
+            # another axis may be keeping the power on, so stop it here unless an
+            # explicit stop() already has.
+            if self.moving:
+                self.moving = False
+                await self.actuator_stop.trigger()
+            raise
         finally:
             self.moving = False
 
