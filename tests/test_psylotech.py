@@ -29,7 +29,12 @@ from test_plans import (
 )
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
-from xpd_tools.plans import go_to_load, psylotech_flyscan, single_axis_flyscan
+from xpd_tools.plans import (
+    go_to_load,
+    load_series_flyscan,
+    psylotech_flyscan,
+    single_axis_flyscan,
+)
 from xpd_tools.psylotech import (
     ConnectionState,
     Psylotech,
@@ -427,3 +432,60 @@ async def test_load_move_times_out_when_the_load_never_settles(
     )
     with pytest.raises(TimeoutError):
         await load.set(500.0)
+
+
+async def test_concurrent_moves_keep_the_actuators_powered(
+    psylo: Psylotech, rotation: PsylotechRotation
+):
+    """An axis finishing its move must not power down an axis still moving."""
+    axial = psylo.load.axial
+    # The rotation only arrives when the test says so
+    callback_on_mock_put(rotation.user_setpoint, lambda value: None)
+    rotating = rotation.set(5.0)
+    await asyncio.sleep(0.05)
+    await axial.set(0.001)
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+    set_mock_value(rotation.user_readback, 5.0)
+    await rotating
+    assert await psylo.actuator_enabled.get_value() == EnabledDisabled.DISABLED
+
+
+async def test_first_probe_on_a_stiff_sample_that_unloads_is_not_a_break(
+    load_frame: tuple[PsylotechAxial, PsylotechLoad],
+):
+    """The direction the load moves is unknown until the first probe."""
+    axial, load = load_frame
+    # Stiff, and the load falls as the actuator moves up (LOAD_DIRECTION is +1):
+    # the first probe drops the load by 500, more than BREAK_LOAD_DROP.
+    _attach_spring(axial, load, -1e8)
+    await load.set(300.0)
+    assert await load.load.get_value() == pytest.approx(300.0, abs=1.0)
+
+
+async def test_load_series_records_the_load_frame_it_moved(
+    RE: RunEngine, flyscan_devices
+):
+    """With separate rotation and load frames, the run records the moved load."""
+    pilatus1, panda, _, psylo = flyscan_devices
+    set_mock_value(psylo.load.load, 42.0)
+    async with init_devices(mock=True):
+        frame = Psylotech("PSYLO2:", name="frame")
+    _attach_spring(frame.load.axial, frame.load, SPRING)
+    set_mock_value(frame.load.settle_time, 0.01)
+    starts: list[dict] = []
+    RE.subscribe(lambda name, doc: starts.append(doc) if name == "start" else None)
+
+    RE(
+        load_series_flyscan(
+            [pilatus1],
+            panda,
+            psylo,
+            frame,
+            [30.0],
+            num_images=NUM_IMAGES,
+            start=SCAN_START,
+            stop=SCAN_STOP,
+        )
+    )
+
+    assert starts[0]["psylotech_load"] == pytest.approx(30.0, abs=1.0)

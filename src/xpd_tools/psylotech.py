@@ -8,7 +8,7 @@ reached.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from math import isclose
 
@@ -64,6 +64,17 @@ class PsylotechError(RuntimeError):
     """The Psylotech controller is not in a state where it can move."""
 
 
+class ActuatorPower:
+    """Count of the axis moves using the shared actuator power.
+
+    The actuators are powered once for every axis, so an axis that finishes its
+    move must not power them down while another axis is still moving.
+    """
+
+    def __init__(self) -> None:
+        self.users = 0
+
+
 @dataclass(frozen=True)
 class PsylotechSignals:
     """Signals shared by every axis, owned by the :class:`Psylotech` device.
@@ -74,6 +85,7 @@ class PsylotechSignals:
     actuator_enable: SignalW[EnableDisable]
     actuator_enabled: SignalR[EnabledDisabled]
     connected: SignalR[ConnectionState]
+    power: ActuatorPower
 
 
 @dataclass
@@ -97,10 +109,17 @@ class PsylotechMovableLogic(MovableLogic[float]):
     tolerance: float
     #: Time taken to reach the jog rate, in seconds.
     acceleration_time: float
+    #: Moves of every axis using the actuator power.
+    power: ActuatorPower
+    #: Moves of this axis using the actuator power.
+    held: int = field(default=0, init=False)
 
     async def enable_actuators(self) -> None:
         """Power the actuators and wait for them to report enabled."""
-        await self.actuator_enable.set(EnableDisable.ENABLE)
+        self.held += 1
+        self.power.users += 1
+        if self.power.users == 1:
+            await self.actuator_enable.set(EnableDisable.ENABLE)
         await wait_for_value(
             self.actuator_enabled,
             EnabledDisabled.ENABLED,
@@ -108,7 +127,12 @@ class PsylotechMovableLogic(MovableLogic[float]):
         )
 
     async def disable_actuators(self) -> None:
-        await self.actuator_enable.set(EnableDisable.DISABLE)
+        """Release this axis's use of the actuators; power down if none remain."""
+        if self.held:
+            self.held -= 1
+            self.power.users -= 1
+        if self.power.users == 0:
+            await self.actuator_enable.set(EnableDisable.DISABLE)
 
     async def stop(self) -> None:
         """Stop the axis, but only if it is moving.
@@ -122,8 +146,14 @@ class PsylotechMovableLogic(MovableLogic[float]):
         if not isclose(setpoint, readback, rel_tol=0.0, abs_tol=self.tolerance):
             await self.setpoint.set(readback)
             await self.disable_actuators()
-        elif await self.actuator_enabled.get_value() == EnabledDisabled.ENABLED:
+        elif self.held or (
+            self.power.users == 0
+            and await self.actuator_enabled.get_value() == EnabledDisabled.ENABLED
+        ):
             # Left powered by a fly scan that was prepared but never finished
+            while self.held > 1:
+                self.held -= 1
+                self.power.users -= 1
             await self.disable_actuators()
 
     async def check_move(self, new_position: float) -> None:
@@ -339,6 +369,7 @@ class _PsylotechAxis(StandardMovable[float], StandardReadable):
             "connected": self._shared.connected,
             "actuator_enable": self._shared.actuator_enable,
             "actuator_enabled": self._shared.actuator_enabled,
+            "power": self._shared.power,
             "velocity": self.velocity,
             "max_velocity": self.max_velocity,
             "tolerance": self.POSITION_TOLERANCE,
@@ -600,7 +631,13 @@ class PsylotechLoadLogic(MovableLogic[float]):
                     if previous is not None:
                         position_change = position - previous[0]
                         load_change = load - previous[1]
-                        if load_change * previous[2] < -self.break_drop:
+                        # Until a step has shown which way the load moves with
+                        # position, a probe that moves it the "wrong" way is the
+                        # direction being learned, not a break.
+                        if (
+                            gain is not None
+                            and load_change * previous[2] < -self.break_drop
+                        ):
                             raise PsylotechError(
                                 f"Load fell by {abs(load_change)} while it was being "
                                 f"driven the other way, from {previous[1]} to {load}. "
@@ -772,7 +809,7 @@ class Psylotech(StandardReadable):
         )
         self.connected = epics_signal_r(ConnectionState, prefix + "Connected_RBV")
         shared = PsylotechSignals(
-            self.actuator_enable, self.actuator_enabled, self.connected
+            self.actuator_enable, self.actuator_enabled, self.connected, ActuatorPower()
         )
         with self.add_children_as_readables():
             self.rot = PsylotechRotation(prefix, shared, name="rot", panda_encoder=2)

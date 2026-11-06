@@ -77,7 +77,7 @@ rprint("\n[bold][blue]Starting the XPDD profile collection...[/blue][/bold]")
 
 # Create our RunEngine instance
 RE: RunEngine = initialize_run_engine()
-rprint("Initialzied RunEngine...\n")
+rprint("Initialized RunEngine...\n")
 
 # Set some metadata that never changes.
 RE.md["facility"] = "NSLS-II"

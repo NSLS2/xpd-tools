@@ -72,10 +72,12 @@ def psylotech_flyscan(
     num_images, start, stop, stream_name, acq_time_overhead, time_based
         See :func:`xpd_tools.plans.single_axis_flyscan`.
     md : dict, optional
-        Extra metadata for the run.
+        Extra metadata for the run. A ``psylotech_load`` given here is recorded
+        instead of the load read from ``psylo``.
     """
     _md = dict(md or {})
-    _md["psylotech_load"] = yield from bps.rd(psylo.load)
+    if "psylotech_load" not in _md:
+        _md["psylotech_load"] = yield from bps.rd(psylo.load)
     return (
         yield from bpp.inject_md_wrapper(
             single_axis_flyscan(
@@ -126,9 +128,12 @@ def load_series_flyscan(
         See :func:`go_to_load`.
     **flyscan_kwargs
         Passed on to :func:`psylotech_flyscan`.
+
+    Each run records the load ``load`` settled at, as ``psylotech_load``.
     """
+    md = flyscan_kwargs.pop("md", None)
     for target in loads:
-        yield from go_to_load(load, target, tolerance, settle_time)
+        settled = yield from go_to_load(load, target, tolerance, settle_time)
         yield from psylotech_flyscan(
             detectors,
             panda,
@@ -136,5 +141,6 @@ def load_series_flyscan(
             num_images=num_images,
             start=start,
             stop=stop,
+            md={**(md or {}), "psylotech_load": settled},
             **flyscan_kwargs,
         )
