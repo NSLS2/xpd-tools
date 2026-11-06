@@ -60,12 +60,24 @@ class QEProTEC(StandardReadable, EpicsDevice):
 
 
 class QEProMock(DeviceMock["QEPro"]):
-    """Deterministic QEPro behaviour for mock-mode tests and startup."""
+    """Deterministic QEPro behaviour for mock-mode tests and startup.
+
+    Notes
+    -----
+    Spectra span 200-1000 nm in 801 points, and ``output`` follows
+    ``spectrum_type``: ``"Absorbtion"`` gives a broad absorbance band at 380 nm,
+    ``"Corrected Sample"`` gives a 365 nm LED line plus a strong
+    photoluminescence peak at 520 nm, and any other type gives zeros. Writing
+    ``acquire`` completes the collection cycle on the next event-loop turn.
+    """
 
     async def connect(self, device: "QEPro") -> None:
-        """Initialize predictable spectra and complete mocked acquisitions."""
-        x_axis = np.linspace(200.0, 1000.0, 8)
-        sample = np.arange(8, dtype=float)
+        """Set spectra that follow ``spectrum_type`` and complete acquisitions."""
+        x_axis = np.linspace(200.0, 1000.0, 801)
+        led = 3000.0 * np.exp(-0.5 * ((x_axis - 365.0) / 5.0) ** 2)
+        fluorescence = led + 5000.0 * np.exp(-0.5 * ((x_axis - 520.0) / 15.0) ** 2)
+        absorbance = 0.8 * np.exp(-0.5 * ((x_axis - 380.0) / 60.0) ** 2) + 0.02
+        spectra = {"Absorbtion": absorbance, "Corrected Sample": fluorescence}
 
         set_mock_value(device.serial, "SIM-QEPRO")
         set_mock_value(device.model, "QEPro")
@@ -93,11 +105,11 @@ class QEProMock(DeviceMock["QEPro"]):
         set_mock_value(device.buff_max_capacity, 3)
         set_mock_value(device.buff_capacity, 3)
         set_mock_value(device.buff_element_count, 0)
-        set_mock_value(device.output, sample)
-        set_mock_value(device.sample, sample)
-        set_mock_value(device.dark, np.zeros_like(sample))
-        set_mock_value(device.reference, np.full_like(sample, 100.0))
-        set_mock_value(device.formatted_spectrum_len, len(sample))
+        set_mock_value(device.output, absorbance)
+        set_mock_value(device.sample, fluorescence)
+        set_mock_value(device.dark, np.zeros_like(x_axis))
+        set_mock_value(device.reference, np.full_like(x_axis, 100.0))
+        set_mock_value(device.formatted_spectrum_len, len(x_axis))
         set_mock_value(device.x_axis, x_axis)
         set_mock_value(device.x_axis_format, "Wavelength")
         set_mock_value(device.dark_available, True)
@@ -121,8 +133,14 @@ class QEProMock(DeviceMock["QEPro"]):
                     set_mock_value, device.acquire, False
                 )
 
+        def _on_spectrum_type_write(spectrum_type: str) -> None:
+            set_mock_value(
+                device.output, spectra.get(spectrum_type, np.zeros_like(x_axis))
+            )
+
         callback_on_mock_put(device.tec_device.tec, _on_tec_enabled)
         callback_on_mock_put(device.acquire, _on_acquire_write)
+        callback_on_mock_put(device.spectrum_type, _on_spectrum_type_write)
 
 
 @default_mock_class(QEProMock)

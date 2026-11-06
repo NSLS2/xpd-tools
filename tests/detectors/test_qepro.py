@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 import pytest
 from ophyd_async.core import callback_on_mock_put, init_devices, set_mock_value
+from scipy.signal import find_peaks
 
 from xpd_tools.detectors import QEPro
 
@@ -172,6 +173,38 @@ async def test_qepro_reads_fresh_spectrum_after_trigger(qepro: QEPro) -> None:
 
     reading = await qepro.read()
     np.testing.assert_array_equal(reading["QEPro_output"]["value"], expected_output)
+
+
+@pytest.mark.parametrize(
+    ("spectrum_type", "peak_wavelengths"),
+    [("Absorbtion", [380.0]), ("Corrected Sample", [365.0, 520.0])],
+)
+async def test_qepro_mock_output_follows_spectrum_type(
+    qepro: QEPro, spectrum_type: str, peak_wavelengths: list[float]
+) -> None:
+    # connect() already sets absorbance; start from a value the write must replace.
+    set_mock_value(qepro.output, np.array([-1.0]))
+
+    await qepro.spectrum_type.set(spectrum_type)
+
+    output = await qepro.output.get_value()
+    x_axis = await qepro.x_axis.get_value()
+    assert len(output) == len(x_axis)
+    peaks, _ = find_peaks(output)
+    np.testing.assert_array_equal(x_axis[peaks], peak_wavelengths)
+
+
+async def test_qepro_mock_output_is_zero_for_unsupported_spectrum_type(
+    qepro: QEPro,
+) -> None:
+    set_mock_value(qepro.output, np.array([-1.0]))
+
+    await qepro.spectrum_type.set("Dark")
+
+    output = await qepro.output.get_value()
+    x_axis = await qepro.x_axis.get_value()
+    assert len(output) == len(x_axis)
+    assert not output.any()
 
 
 async def test_qepro_read_fields_include_export_data(qepro: QEPro) -> None:
