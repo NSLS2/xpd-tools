@@ -11,6 +11,7 @@ from ophyd_async.core import (
     StaticPathProvider,
     UUIDFilenameProvider,
     callback_on_mock_put,
+    get_mock_put,
     init_devices,
     set_mock_value,
     soft_signal_r_and_setter,
@@ -30,7 +31,8 @@ from panda_sim import ContinuousCounter, PcompSim
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
-from xpd_tools.plans import single_axis_flyscan
+from xpd_tools.plans import plans as plans_module
+from xpd_tools.plans import single_axis_flyscan, tomo_flyscan
 
 NUM_IMAGES = 11
 SCAN_START = 0.0
@@ -534,3 +536,81 @@ def test_single_axis_flyscan_on_encoder_axis_2(
     assert docs["stop"][0]["exit_status"] == "success"
     position_at_first_trigger = 366.0 + (sim.pcomp.start - 5_000) * ENCODER_RESOLUTION
     assert position_at_first_trigger == pytest.approx(1.0, abs=1e-3)
+
+
+INITIAL_VELOCITY = 5.0
+
+
+def _velocity(motor: RotationMotor) -> float:
+    return asyncio.run(motor.velocity.get_value())
+
+
+def _run_tomo_flyscan(RE: RunEngine, devices, **kwargs) -> dict:
+    pilatus1, panda, motor = devices
+    docs: dict[str, list] = {}
+    RE(
+        tomo_flyscan(
+            detectors=[pilatus1],
+            panda=panda,
+            motor=motor,
+            num_images=NUM_IMAGES,
+            start=SCAN_START,
+            stop=SCAN_STOP,
+            **kwargs,
+        ),
+        lambda name, doc: docs.setdefault(name, []).append(doc),
+    )
+    return docs
+
+
+def test_single_axis_flyscan_leaves_fly_speed(RE: RunEngine, sim_devices):
+    """The plain flyscan leaves the stage at its fly speed (why tomo_flyscan exists)."""
+    motor = sim_devices[2]
+    SimulatedPanda(sim_devices, 0.0, 0)
+    set_mock_value(motor.velocity, INITIAL_VELOCITY)
+
+    _run_flyscan(RE, sim_devices, SCAN_START, SCAN_STOP)
+
+    assert _velocity(motor) != INITIAL_VELOCITY
+
+
+def test_tomo_flyscan_restores_speed_and_records_sample(RE: RunEngine, sim_devices):
+    motor = sim_devices[2]
+    sim = SimulatedPanda(sim_devices, 0.0, 0)
+    set_mock_value(motor.velocity, INITIAL_VELOCITY)
+
+    docs = _run_tomo_flyscan(
+        RE, sim_devices, sample_name="sample A", md={"operator": "kb"}
+    )
+
+    assert docs["stop"][0]["exit_status"] == "success"
+    assert sim.pcomp.fired == NUM_IMAGES
+    start_doc = docs["start"][0]
+    assert start_doc["plan_name"] == "tomo_flyscan"
+    assert start_doc["sample_name"] == "sample A"
+    assert start_doc["operator"] == "kb"
+    assert start_doc["start_position"] == SCAN_START
+    assert start_doc["stop_position"] == SCAN_STOP
+    assert [d["name"] for d in docs["descriptor"]] == ["tomo"]
+    assert _velocity(motor) == INITIAL_VELOCITY
+
+
+def test_tomo_flyscan_stops_stage_and_restores_speed_on_failure(
+    RE: RunEngine, sim_devices, monkeypatch
+):
+    """A scan that fails still stops the stage and writes its speed back."""
+    motor = sim_devices[2]
+    SimulatedPanda(sim_devices, 0.0, 0)
+    set_mock_value(motor.velocity, INITIAL_VELOCITY)
+
+    def _fail(*args, **kwargs):
+        raise RuntimeError("scan failed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(plans_module.bps, "stage_all", _fail)
+
+    with pytest.raises(RuntimeError, match="scan failed"):
+        _run_tomo_flyscan(RE, sim_devices)
+
+    get_mock_put(motor.motor_stop).assert_called_with(1)
+    get_mock_put(motor.velocity).assert_called_with(INITIAL_VELOCITY)
