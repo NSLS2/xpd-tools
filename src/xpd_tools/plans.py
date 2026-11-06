@@ -3,6 +3,7 @@
 import logging
 
 import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
 from ophyd_async.core import (
     DetectorTrigger,
     TriggerInfo,
@@ -48,7 +49,7 @@ def single_axis_flyscan(
     num_images: int = 1801,
     start: float = 0.0,
     stop: float = 180.0,
-    stream_name: str = "tomo",
+    stream_name: str = "primary",
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
 ):
@@ -69,7 +70,7 @@ def single_axis_flyscan(
     stop : float, optional
         Stop motor position of the scan, by default 180.0
     stream_name : str, optional
-        Name of the data stream, by default "tomo"
+        Name of the data stream, by default "primary"
     acq_time_overhead : float, optional
         Overhead time for acquisition for each frame in seconds, by default 0.001
     flyscan_type : SingleAxisFlyscanType, default SingleAxisFlyscanType.POSITION_BASED
@@ -164,36 +165,39 @@ def single_axis_flyscan(
         "detectors": [det.name for det in detectors],
         "num_points": num_images,
         "plan_name": "single_axis_flyscan",
-        "hints": {},
     }
-    yield from bps.open_run(md=_md)
 
-    yield from bps.stage_all(*all_detectors)
+    @bpp.stage_decorator(all_detectors)
+    @bpp.run_decorator(md=_md)
+    def _body():
+        yield from bps.prepare(motor, motor_info, wait=True)
 
-    yield from bps.prepare(motor, motor_info, wait=True)
+        # Configure position compare and arm the detectors only once the motor is at
+        # its run-up position, so no triggers are produced on the way there.
+        yield from bps.prepare(single_axis_panda_flyer, flyer_info, group="prepare")
+        for det in detectors:
+            yield from bps.prepare(det, det_trigger_info, group="prepare")
+        yield from bps.wait(group="prepare")
 
-    # Configure position compare and arm the detectors only once the motor is at
-    # its run-up position, so no triggers are produced on the way there.
-    yield from bps.prepare(single_axis_panda_flyer, flyer_info, group="prepare")
-    for det in detectors:
-        yield from bps.prepare(det, det_trigger_info, group="prepare")
-    yield from bps.wait(group="prepare")
+        # Preparing the PandA arms PCAP, which enables position compare, so it must
+        # come after position compare is configured.
+        yield from bps.prepare(panda, panda_trigger_info, wait=True)
 
-    # Preparing the PandA arms PCAP, which enables position compare, so it must
-    # come after position compare is configured.
-    yield from bps.prepare(panda, panda_trigger_info, wait=True)
+        yield from bps.declare_stream(*all_detectors, name=stream_name)
 
-    yield from bps.declare_stream(*all_detectors, name=stream_name)
+        yield from bps.kickoff_all(*all_devices, wait=True)
 
-    yield from bps.kickoff_all(*all_devices, wait=True)
+        flush_period = max(1, max_acq_period)
+        yield from bps.collect_while_completing(
+            all_devices,
+            all_detectors,
+            flush_period=flush_period,
+            stream_name=stream_name,
+        )
 
-    flush_period = max(1, max_acq_period)
-    yield from bps.collect_while_completing(
-        all_devices,
-        all_detectors,
-        flush_period=flush_period,
-        stream_name=stream_name,
-    )
-    yield from bps.unstage_all(*all_detectors)
+    # The motor is flying once kicked off but is not staged, so nothing stops it
+    # if the acquisition fails. Halt it explicitly however the scan ends.
+    def _cleanup():
+        yield from bps.stop(motor)
 
-    yield from bps.close_run()
+    return (yield from bpp.finalize_wrapper(_body(), _cleanup()))

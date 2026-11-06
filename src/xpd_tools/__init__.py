@@ -17,7 +17,6 @@ from pathlib import Path
 import IPython
 from rich import print as rprint
 
-from .utils import print_version_info
 
 
 def start_profile():
@@ -32,6 +31,5 @@ def start_profile():
     args = parser.parse_args()
     profile_name = args.profile_name or "default"
     rprint(f"[bold]Starting xpdtools profile: [green]{profile_name}[/green][/bold]")
-    print_version_info()
     profile_path = str(Path(__file__).parent / "profiles" / f"{profile_name}.py")
     sys.exit(IPython.start_ipython(argv=["-i", profile_path]))

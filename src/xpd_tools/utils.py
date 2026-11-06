@@ -6,53 +6,9 @@ from datetime import datetime
 from typing import Any
 
 from bluesky.run_engine import RunEngine
-from IPython.terminal.interactiveshell import TerminalInteractiveShell
-from IPython.terminal.prompts import Prompts
 from nslsii.sync_experiment import sync_experiment
-from nslsii.utils import open_redis_client
-from pygments.token import Token
+from nslsii.utils import open_redis_client, print_proposal_info
 from redis_json_dict.redis_json_dict import RedisJSONDict
-from rich import print as rprint
-
-
-def print_version_info():
-    """Print version information for bluesky, ophyd_async, tiled, and xpdtools."""
-    from bluesky import __version__ as bluesky_version
-    from ophyd_async import __version__ as ophyd_async_version
-    from tiled import __version__ as tiled_version
-
-    from xpd_tools import __version__ as xpd_tools_version
-
-    rprint("\n[bold]Version Information[/bold]")
-    rprint(f"  [bold]bluesky[/bold]: [blue]{bluesky_version}[/blue]")
-    rprint(f"  [bold]ophyd_async[/bold]: [blue]{ophyd_async_version}[/blue]")
-    rprint(f"  [bold]tiled[/bold]: [blue]{tiled_version}[/blue]")
-    rprint(f"  [bold]xpd-tools[/bold]: [blue]{xpd_tools_version}[/blue]\n")
-
-
-def show_docs(name: str, doc: dict[str, Any]):
-    """Print out the bluesky documents in a readable format."""
-    rprint(f"------- {name} ---------")
-    rprint(doc)
-
-
-class ProposalIDPrompt(Prompts):
-    """Custom IPython prompt that shows the current proposal ID."""
-
-    def __init__(self, RE: RunEngine, shell: TerminalInteractiveShell):
-        super().__init__(shell)
-        self._RE = RE
-
-    def in_prompt_tokens(self, cli=None):
-        return [
-            (
-                Token.Prompt,
-                f"{self._RE.md.get('data_session', 'N/A')} [",
-            ),
-            (Token.PromptNum, str(self.shell.execution_count)),
-            (Token.Prompt, "]: "),
-        ]
-
 
 def initialize_run_engine() -> RunEngine:
     """Initialize the bluesky RunEngine with appropriate metadata."""
@@ -75,17 +31,11 @@ def start_beamtime(proposal_id: int, verbose: bool = True) -> None:
     with open(os.devnull, "w") as f, redirect_stdout(f):
         md = sync_experiment(proposal_id, "XPD", redis_ssl=True)
 
-    rprint(
+    print(
         f"Started beamtime for proposal ID [bold][blue]{proposal_id}[/blue][/bold].\n"
     )
-    rprint(
+    print(
         "Current time: [italic]"
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/italic]\n"
     )
-    proposal_md = md.get("proposal", {})
-    if proposal_md and verbose:
-        rprint(f"Proposal title: [italic]{proposal_md['title']}[/italic]\n")
-        rprint(
-            f"Proposal type: [italic]{proposal_md['type']}[/italic], "
-            f"Proposal PI: [italic]{proposal_md['pi_name']}[/italic]\n"
-        )
+    print_proposal_info(md)
