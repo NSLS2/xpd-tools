@@ -53,7 +53,7 @@ This document proposes concrete answers to questions Q1–Q7 from the `xpdd-tomo
 
 **Proposal:** **No shutters configured** — managed by beamline operators.
 
-- **Current state:** xpdd-profile-collection has no `fe_shutter` or `photon_shutter` defined
+- **Current state:** xpd-tools' XPD-D profile (`src/xpd_tools/profiles/xpdd.py`) defines no `fe_shutter` or `photon_shutter`
 - **hextools integration:** Plans call with `use_shutter=False`
 - **hextools PR required:** Make shutters optional (not mandatory) when unused ([see task file](https://github.com/NSLS2/hxm_program/blob/main/planning/tasks/xpd/xpdd-tomo-hextools-migration.md))
 
