@@ -1,9 +1,12 @@
 """Additional motor classes and helper functions for XPD beamline at NSLS-II."""
 
 import asyncio
+from typing import Protocol
 
+from bluesky.protocols import Flyable, Preparable
 from ophyd_async.core import (
     DeviceMock,
+    SignalR,
     callback_on_mock_put,
     default_mock_class,
     derived_signal_r,
@@ -12,6 +15,40 @@ from ophyd_async.core import (
 )
 from ophyd_async.epics.core import epics_signal_r
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
+
+
+class FlyscanMotor(Flyable, Preparable, Protocol):
+    """What :func:`xpd_tools.plans.single_axis_flyscan` needs of a motor.
+
+    Any flyable motor with these members can be flown, e.g. :class:`RotationMotor`
+    or the Psylotech rotation axis. The members are read-only properties so that
+    a motor may provide a writable signal where a readable one is asked for.
+    """
+
+    @property
+    def panda_encoder(self) -> int:
+        """PandA encoder axis the motor's encoder is wired to."""
+        ...
+
+    @property
+    def encoder_resolution(self) -> SignalR[float]:
+        """Resolution of the encoder, in degrees per count."""
+        ...
+
+    @property
+    def user_readback(self) -> SignalR[float]:
+        """Position of the motor, in degrees."""
+        ...
+
+    @property
+    def max_velocity(self) -> SignalR[float]:
+        """Fastest the motor may be flown, in degrees per second."""
+        ...
+
+    @property
+    def acceleration_time(self) -> SignalR[float]:
+        """Time the motor takes to reach its velocity, in seconds."""
+        ...
 
 
 # TODO: Get this upstreamed to ophyd_async and remove it from here.

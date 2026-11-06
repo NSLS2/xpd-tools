@@ -13,7 +13,7 @@ from ophyd_async.core import callback_on_mock_put, init_devices
 
 from xpd_tools.detectors import QEPro
 from xpd_tools.light_path import UVVisLightPath
-from xpd_tools.qepro_plans import (
+from xpd_tools.plans.qepro_plans import (
     configure_qepro,
     measure_absorbance,
     measure_fluorescence,

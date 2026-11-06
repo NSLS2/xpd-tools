@@ -180,7 +180,9 @@ known-first-party = ["xpd_tools"]
 # See https://github.com/DiamondLightSource/python-copier-template/issues/154
 # Remove this line to forbid private member access in tests
 "tests/**/*" = ["SLF001", "S101", "D"]
-"src/xpd_tools/profiles/**" = ["F401"]
+# Profiles import unused names and use `from xpd_tools.plans import *` so that
+# the plans are available at the IPython prompt
+"src/xpd_tools/profiles/**" = ["F401", "F403"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 # We often shorten "Annotated" to "A" for brevity

@@ -34,7 +34,7 @@ from xpd_tools.pumps import DDSSyringeAxis, UltraSyringePump
 from xpd_tools.utils import ProposalIDPrompt, initialize_run_engine
 
 XPD_TOOLS_RUNNING_IN_CI = (
-    os.environ.get("XPD_TOOLS_RUNNING_IN_CI", "false").lower() == "true"
+    os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true"
 )
 
 os.environ["REDIS_HOST"] = "xf28id2-xpd-redis1.nsls2.bnl.gov"

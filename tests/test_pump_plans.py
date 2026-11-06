@@ -11,7 +11,7 @@ from ophyd_async.core import (
     set_mock_value,
 )
 
-from xpd_tools.pump_plans import (
+from xpd_tools.plans.pump_plans import (
     clear_pumps,
     configure_infusion,
     configure_withdrawal,
@@ -203,7 +203,7 @@ def test_stop_dispatches_all_pumps_before_waiting_for_status(RE, pumps, monkeypa
         events.append("status wait")
         raise TimeoutError("pump status did not change")
 
-    monkeypatch.setattr("xpd_tools.pump_plans.wait_for_value", stalled_status)
+    monkeypatch.setattr("xpd_tools.plans.pump_plans.wait_for_value", stalled_status)
 
     with pytest.raises(ExceptionGroup, match="Pump stop failures"):
         RE(stop_pumps([first, second]))
