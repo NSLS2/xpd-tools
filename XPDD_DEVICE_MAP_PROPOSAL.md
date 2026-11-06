@@ -1,110 +1,71 @@
-# XPD-D Device Map Proposal — Questions Q1–Q5
+# XPD-D tomography: questions for Kyle
 
-**For:** Kyle Brogan (with Mehmet Topsakal; XPD-D tomography MVP)  
-**Date:** 2026-11-05  
-**Status:** Proposal for review and adjustment  
+**For:** Kyle Brogan · **From:** AJ Sligar (DAD Duo) · **Date:** 2026-11-06
+**Goal:** xpd-tools ready for the XPD-D tomography experiments starting **2026-11-28**
 
-This document proposes answers to questions Q1–Q5 from the `xpdd-tomo-hextools-migration` task, to confirm with Kyle. They are starting points; adjust them to the current beamline configuration and user needs.
+All of this work goes into **xpd-tools**. hextools' tomography plans (`src/hextools/tomography/`) are the
+template for how to write and test them; nothing changes in hextools.
 
----
+Each answer below sets the direction of one or more xpd-tools PRs. The proposed answers are starting points
+read from `src/xpd_tools/profiles/xpdd.py`; please correct them.
 
-## Device Map
+## What xpd-tools already has
 
-| hextools plan argument | HEX device | XPD-D device | Q# | Proposal | Notes |
-|---|---|---|---|---|---|
-| `detectors` | Kinetix / Phantom | `pilatus1` | — | Pilatus4 2M (XF:28ID2-ES{Pilatus4-Det:1}) | Phase 1 detector; IRIS & Xpress3 follow in later phases |
-| `panda` | `panda` | `panda1` | — | XF:28ID2-ES{PANDA:1}: | Configured; encoder `calc.1.inpa = INENC1.VAL` ✓ |
-| `rot_motor` | `RotationMotor` | `amPhi` or `twister` | **Q1** | **Phi2 spinner** (`XF:28IDD-ES:2{Stg:Stack-Ax:Phi2}Mtr`) | Alternative: Twister if used; encoder zero position to be measured at the beamline |
-| out-of-beam move | `sample_tower.x1` | `amBaseX` | **Q2** | **Move amBaseX +10mm** | Clears sample for dark/flat. Confirm travel and direction. |
-| `fe_shutter` / `photon_shutter` | HEX shutters | — | **Q3** | **None (operator-managed)** | Plans call with `use_shutter=False`; hextools PR to make optional |
-| stream name | `primary` | `tomo` | **Q4** | **Use 'tomo'** | Reconstruction pipeline expects this; confirm with data team |
-| plans | — | — | **Q5** | **Full suite** | Fly, dark/flat, radiography, N-D loops; all needed for beamtime |
+- `single_axis_flyscan` (PandA-triggered fly scan, stream `tomo`)
+- `RotationMotor` for `amPhi` (PandA encoder 1); stage motors `amBaseX/Y`, `amTopX/Z`
+- Detectors: `pilatus1` (Pilatus4), `iris1` (Kinetix); `panda1`
+- Mock tests for the fly-scan core (`tests/test_flyers.py`, `tests/test_plans.py`, `tests/test_motors.py`)
+- Open fly-scan fixes: #17 (encoder anchored at zero), #18 (encoder counts per revolution)
 
----
+## Q1: Rotation stage
 
-## Q1: Rotation Stage(s)
+Which stage do the Nov–Dec experiments rotate on: `amPhi` (Phi2), the air bearing, the Twister, or more than
+one? For each: which PandA encoder input, and the encoder resolution.
 
-**Proposal:** Use **Phi2 (amPhi)** as the primary rotation motor.
+- **Proposed:** `amPhi` only, PandA encoder 1, as in the profile today.
+- **Leads to:** a profile PR adding or fixing each `RotationMotor`, with a mock fly-scan test per stage; merging
+  #17 and #18 once they're checked on that stage.
 
-- **PV:** `XF:28IDD-ES:2{Stg:Stack-Ax:Phi2}Mtr`
-- **Type:** `RotationMotor` (ophyd-async, with encoder feedback)
-- **Encoder zero position:** Measure at the beamline. Current placeholder: `encoder_pos_at_zero=0`
-- **Alternative:** Twister (`XF:28IDD-ES:2{Twister}Mtr`) if experiments require dual rotation capability or Phi2 is unavailable.
+## Q2: Detectors
 
-**Action:** Measure and hardcode `encoder_pos_at_zero` once beamline confirms homing position.
+Which detectors take the tomography images, and is each triggered by the PandA: Pilatus4, IRIS (Kinetix),
+Xspress3?
 
----
+- **Proposed:** Pilatus4 and IRIS, both PandA-triggered; Xspress3 from nslsii (NSLS2/nslsii#269) if it's needed
+  in a tomography scan.
+- **Leads to:** a profile PR adding the Xspress3 device (and any missing trigger setup), with mock tests of a fly
+  scan using each detector.
 
-## Q2: Out-of-Beam Motor for Flat Fields
+## Q3: Dark and flat fields
 
-**Proposal:** Use **amBaseX** (XF:28IDD-ES:2{Stg:Stack-Ax:Xbase}Mtr) to move the sample out of the beam.
+1. Which motor moves the sample out of the beam for flats, which way, and how far?
+2. How is a dark taken at XPD-D: does Bluesky close a shutter (which PV), or does the operator?
 
-- **Current position:** Sample in beam at X = 0
-- **Flat field position:** Move +10 mm (or confirm distance needed based on beam footprint)
-- **Function:** `tomo_dark_flat()` plan uses this motor to clear the sample before taking dark and flat images
+- **Proposed:** `amBaseX`, +10 mm; no shutter in Bluesky (the profile has none today).
+- **Leads to:** a `tomo_dark_flat` plan in xpd-tools, modelled on hextools' `tomo_dark_flat`, taking the
+  out-of-beam motor and distance as arguments; a shutter device in the profile only if Bluesky should run it.
 
-**Action:** Confirm exact travel distance and direction at the beamline.
+## Q4: Who reads the data
 
----
+What reads the scans afterwards (reconstruction, exporter), and what does it expect: stream names (`tomo`
+today), and darks and flats in the same run or separate runs?
 
-## Q3: Shutters
+- **Proposed:** keep `tomo` for projections; darks and flats as their own run, in streams `dark` and `flat`, as
+  hextools does.
+- **Leads to:** the stream and run layout the new plans use, so reconstruction reads them without changes.
 
-**Proposal:** **No shutters configured** — managed by beamline operators.
+## Q5: Which plans, in what order
 
-- **Current state:** xpd-tools' XPD-D profile (`src/xpd_tools/profiles/xpdd.py`) defines no `fe_shutter` or `photon_shutter`
-- **hextools integration:** Plans call with `use_shutter=False`
-- **hextools PR required:** Make shutters optional (not mandatory) when unused ([see task file](https://github.com/NSLS2/hxm_program/blob/main/planning/tasks/xpd/xpdd-tomo-hextools-migration.md))
+Which plans do users need on 2026-11-28, and which can wait? The hextools plans that could be ported:
 
-**Action:** If a shutter PV is available and needed, define it in the profile and update the proposal. Otherwise, AJ to submit PR making shutters optional in hextools.
+| Plan (hextools template) | What it does |
+|---|---|
+| `tomo_flyscan` | fly scan with frame averaging and the fixes hextools added after xpd-tools split from it |
+| `tomo_dark_flat` | darks and flats only (Q3) |
+| `take_radiograph` | one image, sample in beam, no rotation |
+| `tomo_flyscan_loop` | repeated fly scans with moves between them |
+| `tomo_1d/2d/nd_step_scan` | a fly scan at each point of a 1-D, 2-D or N-D grid (e.g. with the Psylotech) |
+| `tomo_alignment_scan` | rotation-axis alignment check |
 
----
-
-## Q4: Stream Name for Tomography Data
-
-**Proposal:** Use **`tomo`** as the stream name for tomography fly scans.
-
-- **Current:** xpd-tools' `single_axis_flyscan` writes data to stream `tomo`
-- **hextools default:** Writes to stream `primary`
-- **Action:** hextools PR should accept a `stream_name` parameter (default `primary` for HEX, override to `tomo` for XPD-D)
-- **Reason:** Reconstruction and export pipelines may expect `tomo`; confirm with data team
-
-**Action:** Confirm with data/reconstruction team that `tomo` is the expected stream name.
-
----
-
-## Q5: Which Plans Are Needed
-
-**Proposal:** Full tomography suite required.
-
-- ✅ `tomo_flyscan()` — standard ascending rotation scan
-- ✅ `tomo_flyscan_loop()` — multi-pass with position adjustment between passes
-- ✅ `tomo_dark_flat()` — dark and flat field acquisition
-- ✅ `take_radiograph()` — single projection (sample in beam, no rotation)
-- ✅ `tomo_1d_step_scan()`, `tomo_2d_step_scan()`, `tomo_nd_step_scan()` — multi-axis step scans
-- ✅ N-D loops with Psylotech load frame (if needed; [see task file](https://github.com/NSLS2/hxm_program/blob/main/planning/tasks/xpd/psylotech-xts-vendor-software-det4.md))
-
-**Rationale:** Users want full capability. If time is constrained, focus on fly, dark/flat, and radiography; N-D loops can follow.
-
-**Action:** Confirm priority if time-boxed.
-
----
-
-## Next Steps
-
-1. **Kyle (with Mehmet) confirms or adjusts** the Q1–Q5 answers
-2. **AJ prepares the hextools PR** (shutters optional, generic motors, mock tests)
-3. **At the beamline:** measure the encoder zero and motor travel, confirm the device map
-
----
-
-## References
-
-- Task file: [`xpdd-tomo-hextools-migration.md`](https://github.com/NSLS2/hxm_program/blob/main/planning/tasks/xpd/xpdd-tomo-hextools-migration.md)
-- hextools source: [`src/hextools/tomography/`](https://github.com/NSLS2/hextools/tree/main/src/hextools/tomography)
-- xpd-tools source: [`src/xpd_tools/`](https://github.com/NSLS2/xpd-tools/tree/main/src/xpd_tools)
-- Device map PVs: [`ioc_host_vars` / XPD-D](https://github.com/NSLS2/ioc_host_vars) (internal)
-
----
-
-**Author:** AJ Sligar (DAD Duo)  
-**Status:** Open for Kyle's and Mehmet's input
+- **Proposed order:** dark/flat → `tomo_flyscan` → radiograph → loops and step scans → alignment.
+- **Leads to:** one xpd-tools PR per plan, in that order, each with mock tests as in `hextools/tests/tomography/`.
