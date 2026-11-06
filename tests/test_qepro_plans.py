@@ -10,7 +10,7 @@ from bluesky.run_engine import RunEngine
 from ophyd_async.core import callback_on_mock_put, init_devices
 
 from xpd_tools.detectors import QEPro
-from xpd_tools.qepro_plans import (
+from xpd_tools.plans import (
     configure_qepro,
     set_qepro_temperature,
     take_qepro_dark_frame,

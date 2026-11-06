@@ -10,7 +10,7 @@ from bluesky import plan_stubs as bps
 from bluesky import preprocessors as bpp
 from ophyd_async.core import wait_for_value
 
-from .pumps import (
+from ..pumps import (
     DDSSyringeAxis,
     DDSSyringeController,
     UltraSyringePump,

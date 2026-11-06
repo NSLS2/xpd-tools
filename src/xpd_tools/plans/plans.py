@@ -12,11 +12,11 @@ from ophyd_async.fastcs.panda import HDFPanda
 
 from xpd_tools.detectors.utils import get_detector_acq_times
 
-from .flyers import (
+from ..flyers import (
     SingleAxisFlyableLogic,
     construct_fly_info_models,
 )
-from .motors import RotationMotor
+from ..motors import FlyscanMotor
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def _fits_counter_range(
 def single_axis_flyscan(
     detectors: list[AreaDetector],
     panda: HDFPanda,
-    motor: RotationMotor,
+    motor: FlyscanMotor,
     num_images: int = 1801,
     start: float = 0.0,
     stop: float = 180.0,
@@ -60,8 +60,8 @@ def single_axis_flyscan(
         list of standard detectors to use in the scan
     panda : HDFPanda
         HDFPanda to use for triggering the detectors and motor
-    motor : RotationMotor
-        RotationMotor to use for the scan
+    motor : FlyscanMotor
+        Flyable motor, such as a RotationMotor, to use for the scan
     num_images : int, optional
         Number of images to acquire, by default 1801
     start : float, optional
