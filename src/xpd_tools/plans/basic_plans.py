@@ -41,7 +41,9 @@ def count(
 
     Examples
     --------
-    >>> RE(count([pilatus1], num=5, exposure_time=0.1, sample_name="LaB6"))
+    Five 0.1 s frames from the Pilatus4::
+
+        RE(count([pilatus1], num=5, exposure_time=0.1, sample_name="LaB6"))
     """
     area_detectors = [det for det in detectors if isinstance(det, StandardDetector)]
 
