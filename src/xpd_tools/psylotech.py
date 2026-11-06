@@ -31,6 +31,7 @@ from ophyd_async.core import (
     StandardReadable,
     StrictEnum,
     TimeoutCalculator,
+    TriggerableCommand,
     callback_on_mock_put,
     default_mock_class,
     derived_signal_r,
@@ -41,7 +42,12 @@ from ophyd_async.core import (
     wait_for_value,
 )
 from ophyd_async.core import StandardReadableFormat as Format
-from ophyd_async.epics.core import epics_signal_r, epics_signal_rw, epics_signal_w
+from ophyd_async.epics.core import (
+    epics_signal_r,
+    epics_signal_rw,
+    epics_signal_w,
+    epics_triggerable_command,
+)
 from ophyd_async.epics.motor import MotorFlyCtx, MotorLimitsError
 
 RECONNECT_MESSAGE = (
@@ -79,6 +85,24 @@ class ActuatorPower:
 
 
 @dataclass(frozen=True)
+class ControllerLimits:
+    """A pair of safety limits held by the Psylotest controller, and their Apply.
+
+    The IOC only sends the limits to the controller when Apply is pressed, and has
+    no readback of the limits in force.
+    """
+
+    lower: SignalW[float]
+    upper: SignalW[float]
+    apply_: TriggerableCommand
+
+    async def apply(self, low: float, high: float) -> None:
+        """Write `low` and `high` and send them to the controller."""
+        await asyncio.gather(self.lower.set(low), self.upper.set(high))
+        await self.apply_.trigger()
+
+
+@dataclass(frozen=True)
 class PsylotechSignals:
     """Signals shared by every axis, owned by the :class:`Psylotech` device.
 
@@ -89,6 +113,12 @@ class PsylotechSignals:
     actuator_enabled: SignalR[EnabledDisabled]
     connected: SignalR[ConnectionState]
     power: ActuatorPower
+    #: The controller's stop for actuator motion.
+    actuator_stop: TriggerableCommand
+    #: The controller's load limits, in N.
+    load_limits: ControllerLimits
+    #: The controller's axial displacement limits, in m.
+    displacement_limits: ControllerLimits
 
 
 @dataclass
@@ -114,6 +144,8 @@ class PsylotechMovableLogic(MovableLogic[float]):
     acceleration_time: float
     #: Moves of every axis using the actuator power.
     power: ActuatorPower
+    #: The controller's stop for actuator motion.
+    actuator_stop: TriggerableCommand
     #: Moves of this axis using the actuator power.
     held: int = field(default=0, init=False)
 
@@ -176,7 +208,9 @@ class PsylotechMovableLogic(MovableLogic[float]):
             self.setpoint.get_value(), self.readback.get_value()
         )
         if not isclose(setpoint, readback, rel_tol=0.0, abs_tol=self.tolerance):
-            await self.setpoint.set(readback)
+            # The setpoint PV starts a composite move in the IOC, so writing the
+            # readback to it would move again; the controller's stop halts motion.
+            await self.actuator_stop.trigger()
             await self.disable_actuators()
         elif self.held or (
             self.power.users == 0
@@ -242,6 +276,19 @@ class PsylotechAxialLogic(PsylotechMovableLogic):
 
     high_limit: SignalR[float]
     low_limit: SignalR[float]
+    #: The controller's displacement limits, set from ours before each move.
+    controller_limits: ControllerLimits
+
+    async def apply_controller_limits(self) -> None:
+        """Send our travel limits to the controller, so it enforces them too."""
+        high, low = await asyncio.gather(
+            self.high_limit.get_value(), self.low_limit.get_value()
+        )
+        await self.controller_limits.apply(low, high)
+
+    async def move(self, new_position: float, timeout: TimeoutCalculator) -> None:
+        await self.apply_controller_limits()
+        await super().move(new_position, timeout)
 
     async def check_move(self, new_position: float) -> None:
         await super().check_move(new_position)
@@ -401,6 +448,7 @@ class _PsylotechAxis(StandardMovable[float], StandardReadable):
             "actuator_enable": self._shared.actuator_enable,
             "actuator_enabled": self._shared.actuator_enabled,
             "power": self._shared.power,
+            "actuator_stop": self._shared.actuator_stop,
             "velocity": self.velocity,
             "max_velocity": self.max_velocity,
             "tolerance": self.POSITION_TOLERANCE,
@@ -534,6 +582,7 @@ class PsylotechAxial(_PsylotechAxis):
             **self._movable_logic_args(),
             high_limit=self.high_limit_travel,
             low_limit=self.low_limit_travel,
+            controller_limits=self._shared.displacement_limits,
         )
 
 
@@ -591,6 +640,8 @@ class PsylotechLoadLogic(MovableLogic[float]):
     slip_steps: int
     #: Longest the whole move may take, in seconds.
     move_timeout: float | None
+    #: The controller's load limits, set from ours before each move.
+    controller_limits: ControllerLimits
 
     async def stop(self) -> None:
         await self.axial.stop()
@@ -640,6 +691,13 @@ class PsylotechLoadLogic(MovableLogic[float]):
         previous: tuple[float, float, float] | None = None
         slipping = 0  # steps in a row where the load hardly responded
         try:
+            high, low = await asyncio.gather(
+                self.high_limit.get_value(), self.low_limit.get_value()
+            )
+            # Our limits are checked here between steps; the controller enforces its
+            # own continuously, so send it the same ones.
+            await self.controller_limits.apply(low, high)
+            await self.axial.apply_controller_limits()
             await self.axial.enable_actuators()
             async with asyncio.timeout(timeout()):
                 while True:
@@ -774,6 +832,8 @@ class PsylotechLoad(StandardMovable[float], StandardReadable):
         *,
         panda_encoder: int = 3,
     ):
+        # Not a Device, so the parent keeps ownership of the controller's limits
+        self._controller_limits = shared.load_limits
         with self.add_children_as_readables():
             self.axial = PsylotechAxial(
                 prefix, shared, name="axial", panda_encoder=panda_encoder
@@ -815,6 +875,7 @@ class PsylotechLoad(StandardMovable[float], StandardReadable):
             slip_fraction=self.SLIP_RESPONSE_FRACTION,
             slip_steps=self.SLIP_STEPS,
             move_timeout=self.MOVE_TIMEOUT,
+            controller_limits=self._controller_limits,
         )
 
 
@@ -839,8 +900,33 @@ class Psylotech(StandardReadable):
             EnabledDisabled, prefix + "ActuatorEnabled_RBV"
         )
         self.connected = epics_signal_r(ConnectionState, prefix + "Connected_RBV")
+        self.actuator_stop = epics_triggerable_command(prefix + "ActuatorStop")
+        self.load_limit_lower = epics_signal_w(float, prefix + "LoadLimitLower")
+        self.load_limit_upper = epics_signal_w(float, prefix + "LoadLimitUpper")
+        self.load_limits_apply = epics_triggerable_command(prefix + "LoadLimitsApply")
+        self.displacement_limit_lower = epics_signal_w(
+            float, prefix + "DisplacementLimitLower"
+        )
+        self.displacement_limit_upper = epics_signal_w(
+            float, prefix + "DisplacementLimitUpper"
+        )
+        self.displacement_limits_apply = epics_triggerable_command(
+            prefix + "DisplacementLimitsApply"
+        )
         shared = PsylotechSignals(
-            self.actuator_enable, self.actuator_enabled, self.connected, ActuatorPower()
+            self.actuator_enable,
+            self.actuator_enabled,
+            self.connected,
+            ActuatorPower(),
+            self.actuator_stop,
+            ControllerLimits(
+                self.load_limit_lower, self.load_limit_upper, self.load_limits_apply
+            ),
+            ControllerLimits(
+                self.displacement_limit_lower,
+                self.displacement_limit_upper,
+                self.displacement_limits_apply,
+            ),
         )
         with self.add_children_as_readables():
             self.rot = PsylotechRotation(prefix, shared, name="rot", panda_encoder=2)
