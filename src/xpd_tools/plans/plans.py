@@ -1,8 +1,10 @@
 """Acquisition plans for XPD beamline at NSLS-II."""
 
 import logging
+from typing import Any
 
 import bluesky.plan_stubs as bps
+import bluesky.preprocessors as bpp
 from ophyd_async.core import (
     DetectorTrigger,
     TriggerInfo,
@@ -16,7 +18,7 @@ from ..flyers import (
     SingleAxisFlyableLogic,
     construct_fly_info_models,
 )
-from ..motors import FlyscanMotor
+from ..motors import FlyscanMotor, RotationMotor
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ def single_axis_flyscan(
     stream_name: str = "tomo",
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
+    md: dict[str, Any] | None = None,
 ):
     """Perform a single axis flyscan with the given detectors, PandABox, and motor.
 
@@ -74,6 +77,8 @@ def single_axis_flyscan(
         Overhead time for acquisition for each frame in seconds, by default 0.001
     flyscan_type : SingleAxisFlyscanType, default SingleAxisFlyscanType.POSITION_BASED
         Type of flyscan to perform, by default SingleAxisFlyscanType.POSITION_BASED
+    md : dict[str, Any] | None, optional
+        Extra metadata for the run's start document.
     """
     all_detectors = [*detectors, panda]
     panda_encoder = motor.panda_encoder
@@ -166,6 +171,7 @@ def single_axis_flyscan(
         "plan_name": "single_axis_flyscan",
         "hints": {},
     }
+    _md.update(md or {})
     yield from bps.open_run(md=_md)
 
     yield from bps.stage_all(*all_detectors)
@@ -197,3 +203,76 @@ def single_axis_flyscan(
     yield from bps.unstage_all(*all_detectors)
 
     yield from bps.close_run()
+
+
+def tomo_flyscan(
+    detectors: list[AreaDetector],
+    panda: HDFPanda,
+    motor: RotationMotor,
+    num_images: int = 1801,
+    start: float = 0.0,
+    stop: float = 180.0,
+    sample_name: str | None = None,
+    time_based: bool = False,
+    md: dict[str, Any] | None = None,
+):
+    """Take a tomography fly scan and leave the rotation stage safe.
+
+    Runs :func:`single_axis_flyscan` into the ``tomo`` stream. However the scan
+    ends, the stage is stopped and its speed set back to what it was before the
+    scan: preparing a fly scan leaves the motor record at the fly speed. Modelled
+    on hextools' ``tomo_flyscan``.
+
+    Parameters
+    ----------
+    detectors : list[AreaDetector]
+        Detectors to take the projections with.
+    panda : HDFPanda
+        PandA that triggers the detectors from the stage's encoder.
+    motor : RotationMotor
+        Rotation stage to fly.
+    num_images : int, optional
+        Number of projections, by default 1801.
+    start : float, optional
+        Start angle in degrees, by default 0.0.
+    stop : float, optional
+        Stop angle in degrees, by default 180.0.
+    sample_name : str | None, optional
+        Name of the sample, recorded in the run's start document.
+    time_based : bool, optional
+        Trigger at equal time steps instead of equal angle steps, by default False.
+    md : dict[str, Any] | None, optional
+        Extra metadata for the run's start document.
+    """
+    initial_velocity = yield from bps.rd(motor.velocity)
+
+    _md: dict[str, Any] = {
+        "plan_name": "tomo_flyscan",
+        "start_position": start,
+        "stop_position": stop,
+        "time_based": time_based,
+    }
+    if sample_name is not None:
+        _md["sample_name"] = sample_name
+    _md.update(md or {})
+
+    def _cleanup():
+        yield from bps.abs_set(motor.motor_stop, 1)
+        yield from bps.mv(motor.velocity, initial_velocity)
+
+    return (
+        yield from bpp.finalize_wrapper(
+            single_axis_flyscan(
+                detectors=detectors,
+                panda=panda,
+                motor=motor,
+                num_images=num_images,
+                start=start,
+                stop=stop,
+                stream_name="tomo",
+                time_based=time_based,
+                md=_md,
+            ),
+            _cleanup(),
+        )
+    )
