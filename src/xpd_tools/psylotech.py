@@ -699,8 +699,18 @@ class PsylotechLoadLogic(MovableLogic[float]):
             await self.controller_limits.apply(low, high)
             await self.axial.apply_controller_limits()
             await self.axial.enable_actuators()
-            async with asyncio.timeout(timeout()):
+            move_timeout = timeout()
+            loop = asyncio.get_running_loop()
+            deadline = None if move_timeout is None else loop.time() + move_timeout
+            async with asyncio.timeout(move_timeout):
                 while True:
+                    # Python 3.11's asyncio.wait_for (used by every signal read) can
+                    # swallow the cancellation asyncio.timeout relies on, which left
+                    # this loop running forever; so check the deadline as well.
+                    if deadline is not None and loop.time() > deadline:
+                        raise TimeoutError(
+                            f"Load did not settle within {move_timeout} s."
+                        )
                     if await self.in_tolerance.get_value():
                         await self._check_load(await self.readback.get_value(), "Load")
                         previous = None
