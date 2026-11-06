@@ -916,8 +916,8 @@ class TestScriptEquivalence:
             "xpd_tools.optimization.agent.from_profile",
             "xpd_tools.optimization.agent.REManagerAPI",
             "xpd_tools.optimization.agent.RemoteDispatcher",
-            "blop.ax.queueserver_agent.QueueserverClient",
-            "blop.ax.queueserver_agent.QueueserverOptimizationRunner",
+            "bluesky_adaptive.ax.queueserver_agent.QueueserverClient",
+            "bluesky_adaptive.ax.queueserver_agent.QueueserverOptimizationRunner",
         ]
         patchers = [patch(target) for target in targets]
         for patcher in patchers:

@@ -1,4 +1,4 @@
-"""Blop optimizer and Queue Server integration."""
+"""Bluesky-adaptive optimizer and Queue Server integration."""
 
 import json
 import logging
@@ -13,9 +13,9 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 from ax.api.protocols import IMetric
-from blop.ax import Objective, OutcomeConstraint, RangeDOF
-from blop.ax.agent import Agent
-from blop.ax.queueserver_agent import QueueserverAgent
+from bluesky_adaptive.ax import Objective, OutcomeConstraint, RangeDOF
+from bluesky_adaptive.ax.agent import Agent
+from bluesky_adaptive.ax.queueserver_agent import QueueserverAgent
 from bluesky.callbacks.zmq import RemoteDispatcher
 from bluesky_queueserver_api.http import REManagerAPI
 from tiled.client import from_profile, from_uri
@@ -1218,7 +1218,7 @@ class BuildAgent:
                 "will likely receive a 401 (needs write:queue:control scope)."
             )
         # Preflight: verify the key actually carries write:queue:control so the
-        # caller gets a clear message instead of a cryptic 401 deep inside blop.
+        # caller gets a clear message instead of a cryptic 401 deep inside bluesky-adaptive.
         # This is best-effort: if api_scopes() is unavailable (older server,
         # network hiccup, or mocked in tests) the check is skipped and the real
         # error surfaces at the first queue operation.
@@ -1349,7 +1349,7 @@ class BuildAgent:
         hardware or simulated), instead of dispatching acquisition plans by
         name through a Queue Server.
 
-        Returns a `blop.ax.agent.Agent`.
+        Returns a `bluesky_adaptive.ax.agent.Agent`.
 
         Can be used both as a fake atmosphere to test building of the agent
         and loading historical data, and as a local environment to run simulation

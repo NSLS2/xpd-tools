@@ -185,8 +185,8 @@ def assert_plan_registered(
         assert_plan_registered(run_agent, "uvvis_acquire")
     """
     # Access the underlying RE Manager API via the runner's client.
-    # blop stores the REManagerAPI instance as QueueserverClient._rm (not
-    # _re_manager_api -- that name never existed in blop's public API).
+    # bluesky-adaptive stores the REManagerAPI instance as QueueserverClient._rm (not
+    # _re_manager_api -- that name never existed in bluesky-adaptive's public API).
     try:
         rm = run_agent._runner._client._rm
         response = rm.plans_allowed()

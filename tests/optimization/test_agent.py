@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 import pytest
-from blop.ax.agent import Agent
+from bluesky_adaptive.ax.agent import Agent
 from bluesky.run_engine import RunEngine
 
 from xpd_tools.optimization.agent import BuildAgent, _load_historical_data
@@ -48,8 +48,8 @@ def mocked_queueserver() -> None:
         "xpd_tools.optimization.agent.from_profile",
         "xpd_tools.optimization.agent.REManagerAPI",
         "xpd_tools.optimization.agent.RemoteDispatcher",
-        "blop.ax.queueserver_agent.QueueserverClient",
-        "blop.ax.queueserver_agent.QueueserverOptimizationRunner",
+        "bluesky_adaptive.ax.queueserver_agent.QueueserverClient",
+        "bluesky_adaptive.ax.queueserver_agent.QueueserverOptimizationRunner",
     ]
     patchers = [patch(target) for target in targets]
     for patcher in patchers:
@@ -1119,7 +1119,7 @@ class TestAcquisitionPlanKwargs:
         assert fc["mixer_lengths_cm"] == [25.0]
         assert fc["resident_t_ratio"] == 0.9
         assert fc["precursor_list"] == ["precursor-CsPb", "precursor-Br"]
-        assert fc["precursor_prefix_list"] == ["CsPb", "Br"]
+        assert fc["precursor_prefix_list"] == ["precursor-CsPb", "precursor-Br"]
         assert fc["dof_to_pump"] == {
             "infusion_rate_CsPb": "dds-CsPb",
             "infusion_rate_Br": "dds-Br",
