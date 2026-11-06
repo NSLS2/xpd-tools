@@ -8,7 +8,7 @@ from bluesky.protocols import Readable
 from ophyd_async.core import StandardDetector, TriggerInfo
 
 
-def count(
+def tomo_count(
     detectors: list[Readable],
     num: int = 1,
     exposure_time: float | None = None,
@@ -18,9 +18,10 @@ def count(
 ):
     """Take ``num`` readings of the detectors, optionally setting the exposure time.
 
-    Like ``bluesky.plans.count``, with an ``exposure_time`` for the area detectors
-    (Pilatus4, IRIS/Kinetix, Xspress3, ...) and a ``sample_name``. Each detector
-    gets its own shortest acquire period for that exposure.
+    A step count for tomography: like ``bluesky.plans.count``, with an
+    ``exposure_time`` for the area detectors (Pilatus4, IRIS/Kinetix, Xspress3,
+    ...) and a ``sample_name``. Each detector gets its own shortest acquire
+    period for that exposure.
 
     Parameters
     ----------
@@ -43,12 +44,12 @@ def count(
     --------
     Five 0.1 s frames from the Pilatus4::
 
-        RE(count([pilatus1], num=5, exposure_time=0.1, sample_name="LaB6"))
+        RE(tomo_count([pilatus1], num=5, exposure_time=0.1, sample_name="LaB6"))
     """
     area_detectors = [det for det in detectors if isinstance(det, StandardDetector)]
 
     _md: dict[str, Any] = {
-        "plan_name": "count",
+        "plan_name": "tomo_count",
         "detectors": [det.name for det in detectors],
         "num_points": num,
         "exposure_time": exposure_time,

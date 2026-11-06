@@ -1,4 +1,4 @@
-"""Tests for the count helper."""
+"""Tests for the tomo_count helper."""
 
 import asyncio
 from pathlib import Path
@@ -15,7 +15,7 @@ from ophyd_async.core import (
 from ophyd_async.epics.adcore import ADWriterFactory
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector, Pilatus4TriggerMode
-from xpd_tools.plans import count
+from xpd_tools.plans import tomo_count
 
 
 @pytest.fixture
@@ -36,8 +36,8 @@ def _run(RE: RunEngine, plan) -> dict[str, list]:
     return docs
 
 
-def test_count_sets_exposure_time(RE: RunEngine, pilatus1: Pilatus4Detector):
-    docs = _run(RE, count([pilatus1], num=3, exposure_time=0.01))
+def test_tomo_count_sets_exposure_time(RE: RunEngine, pilatus1: Pilatus4Detector):
+    docs = _run(RE, tomo_count([pilatus1], num=3, exposure_time=0.01))
 
     assert docs["stop"][0]["exit_status"] == "success"
     assert len(docs["event"]) == 3
@@ -52,22 +52,22 @@ def test_count_sets_exposure_time(RE: RunEngine, pilatus1: Pilatus4Detector):
     )
 
 
-def test_count_keeps_current_exposure_when_not_given(
+def test_tomo_count_keeps_current_exposure_when_not_given(
     RE: RunEngine, pilatus1: Pilatus4Detector
 ):
     set_mock_value(pilatus1.driver.acquire_time, 0.02)
     set_mock_value(pilatus1.driver.acquire_period, 0.03)
 
-    docs = _run(RE, count([pilatus1]))
+    docs = _run(RE, tomo_count([pilatus1]))
 
     assert docs["stop"][0]["exit_status"] == "success"
     assert asyncio.run(pilatus1.driver.acquire_time.get_value()) == pytest.approx(0.02)
 
 
-def test_count_records_metadata(RE: RunEngine, pilatus1: Pilatus4Detector):
+def test_tomo_count_records_metadata(RE: RunEngine, pilatus1: Pilatus4Detector):
     docs = _run(
         RE,
-        count(
+        tomo_count(
             [pilatus1],
             num=2,
             exposure_time=0.01,
@@ -77,7 +77,7 @@ def test_count_records_metadata(RE: RunEngine, pilatus1: Pilatus4Detector):
     )
 
     start = docs["start"][0]
-    assert start["plan_name"] == "count"
+    assert start["plan_name"] == "tomo_count"
     assert start["detectors"] == ["pilatus1"]
     assert start["num_points"] == 2
     assert start["exposure_time"] == 0.01
@@ -85,12 +85,12 @@ def test_count_records_metadata(RE: RunEngine, pilatus1: Pilatus4Detector):
     assert start["operator"] == "mt"
 
 
-def test_count_reads_other_readables_alongside(
+def test_tomo_count_reads_other_readables_alongside(
     RE: RunEngine, pilatus1: Pilatus4Detector
 ):
     temperature = soft_signal_rw(float, initial_value=25.0, name="temperature")
 
-    docs = _run(RE, count([pilatus1, temperature], num=2, exposure_time=0.01))
+    docs = _run(RE, tomo_count([pilatus1, temperature], num=2, exposure_time=0.01))
 
     assert docs["stop"][0]["exit_status"] == "success"
     assert [e["data"]["temperature"] for e in docs["event"]] == [25.0, 25.0]
