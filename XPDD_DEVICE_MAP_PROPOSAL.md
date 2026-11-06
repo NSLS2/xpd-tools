@@ -69,5 +69,9 @@ Which plans do users need on 2026-11-28, and which can wait? The hextools plans 
 | `tomo_1d/2d/nd_step_scan` | a fly scan at each point of a 1-D, 2-D or N-D grid (e.g. with the Psylotech) |
 | `tomo_alignment_scan` | rotation-axis alignment check |
 
-- **Proposed order:** dark/flat → `tomo_flyscan` → radiograph → loops and step scans → alignment.
+- **Kyle (2026-11-06):** basics first. Mehmet needs helper functions that do the basic things, like a count
+  with keyword arguments for exposure time.
+- **Order:** basic helpers (count with `exposure_time`, setting exposure) → dark/flat → `tomo_flyscan`
+  (#45, already open) → radiograph → loops and step scans → alignment. Templates for the helpers: hextools'
+  `edxd_count(count_time, num)` and `take_radiograph(exposure_time, num_images, …)`.
 - **Leads to:** one xpd-tools PR per plan, in that order, each with mock tests as in `hextools/tests/tomography/`.
