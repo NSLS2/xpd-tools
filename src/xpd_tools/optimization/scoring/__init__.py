@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-#from xpd_tools.optimization.scoring.cnn_pdf import CnnScorer, build_cnn_scorer
+from xpd_tools.optimization.scoring.cnn_pdf import CnnScorer, build_cnn_scorer
 from xpd_tools.optimization.scoring.cross_correlation_pdf import cross_correlation
 from xpd_tools.optimization.scoring.ensemble_pdf import EnsembleGoodnessOfFitScorer
 from xpd_tools.optimization.scoring.nn_matrix_pdf import nn_matrix
@@ -36,7 +36,7 @@ def _resolve_scorer(
 
 
 __all__ = [
-#    "CnnScorer",
+    "CnnScorer",
     "EnsembleGoodnessOfFitScorer",
     "EnsembleScorers",
     "build_cnn_scorer",
