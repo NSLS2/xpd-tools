@@ -11,6 +11,7 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 from xpd_tools.optimization.scoring import pearson
+from xpd_tools.optimization.helpers.common import pdfstream_str_to_1d
 
 
 def _nearest_index(values: NDArray[np.float64], target: float) -> int:
@@ -450,12 +451,12 @@ def pdf_profile(
           against the experimental radial grid.
     """
     # Experimental
-    experimental_r = np.asarray(r_exp, dtype=float)
-    experimental_g = np.asarray(g_exp, dtype=float)
+    experimental_r = pdfstream_str_to_1d(r_exp)
+    experimental_g = pdfstream_str_to_1d(g_exp)
 
     # Simulated Reference
-    reference_r = np.asarray(r_ref, dtype=float)
-    reference_g = np.asarray(g_ref, dtype=float)
+    reference_r = pdfstream_str_to_1d(r_ref)
+    reference_g = pdfstream_str_to_1d(g_ref)
     arrays = (experimental_r, experimental_g, reference_r, reference_g)
 
     # Validate inputs

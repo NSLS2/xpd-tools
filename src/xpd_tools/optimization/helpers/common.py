@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from typing import Any, TypeVar
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +84,24 @@ def _retry_access(
         f"Failed to read {operation} for uid={uid!r} after "
         f"{max_retries} attempts.{suffix}"
     ) from last_access_error
+
+
+def pdfstream_str_to_1d(x: ArrayLike | str | np.str_) -> NDArray[np.float64]:
+    """Convert a numeric array-like or stringified array to a 1D float64 array.
+
+    Handles the case where tiled returns a numpy string scalar like
+    ``np.str_("[0.5 0.51 ... 19.99 20.]")`` instead of an actual array.
+    """
+    if isinstance(x, (str, np.str_)):
+        s = str(x).strip().strip("[]")
+        # fast path: whitespace-separated numbers (no commas)
+        try:
+            arr = np.fromstring(s, sep=" ", dtype=float)
+            if arr.size > 0:
+                return arr
+        except ValueError:
+            pass
+        # fallback: commas / mixed separators
+        toks = [t for t in re.split(r"[\s,]+", s) if t]
+        return np.array([float(t) for t in toks], dtype=float)
+    return np.asarray(x, dtype=float).ravel()
