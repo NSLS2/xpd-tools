@@ -1237,7 +1237,7 @@ class BuildAgent:
                 raise
             except Exception:
                 pass
-        document_dispatcher = RemoteDispatcher(self.zmq_consumer_address)
+        document_dispatcher = RemoteDispatcher(self.zmq_consumer_address, prefix=b"raw")
 
         constraints = self._outcome_constraints(needs_plqy)
         agent = QueueserverAgent(
