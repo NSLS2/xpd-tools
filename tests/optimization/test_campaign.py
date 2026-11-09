@@ -218,8 +218,8 @@ class TestAssertPlanRegistered:
     def _make_mock_agent(self, plan_names: list[str]) -> MagicMock:
         """Build a mock QueueserverAgent whose client returns *plan_names*.
 
-        Uses the correct blop attribute path: ``_runner._client._rm``
-        (blop stores REManagerAPI as ``_rm``, not ``_re_manager_api``).
+        Uses the correct attribute path: ``_runner._client._rm``
+        (bluesky-adaptive stores REManagerAPI as ``_rm``, not ``_re_manager_api``).
         """
         agent = MagicMock()
         api = agent._runner._client._rm

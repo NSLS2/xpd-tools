@@ -1,4 +1,4 @@
-"""Blop optimizer and Queue Server integration."""
+"""Bluesky-adaptive optimizer and Queue Server integration."""
 
 import json
 import logging
@@ -13,9 +13,9 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 from ax.api.protocols import IMetric
-from blop.ax import Objective, OutcomeConstraint, RangeDOF
-from blop.ax.agent import Agent
-from blop.ax.queueserver_agent import QueueserverAgent
+from bluesky_adaptive.ax import Objective, OutcomeConstraint, RangeDOF
+from bluesky_adaptive.ax.agent import Agent
+from bluesky_adaptive.ax.queueserver_agent import QueueserverAgent
 from bluesky.callbacks.zmq import RemoteDispatcher
 from bluesky_queueserver_api.http import REManagerAPI
 from tiled.client import from_profile, from_uri
@@ -1131,7 +1131,7 @@ class BuildAgent:
             "mixer_lengths_cm": list(self.mixer_lengths_cm),
             "resident_t_ratio": self.residence_time_ratio,
             "precursor_list": [s.precursor for s in sources],
-            "precursor_prefix_list": [s.sample_label for s in sources],
+            "precursor_prefix_list": [s.precursor for s in sources],
             "dof_to_pump": {s.dof: str(s.pump) for s in sources},
             "post_dilute": bool(dilutions),
             "post_dilute_ratio": [d.ratio for d in dilutions] or [1.0],
@@ -1148,8 +1148,7 @@ class BuildAgent:
             "syringe_list": [c.syringe_ml for c in wash_cycles],
             # Rate formatted as "NNN ul/min" to match the string the plan passes
             # to set_group_infuse2 — same unit as self.rate_unit.
-            "rate_list": [f"{int(c.rate_ul_min)} \
-                {self.rate_unit}" for c in wash_cycles],
+            "rate_list": [f"{int(c.rate_ul_min)} {self.rate_unit}" for c in wash_cycles],
             # All cycles share the same duration; the queueserver WashConfig
             # has a single duration_sec scalar. Use the first cycle's value.
             "duration_sec": wash_cycles[0].duration_sec if wash_cycles else 60.0,
@@ -1219,7 +1218,7 @@ class BuildAgent:
                 "will likely receive a 401 (needs write:queue:control scope)."
             )
         # Preflight: verify the key actually carries write:queue:control so the
-        # caller gets a clear message instead of a cryptic 401 deep inside blop.
+        # caller gets a clear message instead of a cryptic 401 deep inside bluesky-adaptive.
         # This is best-effort: if api_scopes() is unavailable (older server,
         # network hiccup, or mocked in tests) the check is skipped and the real
         # error surfaces at the first queue operation.
@@ -1249,7 +1248,7 @@ class BuildAgent:
             objectives=self.objectives,
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
-            acquisition_plan_kwargs={},
+            acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)
@@ -1350,7 +1349,7 @@ class BuildAgent:
         hardware or simulated), instead of dispatching acquisition plans by
         name through a Queue Server.
 
-        Returns a `blop.ax.agent.Agent`.
+        Returns a `bluesky_adaptive.ax.agent.Agent`.
 
         Can be used both as a fake atmosphere to test building of the agent
         and loading historical data, and as a local environment to run simulation

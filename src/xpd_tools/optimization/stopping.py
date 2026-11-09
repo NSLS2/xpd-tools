@@ -1,4 +1,4 @@
-"""Background success-threshold watcher for a running blop campaign.
+"""Background success-threshold watcher for a running bluesky-adaptive campaign.
 
 Layered on top of the existing iterations= stopping mode.
 """

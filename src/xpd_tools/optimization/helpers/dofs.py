@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from math import isfinite
 
-from blop.ax import RangeDOF
+from bluesky_adaptive.ax import RangeDOF
 
 
 @dataclass(frozen=True, kw_only=True)

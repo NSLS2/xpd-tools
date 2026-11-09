@@ -210,23 +210,19 @@ def _fit_pl_spectrum(
     fitted_sigma = abs(float(fitted[2]))
     fitted_y = _gaussian(x, *fitted)
 
-    # Compute the R-squared value for the fit
+    # Compute the R-squared value for the fit (diagnostic only; never fatal)
     r2_mask = (x >= peak - r2_window_sigma * fitted_sigma) & (
         x <= peak + r2_window_sigma * fitted_sigma
     )
     observed = y[r2_mask]
     predicted = fitted_y[r2_mask]
 
-    # Check that there are enough samples for R-squared computation
     if observed.size < 2:
-        raise ValueError("PL fit contains too few samples for R-squared")
-    residual_sum = float(np.sum((observed - predicted) ** 2))
-    total_sum = float(np.sum((observed - np.mean(observed)) ** 2))
-
-    # Check that the total sum is not zero to avoid division by zero
-    if total_sum == 0:
-        raise ValueError("PL fit data are constant")
-    r_squared = 1 - residual_sum / total_sum
+        r_squared = float("nan")
+    else:
+        residual_sum = float(np.sum((observed - predicted) ** 2))
+        total_sum = float(np.sum((observed - np.mean(observed)) ** 2))
+        r_squared = float("nan") if total_sum == 0 else 1 - residual_sum / total_sum
     pl_integral = float(integrate.simpson(y, x=x))
 
     # Return the peak, FWHM, integral, and R-squared value
