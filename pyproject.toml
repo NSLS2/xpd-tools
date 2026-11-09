@@ -112,7 +112,8 @@ optimization = [
     "pymatgen>=2025.6",
     "scipy>=1.14",
     "torch",
-    "bluesky_queueserver_api"
+    "bluesky_adaptive[ax,queueserver]",
+    "bluesky_queueserver_api",
 ]
 
 cnn = [
