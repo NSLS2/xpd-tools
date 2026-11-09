@@ -160,7 +160,7 @@ def construct_fly_info_models(
     current_encoder_value: int,
     acq_time_overhead: float = 0.001,
     time_based: bool = False,
-    position_dataset_name: str = "angle",
+    position_dataset_name: str = "rotation_angle",
     position_dataset_units: str = "deg",
 ) -> tuple[SingleAxisFlyscanInfo, FlyMotorInfo]:
     """Construct the fly info models for a single axis flyscan.
@@ -191,7 +191,7 @@ def construct_fly_info_models(
         An overhead time per image to add to each acquisition.
     time_based : bool, default False
         If true, equally spaced in time triggers. Otherwise, equally spaced in position.
-    position_dataset_name : str, default "angle"
+    position_dataset_name : str, default "rotation_angle"
         The name of the dataset for the position values.
     position_dataset_units : str, default "deg"
         The units of the dataset for the position values.
