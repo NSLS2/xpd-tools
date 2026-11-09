@@ -86,22 +86,61 @@ def _retry_access(
     ) from last_access_error
 
 
-def pdfstream_str_to_1d(x: ArrayLike | str | np.str_) -> NDArray[np.float64]:
-    """Convert a numeric array-like or stringified array to a 1D float64 array.
+def pdfstream_str_to_1d(x: ArrayLike | str | bytes | np.str_ | np.bytes_) -> NDArray[np.float64]:
+    """Convert numeric or string-like containers to a 1D float64 array.
 
-    Handles the case where tiled returns a numpy string scalar like
-    ``np.str_("[0.5 0.51 ... 19.99 20.]")`` instead of an actual array.
+    This handles cases where tiled (or intermediate serializers) return values
+    as:
+    - plain strings / numpy string scalars,
+    - 0-D arrays holding one string,
+    - 1-D object/string arrays,
+    - ordinary numeric array-likes.
     """
-    if isinstance(x, (str, np.str_)):
-        s = str(x).strip().strip("[]")
-        # fast path: whitespace-separated numbers (no commas)
+
+    def _parse_text(text: str) -> NDArray[np.float64]:
+        s = text.strip()
+        if not s:
+            return np.array([], dtype=float)
+        s = s.strip("[]")
+
+        # Fast path: whitespace-delimited numeric text.
         try:
             arr = np.fromstring(s, sep=" ", dtype=float)
             if arr.size > 0:
                 return arr
         except ValueError:
             pass
-        # fallback: commas / mixed separators
-        toks = [t for t in re.split(r"[\s,]+", s) if t]
-        return np.array([float(t) for t in toks], dtype=float)
+
+        # Robust fallback: extract numeric literals from mixed wrapper text.
+        vals = re.findall(
+            r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?|(?:nan|inf|-inf)",
+            s,
+            flags=re.IGNORECASE,
+        )
+        return np.array([float(v) for v in vals], dtype=float)
+
+    if isinstance(x, (str, np.str_)):
+        return _parse_text(str(x))
+    if isinstance(x, (bytes, np.bytes_)):
+        return _parse_text(bytes(x).decode(errors="ignore"))
+
+    arr = np.asarray(x)
+
+    # Numeric fast path.
+    if arr.dtype.kind in {"f", "i", "u", "b"}:
+        return arr.astype(float).ravel()
+
+    # Scalar container (often a 0-D array with one string/object).
+    if arr.ndim == 0:
+        return _parse_text(str(arr.item()))
+
+    # String/object arrays: try direct cast, then text parse fallback.
+    if arr.dtype.kind in {"U", "S", "O"}:
+        try:
+            return arr.astype(float).ravel()
+        except (TypeError, ValueError):
+            joined = " ".join(map(str, arr.ravel()))
+            return _parse_text(joined)
+
+    # Last resort.
     return np.asarray(x, dtype=float).ravel()
