@@ -3,6 +3,8 @@
 import numpy as np
 from numpy.typing import ArrayLike
 
+from xpd_tools.optimization.helpers.common import pdfstream_str_to_1d
+
 
 def _mask_and_interpolate(
     r_exp: ArrayLike,
@@ -31,10 +33,10 @@ def _mask_and_interpolate(
         - g_slice: Masked G(r) values.
         - g_sim_i: Interpolated G(r) values.
     """
-    r_exp = np.asarray(r_exp, dtype=float)
-    g_exp = np.asarray(g_exp, dtype=float)
-    r_sim = np.asarray(r_sim, dtype=float)
-    g_sim = np.asarray(g_sim, dtype=float)
+    r_exp = pdfstream_str_to_1d(r_exp)
+    g_exp = pdfstream_str_to_1d(g_exp)
+    r_sim = pdfstream_str_to_1d(r_sim)
+    g_sim = pdfstream_str_to_1d(g_sim)
 
     # Mask, by default between 2 and 20 A
     mask = (r_exp >= r_min) & (r_exp <= r_max)

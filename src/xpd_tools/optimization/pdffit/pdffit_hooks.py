@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from xpd_tools.optimization.analysis import pdf_profile
+from xpd_tools.optimization.helpers.common import pdfstream_str_to_1d
 from xpd_tools.optimization.scoring import EnsembleScorers, _resolve_scorer
 
 _PDF_QMAX = 18.0
@@ -34,8 +35,8 @@ def fit_pdf_correlations(
     from diffpy.pdffit2 import PdfFit
     from diffpy.structure import loadStructure
 
-    experimental_r = np.asarray(pdf_data["gr_r"], dtype=float)
-    experimental_g = np.asarray(pdf_data["gr_G"], dtype=float)
+    experimental_r = pdfstream_str_to_1d(pdf_data["gr_r"])
+    experimental_g = pdfstream_str_to_1d(pdf_data["gr_G"])
     finite = np.isfinite(experimental_r) & np.isfinite(experimental_g)
     if np.count_nonzero(finite) < 2:
         raise ValueError("not enough finite PDF points to fit G(r)")
@@ -87,8 +88,8 @@ def fit_pdf_correlations(
             results[f"pdf_fit_corr_{phase.name}"] = pdf_profile(
                 experimental_r,
                 experimental_g,
-                np.asarray(pdf_fit.getR()),
-                np.asarray(pdf_fit.getpdf_fit()),
+                pdfstream_str_to_1d(pdf_fit.getR()),
+                pdfstream_str_to_1d(pdf_fit.getpdf_fit()),
                 r_min=r_min,
                 r_max=r_max,
                 function=_resolve_scorer(
