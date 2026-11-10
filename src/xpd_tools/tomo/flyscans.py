@@ -13,7 +13,7 @@ profile gives them, see :data:`DEFAULT_DEVICE_NAMES`.
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from bluesky import plan_patterns
@@ -38,7 +38,13 @@ from xpd_tools.motors import RotationMotor
 from xpd_tools.plans.plans import compute_flyscan_models
 from xpd_tools.shutter import Shutter, ensure_shutter_closed, ensure_shutter_open
 from xpd_tools.specs import TOMO_DARK_FLAT_V1, TOMO_FLYSCAN_V1, spec_md
-from xpd_tools.tomo.utils import ImagingDetector, TomoDetector
+from xpd_tools.tomo.utils import (
+    ExposureTime,
+    ImagingDetector,
+    TomoDetector,
+    exposure_md,
+    resolve_exposure_times,
+)
 from xpd_tools.utils import ensure_available
 
 logger = logging.getLogger(__name__)
@@ -81,7 +87,7 @@ def _shutters(
 
 def tomo_dark_flat(
     detectors: list[ImagingDetector],
-    exposure_time: float,
+    exposure_time: ExposureTime,
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     sample_out_offset: float = 2.0,
@@ -109,8 +115,10 @@ def tomo_dark_flat(
     ----------
     detectors : list[ImagingDetector]
         The imaging detectors (Pilatus4 or Kinetix) to take darks and flats with.
-    exposure_time : float
-        The exposure time for each image, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each image, in seconds: one number for every detector,
+        or a mapping that gives every detector its own, keyed by detector or by its
+        ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
     num_dark_images : int, default 20
         The number of dark images to acquire.
     num_flat_images : int, default 50
@@ -141,7 +149,9 @@ def tomo_dark_flat(
     Raises
     ------
     ValueError
-        If a detector is not an imaging detector, or ``sample_out_offset`` is zero.
+        If a detector is not an imaging detector, ``sample_out_offset`` is zero, or
+        ``exposure_time`` is invalid,
+        see :func:`xpd_tools.tomo.utils.resolve_exposure_times`.
     """
     for det in detectors:
         if isinstance(det, Xspress3Detector):
@@ -151,6 +161,7 @@ def tomo_dark_flat(
             )
     if sample_out_offset == 0:
         raise ValueError("sample_out_offset must be non-zero to move the sample out.")
+    exposure_times = resolve_exposure_times(detectors, exposure_time)
 
     sample_out_motor = ensure_available(
         AsyncEpicsMotor, sample_out_motor, DEFAULT_DEVICE_NAMES["sample_out_motor"]
@@ -168,7 +179,7 @@ def tomo_dark_flat(
     _md: dict[str, Any] = {
         "plan_name": "tomo_dark_flat",
         "detectors": [det.name for det in detectors],
-        "exposure_time": exposure_time,
+        "exposure_time": exposure_md(exposure_times),
         "num_dark_images": num_dark_images,
         "num_flat_images": num_flat_images,
         "sample_out_motor": sample_out_motor.name,
@@ -196,7 +207,7 @@ def tomo_dark_flat(
                 yield from bps.prepare(
                     det,
                     TriggerInfo(
-                        livetime=exposure_time, collections_per_event=num_images
+                        livetime=exposure_times[det], collections_per_event=num_images
                     ),
                     group=f"prepare-{stream}",
                 )
@@ -224,7 +235,7 @@ def tomo_dark_flat(
 def tomo_flyscan(
     detectors: list[TomoDetector],
     num_projections: int,
-    exposure_time: float,
+    exposure_time: ExposureTime,
     acquire_period: float | None = None,
     images_to_average: int = 1,
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
@@ -258,11 +269,14 @@ def tomo_flyscan(
         The detectors (Pilatus4, Kinetix or Xspress3) to take projections with.
     num_projections : int
         The number of projections to acquire.
-    exposure_time : float
-        The exposure time for each projection, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each projection, in seconds: one number for every
+        detector, or a mapping that gives every detector its own, keyed by detector
+        or by its ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
     acquire_period : float | None, default None
-        The period between projections, in seconds. None uses the exposure time
-        plus the largest detector deadtime plus :data:`FRAME_PERIOD_MARGIN`.
+        The period between projections, in seconds, shared by every detector. None
+        uses the longest of each detector's exposure time plus its deadtime, plus
+        :data:`FRAME_PERIOD_MARGIN`.
     images_to_average : int, default 1
         The number of images the Proc plugin combines into each projection. Only
         detectors with a ``proc`` plugin support more than 1.
@@ -298,11 +312,18 @@ def tomo_flyscan(
     Raises
     ------
     ValueError
-        If ``acquire_period`` is shorter than the exposure plus detector deadtime.
+        If ``acquire_period`` is shorter than a detector's exposure plus deadtime,
+        or ``exposure_time`` is invalid, see
+        :func:`xpd_tools.tomo.utils.resolve_exposure_times`.
     RuntimeError
         If a detector drops more than :data:`MAX_MISSING_FRAMES` frames.
     """
+    if not detectors:
+        raise ValueError("tomo_flyscan needs at least one detector.")
     filter_type = NDProcessFilterType(filter_type)
+    exposure_times = resolve_exposure_times(detectors, exposure_time)
+    # The trigger train and motor speed follow the longest exposure.
+    longest_exposure = max(exposure_times.values())
     if images_to_average > 1:
         no_proc = [det.name for det in detectors if not hasattr(det, "proc")]
         if no_proc:
@@ -316,26 +337,33 @@ def tomo_flyscan(
     )
     fe_shutter, photon_shutter = _shutters(use_shutter, fe_shutter, photon_shutter)
 
-    # The largest deadtime any detector needs between frames.
+    # The shortest period each detector can run at: its exposure plus deadtime.
     deadtime_results = cast(
         list[asyncio.Future[tuple[Any, float | None]]],
         (yield from bps.wait_for([det.get_trigger_deadtime for det in detectors])),
     )
-    deadtime = max((r.result()[1] or 0.0 for r in deadtime_results), default=0.0)
+    deadtimes = {
+        det: result.result()[1] or 0.0
+        for det, result in zip(detectors, deadtime_results, strict=True)
+    }
+    min_periods = {det: exposure_times[det] + deadtimes[det] for det in detectors}
     if acquire_period is None:
-        acquire_period = exposure_time + deadtime + FRAME_PERIOD_MARGIN
-    elif acquire_period < exposure_time + deadtime:
-        raise ValueError(
-            f"acquire_period {acquire_period} s is shorter than the exposure time "
-            f"{exposure_time} s plus the detector deadtime {deadtime} s."
-        )
-    overhead = acquire_period - exposure_time
+        acquire_period = max(min_periods.values()) + FRAME_PERIOD_MARGIN
+    else:
+        for det, min_period in min_periods.items():
+            if acquire_period < min_period:
+                raise ValueError(
+                    f"acquire_period {acquire_period} s is shorter than {det.name}'s "
+                    f"exposure time {exposure_times[det]} s plus its deadtime "
+                    f"{deadtimes[det]} s."
+                )
 
     _md: dict[str, Any] = {
         "plan_name": "tomo_flyscan",
         "detectors": [det.name for det in detectors],
         "num_points": num_projections,
-        "exposure_time": exposure_time,
+        "exposure_time": exposure_md(exposure_times),
+        "max_exposure_time": longest_exposure,
         "acquire_period": acquire_period,
         "time_based": time_based,
         "start_position": start,
@@ -356,24 +384,29 @@ def tomo_flyscan(
         panda,
         rot_motor,
         num_pulses=num_projections * images_to_average,
-        max_exposure_time=exposure_time,
+        max_exposure_time=longest_exposure,
         start=start,
         stop=stop,
-        acq_time_overhead=overhead,
+        acq_time_overhead=acquire_period - longest_exposure,
         time_based=time_based,
         position_dataset_name=ROTATION_DATASET_NAME,
     )
 
-    det_trigger_info = TriggerInfo(
-        number_of_events=num_projections,
-        livetime=exposure_time,
-        deadtime=overhead,
-        trigger=DetectorTrigger.EXTERNAL_EDGE,
-        exposures_per_collection=images_to_average,
-    )
+    # Every detector exposes for its own time on each trigger, and fills the rest
+    # of the shared period with deadtime.
+    det_trigger_infos = {
+        det: TriggerInfo(
+            number_of_events=num_projections,
+            livetime=exposure_times[det],
+            deadtime=acquire_period - exposure_times[det],
+            trigger=DetectorTrigger.EXTERNAL_EDGE,
+            exposures_per_collection=images_to_average,
+        )
+        for det in detectors
+    }
     panda_trigger_info = TriggerInfo(
         number_of_events=num_projections,
-        livetime=exposure_time,
+        livetime=longest_exposure,
         trigger=DetectorTrigger.EXTERNAL_LEVEL,
         collections_per_event=images_to_average,
     )
@@ -400,10 +433,10 @@ def tomo_flyscan(
         yield from set_proc_filter_type(detectors, filter_type)
         yield from bps.prepare(flyer, flyer_info, group="arm")
         for det in detectors:
-            yield from bps.prepare(det, det_trigger_info, group="arm")
+            yield from bps.prepare(det, det_trigger_infos[det], group="arm")
         # Let the plugins buffer the whole scan.
         yield from set_plugin_queue_sizes(
-            detectors, queue_size=det_trigger_info.number_of_exposures
+            detectors, queue_size=num_projections * images_to_average
         )
         yield from bps.wait(group="arm")
         # Preparing the PandA arms PCAP, which enables position compare, so it must
@@ -473,11 +506,29 @@ def _tolerate_missed_frames(
     )
 
 
+def _drop_xspress3_keys(
+    exposure_time: ExposureTime, detectors: Sequence[TomoDetector]
+) -> ExposureTime:
+    """Remove the Xspress3 detectors' entries from an exposure-time mapping."""
+    if not isinstance(exposure_time, Mapping):
+        return exposure_time
+    xspress3 = [d for d in detectors if isinstance(d, Xspress3Detector)]
+    xspress3_names = {d.name for d in xspress3}
+    return {
+        key: value
+        for key, value in exposure_time.items()
+        if not (
+            any(key is d for d in xspress3)
+            or (isinstance(key, str) and key in xspress3_names)
+        )
+    }
+
+
 def tomo_nd_step_scan(
     detectors: list[TomoDetector],
     *args: Any,
     num_projections: int,
-    exposure_time: float,
+    exposure_time: ExposureTime,
     acquire_period: float | None = None,
     images_to_average: int = 1,
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
@@ -488,7 +539,7 @@ def tomo_nd_step_scan(
     use_shutter: bool = True,
     alternate_flyscan_dir: bool = False,
     dark_flat_offset: float = 0.0,
-    dark_flat_exposure_time: float | None = None,
+    dark_flat_exposure_time: ExposureTime | None = None,
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     dark_flat_frequency: int = 0,
@@ -523,8 +574,10 @@ def tomo_nd_step_scan(
         in place.
     num_projections : int
         The number of projections to acquire at each grid point.
-    exposure_time : float
-        The exposure time for each projection, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each projection, in seconds: one number for every
+        detector, or a mapping that gives every detector its own, keyed by detector
+        or by its ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
     acquire_period : float | None, default None
         The period between projections. See :func:`tomo_flyscan`.
     images_to_average : int, default 1
@@ -546,8 +599,11 @@ def tomo_nd_step_scan(
     dark_flat_offset : float, default 0.0
         The ``sample_out_offset`` for flats. If non-zero, a :func:`tomo_dark_flat`
         run is taken before and after the scan; if 0, no darks/flats are taken.
-    dark_flat_exposure_time : float | None, default None
-        Exposure time for darks/flats. None uses ``exposure_time``.
+    dark_flat_exposure_time : ExposureTime | None, default None
+        The exposure time of the darks/flats: a number for every imaging detector,
+        or a mapping with every imaging detector's own (keys for Xspress3 detectors
+        are ignored). None gives each detector the same exposure time as its
+        projections.
     num_dark_images : int, default 20
         Number of dark images per dark/flat.
     num_flat_images : int, default 50
@@ -585,11 +641,30 @@ def tomo_nd_step_scan(
     Raises
     ------
     ValueError
-        If the step axes are malformed, or the outermost axis is snaked.
+        If the step axes are malformed, the outermost axis is snaked, or
+        ``exposure_time`` or ``dark_flat_exposure_time`` is invalid.
     RuntimeError
         If a grid point still fails after ``num_retries`` retries.
     """
     num_retries = max(num_retries, 0)
+    # Checked here so a bad key fails before anything moves.
+    exposure_times: dict[TomoDetector | str, float] = {
+        **resolve_exposure_times(detectors, exposure_time)
+    }
+    # Darks/flats are only for the imaging detectors, and by default match each
+    # detector's projection exposure time.
+    imaging_detectors = [d for d in detectors if not isinstance(d, Xspress3Detector)]
+    if dark_flat_exposure_time is None:
+        dark_flat_exposure_times: dict[TomoDetector | str, float] = {
+            det: exposure_times[det] for det in imaging_detectors
+        }
+    else:
+        dark_flat_exposure_times = {
+            **resolve_exposure_times(
+                imaging_detectors,
+                _drop_xspress3_keys(dark_flat_exposure_time, detectors),
+            )
+        }
 
     if len(args) % 4:
         raise ValueError("Step axes must be given as (motor, start, stop, num) groups.")
@@ -618,8 +693,8 @@ def tomo_nd_step_scan(
     def _dark_flat() -> MsgGenerator[None]:
         yield from bps.checkpoint()
         yield from tomo_dark_flat(
-            detectors=[d for d in detectors if not isinstance(d, Xspress3Detector)],
-            exposure_time=dark_flat_exposure_time or exposure_time,
+            detectors=imaging_detectors,
+            exposure_time=dark_flat_exposure_times,
             num_dark_images=num_dark_images,
             num_flat_images=num_flat_images,
             sample_out_offset=dark_flat_offset,
@@ -675,7 +750,7 @@ def tomo_nd_step_scan(
                     previous_uid = yield from tomo_flyscan(
                         detectors=detectors,
                         num_projections=num_projections,
-                        exposure_time=exposure_time,
+                        exposure_time=exposure_times,
                         acquire_period=acquire_period,
                         images_to_average=images_to_average,
                         filter_type=filter_type,
@@ -727,7 +802,7 @@ def tomo_nd_step_scan(
 def tomo_flyscan_loop(
     detectors: list[TomoDetector],
     num_projections: int,
-    exposure_time: float,
+    exposure_time: ExposureTime,
     acquire_period: float | None = None,
     images_to_average: int = 1,
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
@@ -740,7 +815,7 @@ def tomo_flyscan_loop(
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     dark_flat_frequency: int = 0,
-    dark_flat_exposure_time: float | None = None,
+    dark_flat_exposure_time: ExposureTime | None = None,
     sample_out_velocity: float | None = None,
     use_shutter: bool = True,
     sample_name: str | None = None,
@@ -763,8 +838,9 @@ def tomo_flyscan_loop(
         The detectors to use for each tomo flyscan.
     num_projections : int
         The number of projections per tomogram.
-    exposure_time : float
-        The exposure time for each projection, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each projection, in seconds: a number, or a mapping
+        with every detector's own. See :func:`tomo_flyscan`.
     acquire_period : float | None, default None
         The period between projections.
     images_to_average : int, default 1
@@ -789,8 +865,10 @@ def tomo_flyscan_loop(
         Number of flat images per dark/flat.
     dark_flat_frequency : int, default 0
         If greater than 0, also take a dark/flat after every this many tomograms.
-    dark_flat_exposure_time : float | None, default None
-        Exposure time for darks/flats. None uses ``exposure_time``.
+    dark_flat_exposure_time : ExposureTime | None, default None
+        The exposure time of the darks/flats, a number or a mapping; None gives
+        each detector the same exposure time as its projections. See
+        :func:`tomo_nd_step_scan`.
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
     use_shutter : bool, default True
@@ -849,7 +927,7 @@ def tomo_1d_step_scan(
     step_stop: float,
     num_tomograms: int,
     num_projections: int,
-    exposure_time: float,
+    exposure_time: ExposureTime,
     acquire_period: float | None = None,
     images_to_average: int = 1,
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
@@ -864,7 +942,7 @@ def tomo_1d_step_scan(
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     dark_flat_frequency: int = 0,
-    dark_flat_exposure_time: float | None = None,
+    dark_flat_exposure_time: ExposureTime | None = None,
     sample_out_velocity: float | None = None,
     time_based: bool = True,
     sample_out_motor: AsyncEpicsMotor | None = None,
@@ -892,8 +970,9 @@ def tomo_1d_step_scan(
         The number of points (tomograms) along ``step_motor``.
     num_projections : int
         The number of projections per tomogram.
-    exposure_time : float
-        The exposure time for each projection, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each projection, in seconds: a number, or a mapping
+        with every detector's own. See :func:`tomo_flyscan`.
     acquire_period : float | None, default None
         The period between projections.
     images_to_average : int, default 1
@@ -923,8 +1002,10 @@ def tomo_1d_step_scan(
         Number of flat images per dark/flat.
     dark_flat_frequency : int, default 0
         If greater than 0, also take a dark/flat after every this many tomograms.
-    dark_flat_exposure_time : float | None, default None
-        Exposure time for darks/flats. None uses ``exposure_time``.
+    dark_flat_exposure_time : ExposureTime | None, default None
+        The exposure time of the darks/flats, a number or a mapping; None gives
+        each detector the same exposure time as its projections. See
+        :func:`tomo_nd_step_scan`.
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
     time_based : bool, default True
@@ -984,7 +1065,7 @@ def tomo_2d_step_scan(
     inner_stop: float,
     inner_num: int,
     num_projections: int,
-    exposure_time: float,
+    exposure_time: ExposureTime,
     acquire_period: float | None = None,
     images_to_average: int = 1,
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
@@ -1000,7 +1081,7 @@ def tomo_2d_step_scan(
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     dark_flat_frequency: int = 0,
-    dark_flat_exposure_time: float | None = None,
+    dark_flat_exposure_time: ExposureTime | None = None,
     sample_out_velocity: float | None = None,
     time_based: bool = True,
     sample_out_motor: AsyncEpicsMotor | None = None,
@@ -1036,8 +1117,9 @@ def tomo_2d_step_scan(
         The number of points along ``inner_motor``.
     num_projections : int
         The number of projections per tomogram.
-    exposure_time : float
-        The exposure time for each projection, in seconds.
+    exposure_time : ExposureTime
+        The exposure time of each projection, in seconds: a number, or a mapping
+        with every detector's own. See :func:`tomo_flyscan`.
     acquire_period : float | None, default None
         The period between projections.
     images_to_average : int, default 1
@@ -1069,8 +1151,10 @@ def tomo_2d_step_scan(
         Number of flat images per dark/flat.
     dark_flat_frequency : int, default 0
         If greater than 0, also take a dark/flat after every this many tomograms.
-    dark_flat_exposure_time : float | None, default None
-        Exposure time for darks/flats. None uses ``exposure_time``.
+    dark_flat_exposure_time : ExposureTime | None, default None
+        The exposure time of the darks/flats, a number or a mapping; None gives
+        each detector the same exposure time as its projections. See
+        :func:`tomo_nd_step_scan`.
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
     time_based : bool, default True

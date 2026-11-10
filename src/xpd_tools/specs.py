@@ -73,6 +73,24 @@ def _require_optional_str(run: RunLike, key: str) -> None:
         )
 
 
+def _require_exposure_time(run: RunLike) -> None:
+    """Check ``exposure_time`` maps every detector's name to seconds."""
+    value = run.start.get("exposure_time")
+    if not isinstance(value, Mapping):
+        raise SpecValidationError(
+            "Start document 'exposure_time' must map detector names to seconds, "
+            f"got {value!r}."
+        )
+    missing = [name for name in _names(run, "detectors") if name not in value]
+    if missing:
+        raise SpecValidationError(f"'exposure_time' has no entry for {missing}.")
+
+
+def _check_version(spec_name: str, version: str | None) -> None:
+    if version != "1":
+        raise SpecValidationError(f"Unknown {spec_name} version {version!r}.")
+
+
 def spec_md(spec: Spec) -> dict[str, str | None]:
     """Return the ``tiled_specs`` start document entry for ``spec``.
 
@@ -106,7 +124,9 @@ def spec_md(spec: Spec) -> dict[str, str | None]:
 # Start document:
 #   plan_name: "tomo_dark_flat"
 #   detectors: list[str]
-#   exposure_time: float             seconds, same as the projections it serves
+#   exposure_time: dict[str, float] detector name to seconds, an entry for every
+#                                    detector; by default the same as the
+#                                    projections it serves
 #   num_dark_images: int
 #   num_flat_images: int
 #   sample_out_motor: str            motor moved to take the sample out for flats
@@ -134,6 +154,7 @@ def validate_tomo_dark_flat(run: RunLike, version: str | None = "1") -> None:
     SpecValidationError
         If the run does not match the spec.
     """
+    _check_version("TomoDarkFlat", version)
     _require_plan_name(run, "tomo_dark_flat")
     _require_start_keys(
         run,
@@ -143,6 +164,7 @@ def validate_tomo_dark_flat(run: RunLike, version: str | None = "1") -> None:
         "sample_out_motor",
         "sample_out_offset",
     )
+    _require_exposure_time(run)
     dets = _names(run, "detectors")
     _require_stream(run, "dark", *dets)
     _require_stream(run, "flat", *dets)
@@ -155,8 +177,11 @@ def validate_tomo_dark_flat(run: RunLike, version: str | None = "1") -> None:
 #   plan_name: "tomo_flyscan"
 #   detectors: list[str]
 #   num_points: int                  projections per detector
-#   exposure_time: float             seconds
-#   acquire_period: float            seconds
+#   exposure_time: dict[str, float] detector name to seconds, an entry for every
+#                                    detector
+#   max_exposure_time: float         seconds, the longest exposure, which sets the
+#                                    trigger train and rotation speed
+#   acquire_period: float            seconds, shared by every detector
 #   time_based: bool
 #   start_position, stop_position: float   rotation range, degrees
 #   images_to_average: int
@@ -197,11 +222,13 @@ def validate_tomo_flyscan(run: RunLike, version: str | None = "1") -> None:
     SpecValidationError
         If the run does not match the spec.
     """
+    _check_version("TomoFlyscan", version)
     _require_plan_name(run, "tomo_flyscan")
     _require_start_keys(
         run,
         "num_points",
         "exposure_time",
+        "max_exposure_time",
         "acquire_period",
         "time_based",
         "start_position",
@@ -209,6 +236,7 @@ def validate_tomo_flyscan(run: RunLike, version: str | None = "1") -> None:
         "images_to_average",
         "rotation_motor",
     )
+    _require_exposure_time(run)
     _require_optional_str(run, "last_dark_flat_uid")
     _require_stream(run, "primary", *_names(run, "detectors"), "rotation_angle")
 

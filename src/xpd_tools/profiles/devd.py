@@ -116,8 +116,10 @@ if not XPDTOOLS_RUNNING_IN_CI:
         "https://tiled.nsls2.bnl.gov",
         api_key=os.environ.get("TILED_BLUESKY_WRITING_API_KEY_XPDD", ""),
     )["xpdd"]["migration"]
-    tw = TiledWriter(tiled_writing_client,)
-    
+    tw = TiledWriter(
+        tiled_writing_client,
+    )
+
 else:
     # When testing, spin up an in-process tiled server, and use that instead
     from tiled.client import simple

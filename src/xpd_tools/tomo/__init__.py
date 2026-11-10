@@ -12,6 +12,7 @@ from .flyscans import (
 )
 from .utils import (
     DARK_FLAT_MD_KEYS,
+    ExposureTime,
     LastDarkFlatUIDTracker,
     clear_last_dark_flat,
 )
@@ -19,6 +20,7 @@ from .utils import (
 __all__ = [
     "DARK_FLAT_MD_KEYS",
     "DEFAULT_DEVICE_NAMES",
+    "ExposureTime",
     "MAX_MISSING_FRAMES",
     "LastDarkFlatUIDTracker",
     "clear_last_dark_flat",
