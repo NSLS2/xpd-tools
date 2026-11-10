@@ -6,6 +6,15 @@ offset, and wraps around when it overflows its 32 bit range.
 
 from dataclasses import dataclass, field
 
+from ophyd_async.core import (
+    Device,
+    DeviceVector,
+    StaticPathProvider,
+    soft_signal_r_and_setter,
+    soft_signal_rw,
+)
+from ophyd_async.fastcs.panda import HDFPanda
+
 INT32_MIN = -(2**31)
 INT32_SPAN = 2**32
 
@@ -100,3 +109,34 @@ class PcompSim:
                 else:
                     break
         return self.fired - before
+
+
+class CalcBlock(Device):
+    def __init__(self):
+        self.out, _ = soft_signal_r_and_setter(int)
+        self.out_dataset = soft_signal_rw(str)
+        self.out_units = soft_signal_rw(str)
+        self.out_scale = soft_signal_rw(float)
+        self.out_offset = soft_signal_rw(float)
+        super().__init__(name="calc1")
+
+
+class InencBlock(Device):
+    def __init__(self):
+        self.setp = soft_signal_rw(int)
+        self.rst_on_z = soft_signal_rw(str, initial_value="0")
+        super().__init__(name="inenc1")
+
+
+async def add_pcomp_inp(panda: HDFPanda) -> None:
+    """Add the PCOMP1 input signal, which the flyer logic
+    selects but PcompBlock lacks."""
+    panda.pcomp[1].inp = soft_signal_rw(str)
+    await panda.pcomp[1].inp.connect(mock=True)  # type: ignore
+
+
+class HDFPandaWithCalc(HDFPanda):
+    def __init__(self, prefix: str, path_provider: StaticPathProvider):
+        super().__init__(prefix, path_provider)
+        self.calc = DeviceVector({1: CalcBlock(), 2: CalcBlock()})
+        self.inenc = DeviceVector({1: InencBlock(), 2: InencBlock()})

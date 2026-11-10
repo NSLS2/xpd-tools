@@ -115,3 +115,42 @@ def test_proposal_id_prompt_no_session(mocker: MockerFixture) -> None:
         (Token.PromptNum, "1"),
         (Token.Prompt, "]: "),
     ]
+
+
+class _Thing:
+    pass
+
+
+def test_ensure_available_returns_passed_value():
+    from xpd_tools.utils import ensure_available
+
+    thing = _Thing()
+    assert ensure_available(_Thing, thing, "thing") is thing
+
+
+def test_ensure_available_rejects_wrong_type():
+    from xpd_tools.utils import ensure_available
+
+    with pytest.raises(TypeError, match="must be of type _Thing"):
+        ensure_available(_Thing, 5, "thing")  # type: ignore[arg-type]
+
+
+def test_ensure_available_looks_in_ipython_namespace(monkeypatch):
+    from types import SimpleNamespace
+
+    import xpd_tools.utils as utils
+
+    thing = _Thing()
+    shell = SimpleNamespace(user_ns={"panda1": thing, "other": 5})
+    monkeypatch.setattr(utils, "get_ipython", lambda: shell)
+    assert utils.ensure_available(_Thing, None, "panda1") is thing
+    with pytest.raises(ValueError, match="none is named 'other'"):
+        utils.ensure_available(_Thing, None, "other")
+
+
+def test_ensure_available_without_ipython(monkeypatch):
+    import xpd_tools.utils as utils
+
+    monkeypatch.setattr(utils, "get_ipython", lambda: None)
+    with pytest.raises(ValueError, match="none is named 'panda1'"):
+        utils.ensure_available(_Thing, None, "panda1")

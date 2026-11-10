@@ -20,11 +20,10 @@ from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
     _get_mock_signal_backend,
 )
 from ophyd_async.epics.adcore import ADWriterFactory
+from panda_sim import HDFPandaWithCalc, add_pcomp_inp
 from test_plans import (
     SCAN_START,
     SCAN_STOP,
-    HDFPandaWithCalc,
-    _add_pcomp_inp,  # noqa: PLC2701
     _setup_flyscan_coordination,  # noqa: PLC2701
 )
 
@@ -256,7 +255,7 @@ async def flyscan_devices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
     async with init_devices(mock=True):
         panda = HDFPandaWithCalc("PANDA:", path_provider)
-    await _add_pcomp_inp(panda)
+    await add_pcomp_inp(panda)
     async with init_devices(mock=True):
         psylo = Psylotech(PREFIX, name="psylo")
         pilatus1 = Pilatus4Detector(

@@ -6,15 +6,11 @@ from pathlib import Path
 import pytest
 from bluesky.run_engine import RunEngine
 from ophyd_async.core import (
-    Device,
-    DeviceVector,
     StaticPathProvider,
     UUIDFilenameProvider,
     callback_on_mock_put,
     init_devices,
     set_mock_value,
-    soft_signal_r_and_setter,
-    soft_signal_rw,
 )
 from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
     _get_mock_signal_backend,
@@ -22,11 +18,15 @@ from ophyd_async.core._mock_signal_utils import (  # noqa: PLC2701
 from ophyd_async.epics.adcore import ADWriterFactory, NDFileHDF5IO
 from ophyd_async.fastcs.panda import (
     DatasetTable,
-    HDFPanda,
     PandaHdf5DatasetType,
     PandaPcompDirection,
 )
-from panda_sim import ContinuousCounter, PcompSim
+from panda_sim import (
+    ContinuousCounter,
+    HDFPandaWithCalc,
+    PcompSim,
+    add_pcomp_inp,
+)
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
@@ -87,37 +87,6 @@ def _setup_flyscan_coordination(panda, motor, pilatus, num_images: int):
     callback_on_mock_put(motor.user_setpoint, _on_motor_setpoint)
 
 
-class CalcBlock(Device):
-    def __init__(self):
-        self.out, _ = soft_signal_r_and_setter(int)
-        self.out_dataset = soft_signal_rw(str)
-        self.out_units = soft_signal_rw(str)
-        self.out_scale = soft_signal_rw(float)
-        self.out_offset = soft_signal_rw(float)
-        super().__init__(name="calc1")
-
-
-class InencBlock(Device):
-    def __init__(self):
-        self.setp = soft_signal_rw(int)
-        self.rst_on_z = soft_signal_rw(str, initial_value="0")
-        super().__init__(name="inenc1")
-
-
-async def _add_pcomp_inp(panda: HDFPanda) -> None:
-    """Add the PCOMP1 input signal, which the flyer logic
-    selects but PcompBlock lacks."""
-    panda.pcomp[1].inp = soft_signal_rw(str)
-    await panda.pcomp[1].inp.connect(mock=True)  # type: ignore
-
-
-class HDFPandaWithCalc(HDFPanda):
-    def __init__(self, prefix: str, path_provider: StaticPathProvider):
-        super().__init__(prefix, path_provider)
-        self.calc = DeviceVector({1: CalcBlock(), 2: CalcBlock()})
-        self.inenc = DeviceVector({1: InencBlock(), 2: InencBlock()})
-
-
 @pytest.fixture
 async def devices(
     tmp_path: Path,
@@ -128,7 +97,7 @@ async def devices(
 
     async with init_devices(mock=True):
         panda = HDFPandaWithCalc("PANDA:", path_provider)
-    await _add_pcomp_inp(panda)
+    await add_pcomp_inp(panda)
     async with init_devices(mock=True):
         motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
@@ -383,7 +352,7 @@ async def sim_devices(
     )
     async with init_devices(mock=True):
         panda = HDFPandaWithCalc("PANDA:", path_provider)
-    await _add_pcomp_inp(panda)
+    await add_pcomp_inp(panda)
     async with init_devices(mock=True):
         motor = RotationMotor("MOT:", name="rot_motor")
         pilatus1 = Pilatus4Detector(
