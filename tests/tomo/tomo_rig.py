@@ -13,6 +13,7 @@ from ophyd_async.core import (
     set_mock_value,
 )
 from ophyd_async.epics.adcore import ADWriterFactory, NDFileHDF5IO
+from ophyd_async.epics.adkinetix import KinetixDetector, KinetixTriggerMode
 from ophyd_async.epics.motor import Motor
 from ophyd_async.fastcs.panda import DatasetTable, PandaHdf5DatasetType
 from panda_sim import HDFPandaWithCalc, add_pcomp_inp
@@ -33,6 +34,8 @@ class TomoRig:
     sample_out_motor: Motor
     fe_shutter: Shutter
     photon_shutter: Shutter
+    #: A second imaging detector, for per-detector exposure tests.
+    iris: KinetixDetector
     #: Frames the simulated fly move produces; set it before a flyscan.
     num_frames: int = 11
     #: "open"/"close" for every shutter command, as "<shutter>:<cmd>".
@@ -67,7 +70,7 @@ def _simulate_fly_move(rig: TomoRig) -> None:
     then the fly move in kickoff.
     """
     panda = rig.panda
-    hdf = rig.pilatus.get_plugin("hdf", NDFileHDF5IO)
+    hdfs = [det.get_plugin("hdf", NDFileHDF5IO) for det in (rig.pilatus, rig.iris)]
     callback_on_mock_put(panda.pcap.arm, lambda v: set_mock_value(panda.pcap.active, v))
     set_mock_value(panda.data.directory_exists, True)
     set_mock_value(
@@ -90,14 +93,15 @@ def _simulate_fly_move(rig: TomoRig) -> None:
         if move_count[0] % 2 == 0:
             set_mock_value(panda.pcomp[1].active, True)
             start_panda = panda.data.num_captured.get_value()
-            start_hdf = hdf.num_captured.get_value()
+            start_hdfs = [hdf.num_captured.get_value() for hdf in hdfs]
 
             async def _captures():
-                panda_base, hdf_base = await asyncio.gather(start_panda, start_hdf)
+                panda_base, *hdf_bases = await asyncio.gather(start_panda, *start_hdfs)
                 for i in range(rig.num_frames):
                     await asyncio.sleep(0.002)
                     set_mock_value(panda.data.num_captured, panda_base + i + 1)
-                    set_mock_value(hdf.num_captured, hdf_base + i + 1)
+                    for hdf, base in zip(hdfs, hdf_bases, strict=True):
+                        set_mock_value(hdf.num_captured, base + i + 1)
                 set_mock_value(panda.pcomp[1].active, False)
 
             asyncio.ensure_future(_captures())
@@ -105,6 +109,28 @@ def _simulate_fly_move(rig: TomoRig) -> None:
             return original_motor_cb(value)
 
     callback_on_mock_put(rig.rot_motor.user_setpoint, _on_setpoint)
+
+
+def _simulate_kinetix_internal(det: KinetixDetector) -> None:
+    """Capture ``num_images`` frames when the Kinetix acquires internally.
+
+    Externally triggered frames come from :func:`_simulate_fly_move` instead.
+    """
+    hdf = det.get_plugin("hdf", NDFileHDF5IO)
+
+    async def _capture() -> None:
+        if await det.driver.trigger_mode.get_value() != KinetixTriggerMode.INTERNAL:
+            return
+        num_images, captured = await asyncio.gather(
+            det.driver.num_images.get_value(), hdf.num_captured.get_value()
+        )
+        set_mock_value(hdf.num_captured, captured + num_images)
+
+    def _on_acquire(value: bool) -> None:
+        if value:
+            asyncio.ensure_future(_capture())
+
+    callback_on_mock_put(det.driver.acquire, _on_acquire)
 
 
 async def make_tomo_rig(tmp_path: Path) -> TomoRig:
@@ -123,6 +149,9 @@ async def make_tomo_rig(tmp_path: Path) -> TomoRig:
         )
         fe_shutter = Shutter("FE:", name="fe_shutter")
         photon_shutter = Shutter("PH:", name="photon_shutter")
+        iris = KinetixDetector(
+            "DET2:", ADWriterFactory.hdf(path_provider), name="iris1"
+        )
 
     set_mock_value(rot_motor.encoder_resolution, 0.1)
     set_mock_value(rot_motor.max_velocity, 1000.0)
@@ -133,9 +162,12 @@ async def make_tomo_rig(tmp_path: Path) -> TomoRig:
     set_mock_value(sample_out_motor.user_readback, 3.0)
     set_mock_value(pilatus.driver.acquire_time, 0.5)
     set_mock_value(pilatus.driver.acquire_period, 0.6)
+    set_mock_value(iris.driver.acquire_time, 0.4)
+    set_mock_value(iris.get_plugin("hdf", NDFileHDF5IO).file_path_exists, True)
+    _simulate_kinetix_internal(iris)
 
     rig = TomoRig(
-        pilatus, panda, rot_motor, sample_out_motor, fe_shutter, photon_shutter
+        pilatus, panda, rot_motor, sample_out_motor, fe_shutter, photon_shutter, iris
     )
     for shutter in (fe_shutter, photon_shutter):
         _make_shutter_instant(shutter, rig.shutter_log)

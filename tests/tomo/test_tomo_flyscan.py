@@ -10,6 +10,7 @@ from bluesky.utils import FailedStatus
 from ophyd_async.core import get_mock_put, set_mock_attr, set_mock_value
 from tomo_rig import TomoRig
 
+import xpd_tools.tomo.flyscans as flyscans
 from xpd_tools.shutter import ShutterStatus
 from xpd_tools.specs import TOMO_FLYSCAN_V1
 from xpd_tools.tomo import MAX_MISSING_FRAMES, LastDarkFlatUIDTracker, tomo_flyscan
@@ -67,6 +68,86 @@ def test_tomo_flyscan_sets_exposure_and_deadtime(
     assert get_mock_put(driver.num_triggers).call_args_list[-1].args[0] == NUM
 
 
+def _two_detector_flyscan(rig: TomoRig, exposure_time, **kwargs):
+    rig.num_frames = NUM
+    return tomo_flyscan(
+        [rig.pilatus, rig.iris], NUM, exposure_time, **rig.device_kwargs(), **kwargs
+    )
+
+
+@pytest.mark.parametrize("key", ["name", "device"])
+def test_tomo_flyscan_per_detector_exposure(
+    RE: RunEngine, tomo_rig: TomoRig, docs, sleeps, key: str
+):
+    pil, iris = tomo_rig.pilatus, tomo_rig.iris
+    exposures = (
+        {pil: 0.002, iris: 0.005}
+        if key == "device"
+        else {"pilatus1": 0.002, "iris1": 0.005}
+    )
+    RE(_two_detector_flyscan(tomo_rig, exposures))
+
+    pilatus_puts = get_mock_put(tomo_rig.pilatus.driver.acquire_time).call_args_list
+    iris_puts = get_mock_put(tomo_rig.iris.driver.acquire_time).call_args_list
+    assert pilatus_puts[-1].args[0] == 0.002
+    assert iris_puts[-1].args[0] == 0.005
+
+    (start,) = docs["start"]
+    assert start["exposure_time"] == {"pilatus1": 0.002, "iris1": 0.005}
+    assert start["max_exposure_time"] == 0.005
+    # One period for both, set by the longest exposure plus its 1 ms deadtime.
+    assert start["acquire_period"] == pytest.approx(0.005 + 0.001 + FRAME_PERIOD_MARGIN)
+    assert docs["stop"][0]["exit_status"] == "success"
+
+
+def test_tomo_flyscan_mapping_must_cover_every_detector(
+    RE: RunEngine, tomo_rig: TomoRig, docs
+):
+    with pytest.raises(ValueError, match=r"no exposure time for \['pilatus1'\]"):
+        RE(_two_detector_flyscan(tomo_rig, {"iris1": 0.005}))
+    assert "start" not in docs
+
+
+def test_tomo_flyscan_motor_follows_longest_exposure(
+    RE: RunEngine, tomo_rig: TomoRig, sleeps, monkeypatch
+):
+    calls: list[dict] = []
+    original = flyscans.compute_flyscan_models
+
+    def _spy(*args, **kwargs):
+        calls.append(kwargs)
+        return (yield from original(*args, **kwargs))
+
+    monkeypatch.setattr(flyscans, "compute_flyscan_models", _spy)
+    RE(
+        _two_detector_flyscan(
+            tomo_rig, {"pilatus1": 0.002, "iris1": 0.005}, acquire_period=0.01
+        )
+    )
+    (kwargs,) = calls
+    assert kwargs["max_exposure_time"] == 0.005
+    assert kwargs["acq_time_overhead"] == pytest.approx(0.005)
+
+
+def test_tomo_flyscan_short_period_names_detector(RE: RunEngine, tomo_rig: TomoRig):
+    # Long enough for the Pilatus (2 ms + 1 ms), too short for the Kinetix.
+    with pytest.raises(ValueError, match="shorter than iris1's exposure"):
+        RE(
+            _two_detector_flyscan(
+                tomo_rig, {"pilatus1": 0.002, "iris1": 0.005}, acquire_period=0.004
+            )
+        )
+
+
+def test_tomo_flyscan_rejects_unknown_detector_key(
+    RE: RunEngine, tomo_rig: TomoRig, docs
+):
+    with pytest.raises(ValueError, match="'pilatus1_fly' in exposure_time"):
+        RE(_flyscan(tomo_rig, exposure_time={"pilatus1_fly": 0.01}))
+    assert "start" not in docs
+    get_mock_put(tomo_rig.rot_motor.user_setpoint).assert_not_called()
+
+
 def test_tomo_flyscan_operates_shutter_and_restores_motor(
     RE: RunEngine, tomo_rig: TomoRig, sleeps
 ):
@@ -114,7 +195,7 @@ def test_tomo_flyscan_requires_open_fe_shutter(
 
 
 def test_tomo_flyscan_rejects_short_acquire_period(RE: RunEngine, tomo_rig: TomoRig):
-    with pytest.raises(ValueError, match="shorter than the exposure"):
+    with pytest.raises(ValueError, match="shorter than pilatus1.s exposure"):
         RE(_flyscan(tomo_rig, exposure_time=0.01, acquire_period=0.0105))
 
 

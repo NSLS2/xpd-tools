@@ -40,7 +40,7 @@ def test_tomo_dark_flat_documents(RE: RunEngine, tomo_rig: TomoRig, docs, sleeps
     assert result.plan_result == start["uid"]
     assert start["plan_name"] == "tomo_dark_flat"
     assert start["detectors"] == ["pilatus1"]
-    assert start["exposure_time"] == EXPOSURE
+    assert start["exposure_time"] == {"pilatus1": EXPOSURE}
     assert start["num_dark_images"] == NUM_DARK
     assert start["num_flat_images"] == NUM_FLAT
     assert start["sample_out_motor"] == "amTopX"
@@ -86,6 +86,28 @@ async def test_tomo_dark_flat_restores_exposure_time(
 ):
     RE(_dark_flat(tomo_rig))
     assert await tomo_rig.pilatus.driver.acquire_time.get_value() == 0.5
+
+
+async def test_tomo_dark_flat_per_detector_exposure(
+    RE: RunEngine, tomo_rig: TomoRig, docs, sleeps
+):
+    RE(
+        tomo_dark_flat(
+            [tomo_rig.pilatus, tomo_rig.iris],
+            {tomo_rig.pilatus: 0.002, "iris1": 0.005},
+            num_dark_images=NUM_DARK,
+            num_flat_images=NUM_FLAT,
+            sample_out_motor=tomo_rig.sample_out_motor,
+            fe_shutter=tomo_rig.fe_shutter,
+            photon_shutter=tomo_rig.photon_shutter,
+        )
+    )
+    pilatus_puts = get_mock_put(tomo_rig.pilatus.driver.acquire_time).call_args_list
+    iris_puts = get_mock_put(tomo_rig.iris.driver.acquire_time).call_args_list
+    # Each detector takes darks and flats at its own exposure, then is restored.
+    assert [c.args[0] for c in pilatus_puts] == [0.002, 0.002, 0.5]
+    assert [c.args[0] for c in iris_puts] == [0.005, 0.005, 0.4]
+    assert docs["start"][0]["exposure_time"] == {"pilatus1": 0.002, "iris1": 0.005}
 
 
 async def test_tomo_dark_flat_cleans_up_on_failure(

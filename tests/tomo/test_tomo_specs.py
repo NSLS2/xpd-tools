@@ -61,9 +61,10 @@ def test_tomo_dark_flat_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sle
 
 FLYSCAN_START = {
     "plan_name": "tomo_flyscan",
-    "detectors": ["iris1"],
+    "detectors": ["iris1", "pilatus1"],
     "num_points": 3,
-    "exposure_time": 0.1,
+    "exposure_time": {"iris1": 0.1, "pilatus1": 0.05},
+    "max_exposure_time": 0.1,
     "acquire_period": 0.11,
     "time_based": True,
     "start_position": 0,
@@ -71,6 +72,7 @@ FLYSCAN_START = {
     "images_to_average": 1,
     "rotation_motor": "amPhi",
 }
+FLYSCAN_STREAMS = {"primary": ["iris1", "pilatus1", "rotation_angle"]}
 
 
 @pytest.mark.parametrize(
@@ -82,14 +84,25 @@ FLYSCAN_START = {
             {},
             "exposure_time",
         ),
+        (
+            {k: v for k, v in FLYSCAN_START.items() if k != "max_exposure_time"},
+            {},
+            "max_exposure_time",
+        ),
         (FLYSCAN_START, {}, "no 'primary' stream"),
-        (FLYSCAN_START, {"primary": ["iris1"]}, "rotation_angle"),
+        (FLYSCAN_START, {"primary": ["iris1", "pilatus1"]}, "rotation_angle"),
         (
             {**FLYSCAN_START, "last_dark_flat_uid": 5},
-            {"primary": ["iris1", "rotation_angle"]},
+            FLYSCAN_STREAMS,
             "must be a string",
         ),
         ({**FLYSCAN_START, "detectors": "iris1"}, {}, "list of names"),
+        ({**FLYSCAN_START, "exposure_time": 0.1}, {}, "map detector names"),
+        (
+            {**FLYSCAN_START, "exposure_time": {"iris1": 0.1}},
+            {},
+            r"no entry for \['pilatus1'\]",
+        ),
     ],
 )
 def test_validate_tomo_flyscan_rejects(start, streams, match: str):
@@ -97,18 +110,43 @@ def test_validate_tomo_flyscan_rejects(start, streams, match: str):
         validate_run(FakeRun(start, streams), TOMO_FLYSCAN_V1)
 
 
-def test_validate_tomo_dark_flat_needs_flat_stream():
-    start = {
-        "plan_name": "tomo_dark_flat",
-        "detectors": ["iris1"],
-        "exposure_time": 0.1,
-        "num_dark_images": 1,
-        "num_flat_images": 1,
-        "sample_out_motor": "amTopX",
-        "sample_out_offset": 2.0,
-    }
-    with pytest.raises(SpecValidationError, match="no 'flat' stream"):
-        validate_run(FakeRun(start, {"dark": ["iris1"]}), TOMO_DARK_FLAT_V1)
+def test_validate_tomo_flyscan_accepts():
+    validate_run(FakeRun(FLYSCAN_START, FLYSCAN_STREAMS), TOMO_FLYSCAN_V1)
+
+
+def test_validate_rejects_unknown_version():
+    with pytest.raises(SpecValidationError, match="Unknown TomoFlyscan version '2'"):
+        validate_run(
+            FakeRun(FLYSCAN_START, FLYSCAN_STREAMS), Spec("TomoFlyscan", version="2")
+        )
+
+
+DARK_FLAT_START = {
+    "plan_name": "tomo_dark_flat",
+    "detectors": ["iris1"],
+    "exposure_time": {"iris1": 0.1},
+    "num_dark_images": 1,
+    "num_flat_images": 1,
+    "sample_out_motor": "amTopX",
+    "sample_out_offset": 2.0,
+}
+
+
+def test_validate_tomo_dark_flat_accepts():
+    streams = {"dark": ["iris1"], "flat": ["iris1"]}
+    validate_run(FakeRun(DARK_FLAT_START, streams), TOMO_DARK_FLAT_V1)
+
+
+@pytest.mark.parametrize(
+    ("start", "streams", "match"),
+    [
+        (DARK_FLAT_START, {"dark": ["iris1"]}, "no 'flat' stream"),
+        ({**DARK_FLAT_START, "exposure_time": 0.1}, {}, "map detector names"),
+    ],
+)
+def test_validate_tomo_dark_flat_rejects(start, streams, match: str):
+    with pytest.raises(SpecValidationError, match=match):
+        validate_run(FakeRun(start, streams), TOMO_DARK_FLAT_V1)
 
 
 def test_validate_run_unknown_spec():

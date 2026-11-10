@@ -4,12 +4,14 @@
 check only the order, arguments and retries of the inner plans.
 """
 
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
 from bluesky import plan_stubs as bps
 from bluesky.run_engine import RunEngine
 from bluesky.utils import PlanHalt
+from nslsii.ophyd_async.devices import Xspress3Detector
 from ophyd_async.core import init_devices, set_mock_value
 from ophyd_async.epics.motor import Motor
 
@@ -68,6 +70,13 @@ async def stages() -> tuple[Motor, Motor]:
     return stage_x, stage_y
 
 
+@dataclass(eq=False)  # hashed by identity, like a device
+class FakeDetector:
+    """Just the ``name`` the step scans read."""
+
+    name: str
+
+
 DETS: list[Any] = []
 
 
@@ -102,11 +111,114 @@ def test_loop_dark_flat_cadence(
 
 
 def test_dark_flats_use_projection_exposure(RE: RunEngine, recorder: Recorder):
-    RE(tomo_flyscan_loop(DETS, 5, 0.25, dark_flat_offset=1.5, sample_out_velocity=0.05))
+    det = FakeDetector("iris1")
+    RE(
+        tomo_flyscan_loop(
+            [det],  # type: ignore[list-item]
+            5,
+            0.25,
+            dark_flat_offset=1.5,
+            sample_out_velocity=0.05,
+        )
+    )
     dark_flat = recorder.calls[0][1]
-    assert dark_flat["exposure_time"] == 0.25
+    assert dark_flat["exposure_time"] == {det: 0.25}
     assert dark_flat["sample_out_offset"] == 1.5
     assert dark_flat["sample_out_velocity"] == 0.05
+
+
+@pytest.fixture
+async def xs3() -> Xspress3Detector:
+    async with init_devices(mock=True):
+        xs3 = Xspress3Detector("XSP:", name="xs3")
+    return xs3
+
+
+def test_exposures_forwarded_to_flyscans_and_dark_flats(
+    RE: RunEngine, recorder: Recorder, xs3: Xspress3Detector
+):
+    pil, iris = FakeDetector("pilatus1"), FakeDetector("iris1")
+    RE(
+        tomo_flyscan_loop(
+            [pil, iris, xs3],  # type: ignore[list-item]
+            5,
+            {"pilatus1": 0.002, "iris1": 0.01, xs3: 0.5},
+            num_iterations=2,
+            dark_flat_offset=1.0,
+        )
+    )
+    assert recorder.sequence == "DFFD"
+    for call in recorder.flyscans:
+        assert call["exposure_time"] == {pil: 0.002, iris: 0.01, xs3: 0.5}
+    for kind, call in recorder.calls:
+        if kind == "D":
+            # Xspress3 takes no darks/flats, so its exposure is dropped too.
+            assert call["detectors"] == [pil, iris]
+            assert call["exposure_time"] == {pil: 0.002, iris: 0.01}
+
+
+@pytest.mark.parametrize(
+    ("dark_flat_exposure_time", "expected"),
+    [
+        (0.1, {"pilatus1": 0.1, "iris1": 0.1}),
+        # The Xspress3 key is ignored, since it takes no darks/flats.
+        ({"pilatus1": 0.1, "iris1": 0.2, "xs3": 0.5}, {"pilatus1": 0.1, "iris1": 0.2}),
+    ],
+)
+def test_dark_flat_exposure_time(
+    RE: RunEngine,
+    recorder: Recorder,
+    xs3: Xspress3Detector,
+    dark_flat_exposure_time,
+    expected: dict[str, float],
+):
+    pil, iris = FakeDetector("pilatus1"), FakeDetector("iris1")
+    RE(
+        tomo_flyscan_loop(
+            [pil, iris, xs3],  # type: ignore[list-item]
+            5,
+            0.002,
+            dark_flat_offset=1.0,
+            dark_flat_exposure_time=dark_flat_exposure_time,
+        )
+    )
+    dark_flat = recorder.calls[0][1]
+    assert {d.name: t for d, t in dark_flat["exposure_time"].items()} == expected
+    assert recorder.flyscans[0]["exposure_time"] == {
+        pil: 0.002,
+        iris: 0.002,
+        xs3: 0.002,
+    }
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"exposure_time": {"nope": 0.1}}, "'nope' in exposure_time"),
+        (
+            {"exposure_time": 0.1, "dark_flat_exposure_time": {"pilatus1": 0.1}},
+            r"no exposure time for \['iris1'\]",
+        ),
+    ],
+)
+def test_bad_exposure_fails_before_anything_runs(
+    RE: RunEngine, recorder: Recorder, stages, kwargs, match: str
+):
+    stage_x, _ = stages
+    with pytest.raises(ValueError, match=match):
+        RE(
+            tomo_1d_step_scan(
+                [FakeDetector("pilatus1"), FakeDetector("iris1")],  # type: ignore[list-item]
+                stage_x,
+                0,
+                1,
+                2,
+                5,
+                dark_flat_offset=1.0,
+                **kwargs,
+            )
+        )
+    assert recorder.calls == []
 
 
 def test_loop_md_chains_previous_uid(RE: RunEngine, recorder: Recorder):
