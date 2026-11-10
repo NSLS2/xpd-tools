@@ -9,6 +9,7 @@ import os
 os.environ.pop("PYEPICS_LIBCA", None)
 
 from datetime import datetime
+from pathlib import PurePosixPath
 
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
@@ -18,6 +19,7 @@ from bluesky.utils import ProgressBarManager
 from bluesky_tiled_plugins import BufferingWrapper, TiledWriter
 from IPython.core.getipython import get_ipython
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
+from nslsii.ophyd_async.devices import Xspress3Detector, Xspress3HDFWriterFactory
 from nslsii.ophyd_async.providers import NSLS2PathProvider
 from nslsii.sync_experiment import sync_experiment
 from ophyd_async.core import (
@@ -35,6 +37,9 @@ from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
 from xpd_tools.plans import *
 from xpd_tools.psylotech import Psylotech
+from xpd_tools.shutter import PPSShutter, Shutter
+from xpd_tools.tomo import *
+from xpd_tools.tomo import LastDarkFlatUIDTracker
 from xpd_tools.utils import (
     ProposalIDPrompt,
     initialize_run_engine,
@@ -67,7 +72,7 @@ XPDTOOLS_RUNNING_IN_CI = (
     os.environ.get("XPDTOOLS_RUNNING_IN_CI", "false").lower() == "true"
 )
 
-TILED_BACKUP_ROOT = "/nsls2/data/xpd/xpdd/shared/config/bluesky/tiled_backup"
+TILED_BACKUP_ROOT = "/nsls2/data/xpd-new/xpdd/shared/config/bluesky/tiled_backup"
 TILED_LOCAL_BACKUP_ROOT = "/tmp/bluesky-docs"
 
 os.environ["REDIS_HOST"] = "xf28id2-xpdd-redis1.nsls2.bnl.gov"
@@ -138,6 +143,8 @@ RE.subscribe(tw)
 bec = BestEffortCallback()
 RE.subscribe(bec)
 
+RE.subscribe(LastDarkFlatUIDTracker(RE.md))
+
 # Setup the proposal ID prompt, as well as the autoawait magic
 # Allows for calling `await coro()` directly in the IPython shell
 ipython = get_ipython()
@@ -153,8 +160,7 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
 
 path_provider = NSLS2PathProvider(
     RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
-    beamline_tla="xpd",
-    beamline_tla_suffix="-new",
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
 )
 
 # Created before the devices are, so it keeps the name pilatus1 gives its plugins
@@ -217,4 +223,18 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
         ADWriterFactory.hdf(path_provider),
     )
 
-    psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
+    # psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
+
+    # Xspress3 fluorescence detector (prefix and channels from xpdDacq)
+    xs3 = Xspress3Detector(
+        "XF:28ID2-ES{Xsp:1}:",
+        Xspress3HDFWriterFactory(path_provider),
+        channel_numbers=(1,),
+        mca_roi_numbers=(1,),
+        name="xspress3-1",
+    )
+
+with init_devices(mock=True):
+    # TODO(XPDD): Get shutter PVs for the tomo plans
+    fe_shutter = PPSShutter("TEST{Sh:FE}", name="fe_shutter")
+    photon_shutter = Shutter("TEST{Sh:sum}", name="photon_shutter")
