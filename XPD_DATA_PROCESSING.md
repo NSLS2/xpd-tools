@@ -1,106 +1,109 @@
-# XPD data processing: where it runs and how it gets its data
+# XPD data processing reads its data from Tiled
 
-Discussion draft (AJ, 2026-11-10). Most xpd-tools work so far is acquisition; this file is for the processing
-side. Comment on a line to discuss; answers move into the text.
+Discussion draft (AJ, 2026-11-10). Comment on a line to discuss; answers move into the text.
 
-## Starting points
+## The goal
 
-- **Code stays in xpd-tools.** Acquisition and analysis are separate sections of one package (`devices/`,
-  `plans/`, `analysis/`), not separate repos, following "From Profiles to Tested Packages" (Hopkins and
-  Wlodek, 2026-10-19). `analysis/` takes arrays in and gives numbers or arrays out. It creates no RunEngine,
-  connects no device, reads no environment variable and reads no catalog; reading runs and writing results
-  happen outside it.
-- **Proposed here:** processing does not run on the acquisition workstations, and it gets its data from
-  Tiled.
+- **Acquisition** (xpd-tools, the DAD side) puts the right Bluesky documents into Tiled: the data and the metadata.
+- **Processing** gets everything it needs from those documents in Tiled, through a Tiled client, and runs in a
+  separate process from acquisition, preferably on a different machine. It reads nothing from the acquisition side
+  directly: not the bsui session, not its Redis-backed `RE.md`, not the ZMQ stream, and no metadata or job files
+  written next to the data for it.
 
-```mermaid
-flowchart LR
-    acq["Acquisition workstation<br/>xpd-tools devices/ + plans/<br/>RunEngine or Queue Server"] -->|raw runs| raw[("Tiled<br/>raw runs")]
-    raw -->|read by uid or live| proc["Processing workstation<br/>xpd-tools analysis/<br/>+ Tiled readers"]
-    proc -->|results| out[("Tiled processed<br/>and/or proposal folder")]
+How XPD-D data is processed is **Mehmet's call and not known yet**; this file does not propose a pipeline. It aims
+to make sure that whatever pipeline is chosen finds what it needs in Tiled, without hard-to-maintain custom pieces
+between the two sides.
+
+The approach, not the tool, is what is proposed. One example is AJ's change to scriptrunner, the tool HEX uses
+([fork branch `tiled-run-picker`](https://github.com/sligara7/scriptrunner/tree/tiled-run-picker)): a Tiled client
+searches runs by date, plan and proposal, and the processing script gets the run's uid and reads the run itself. At
+HEX this replaces an auto-exporter that wrote metadata files next to each run. Mehmet's notebook for scan 12462
+already reads a run this way:
+
+```python
+from tiled.client import from_uri
+
+c = from_uri("https://tiled.nsls2.bnl.gov")["xpdd"]["migration"]  # the catalog the XPD-D profile writes today
+run = c[uid]
+start = run.metadata["start"]              # proposal, sample, exposure times, ...
+scan = run["primary"].read()               # detector frames and rotation_angle, per frame
+darkflat = c[start["last_dark_flat_uid"]]  # the dark/flat run this scan was taken with
+dark, flat = darkflat["dark"].read(), darkflat["flat"].read()
 ```
 
-## What exists today
+## Three checks for every run
 
-| Tool | What it does | Where it runs | Data source |
-|---|---|---|---|
-| pdfstream servers (`pdfstream_servers` Ansible role, pdfstream `v0.5.2-xpd-fixes`) | Live integration to 1D and PDF; save and plot servers; a ZMQ-to-Tiled inserter | `xf28id2-ws1`, `-ws2`, `-ws3`: the acquisition workstations (`xpd_pdf_services.yml` skips the `-qs` hosts) | ZMQ document stream from the RunEngine |
-| [xpdAcq](https://github.com/xpdAcq/xpdAcq) (2016-2023) | Acquisition, darks, and calibration (`pyFAI-calib2` on an averaged image) in the user session | The acquisition session | Detector images in the session |
-| xpdDacq (D-hutch tomography tools, not in git) | No RunEngine. Writes detector HDF5 plus a job `.yml`; a watcher outside the package calls `process_yml`, which packs darks, flats, counts and scans into netCDF (xarray) and deletes the `.yml` (and, optionally, the HDF5) | The watcher's machine; path rewrites in comments suggest more than one | Files under `/nsls2/data/xpd-new/legacy/raw/xpdd/` |
-| xpd-tools | No `analysis/` yet. `autonomous` has `optimization/` (`pdffit`, `scoring`), analysis that steers acquisition | Acquisition session or Queue Server | Live documents |
-| [scriptrunner run picker](https://github.com/sligara7/scriptrunner/tree/tiled-run-picker) (AJ's fork of Nghia Vo's scriptrunner) | Optional "Pick run..." button that searches Tiled by date, plan and proposal and fills a script's `uid` or `scan_id` argument; the script reads the run itself | Wherever scriptrunner runs | Tiled |
+What acquisition has to get right, checked against the `xpdd-tomo` branch at `1175d91` and scan 12462. **Mehmet:
+please mark what processing needs and what is missing.**
 
-Nothing in xpdAcq or xpdDacq integrates images to 1D or reconstructs tomography.
+### 1. Format
 
-## Ways processing could run on its own workstation
+Every detector in the XPD-D profile writes **HDF5** through its ophyd-async writer, into the proposal's folder
+(`NSLS2PathProvider`): Pilatus4 `pilatus1`, Kinetix `iris1`, Xspress3 `xspress3-1`, and the PandA `panda1`. Tiled
+indexes those files and serves the arrays, so a reader through Tiled does not depend on the format. The format
+matters when processing reads the files directly (large tomography stacks) or needs another format for a tool
+(TIFF, netCDF as xpdDacq writes today). Is HDF5 enough?
 
-None chosen; they can combine.
+### 2. Data products
 
-- **A. On demand.** `analysis/` scripts started from scriptrunner (or the command line) on a processing
-  workstation, each taking a run uid and reading the run from Tiled under the account of whoever runs it.
-  Good for reprocessing and tomography reconstruction.
-- **B. Always on.** A reduction service on a processing host that picks up each run as Tiled receives it
-  (bluesky-tiled-plugins streaming). This is pdfstream's job, moved off the acquisition workstations.
-- **C. Notebooks** (JupyterHub) reading Tiled, for exploratory work.
-- **D. File job queue** as in xpdDacq, on another machine. It needs no Tiled but keeps a second index of the
-  data beside Tiled and depends on path layouts.
+| Product | In Tiled today | Open |
+|---|---|---|
+| Detector frames | `pilatus1`, `iris1`, `xspress3-1` (+ channel) in `primary` | One shared `time` axis; per-detector rates (Mehmet, 11-10) need a new layout |
+| Rotation angle | `rotation_angle` in `primary`, one per frame, from the PandA | Per detector, once rates differ |
+| Darks and flats | `dark` and `flat` streams of the `tomo_dark_flat` run, linked by `last_dark_flat_uid` | |
+| Grid position of a step scan | `grid_reference_positions` in the start document | |
+| Prosilica (visible camera) | **Not in the xpd-tools XPD-D profile** (xpdDacq has one) | Needed? For what? |
+| Other motor positions (sample stack, slits) | **No baseline stream** in the profile | Which ones? |
 
-Costs to weigh:
+### 3. Metadata
 
-1. Some processing is needed **at the beamline, in the moment**: a 1D pattern while the sample changes, or a
-   value a plan uses to choose its next point. Going through Tiled adds latency the ZMQ path does not have.
-2. **Large frames** (tomography stacks) over Tiled's HTTP API may be slow. Tiled can point at the HDF5 files,
-   which a host with the filesystem mounted reads directly, so Tiled stays the index without copying the data.
-3. Reading Tiled needs **proposal access** for the account doing it. HEX's auto-exporter failed under the
-   shared beamline account for exactly this reason (2026-10-26 and 10-29).
-4. A processing host has to **exist and have an owner**. Data Engineering owns the Tiled-to-analysis side of
-   the DAD/DE split. Reconstruction may want a GPU.
+Scan 12462's start document has `data_session` and `proposal` (PI, title), `sample_name` when given,
+`detectors`, `exposure_time` per detector, `acquire_period`, `num_points`, `start_position` / `stop_position`,
+`rotation_motor`, `time_based`, `images_to_average`, `filter_type`, `last_dark_flat_uid` / `_scan_id`, the
+`tiled_specs`, and versions. Not there today:
+
+- **Energy or wavelength**, and **calibration** (detector distance, centre, tilt: a poni file or a run that holds it).
+- **Sample** beyond its name (composition, environment).
+- `start_datetime` is wrong: scan 12462 (2026-11-10) reads `2026-07-17T15:04:59`.
+
+What else does processing need?
 
 ## Proposed requirements
 
-Proposed by AJ (2026-11-10) so that processing is built to these from the start. Not agreed yet: comment on the
-line of any you would change. In hextools, an auto-exporter writes a metadata file next to each run so that
-scriptrunner can process it later; these requirements replace that with Tiled.
+Proposed by AJ (2026-11-10), not agreed yet.
 
-- **R1. Processing reads runs from Tiled.** Every processing step (script, service or notebook) finds its input
-  run in Tiled and reads that run's metadata and data from Tiled, by uid or by a Tiled search. It does not read
-  them from the acquisition session, its Redis-backed `RE.md`, the ZMQ stream, or files written beside the run
-  for processing. Darks, flats and calibration runs are found the same way, through uids the input run carries.
-  Anything that needs data sooner than Tiled can give it (feedback to a running plan, or to the scientist in
-  the hutch) is an exception, decided and written down on its own.
-- **R2. No side files for processing.** Nothing in xpd-tools acquisition writes a file whose purpose is to tell
-  processing about a run: no per-run metadata document (like hextools' auto-exporter) and no job file for a
-  watcher (like xpdDacq's `.yml`). The detector's own data files, which Tiled references, are not side files.
-- **R3. Each run carries what its processing needs.** In its start document: the proposal (`data_session`),
-  the sample, the uids of the runs it depends on (as `last_dark_flat_uid` does today), and the calibration or
-  a uid that leads to it. In its streams: the data and the positions that index it. And a Tiled spec naming
-  the layout (`TomoDarkFlat`, `TomoFlyscan`), so processing can search runs by spec. What each technique's
-  processing needs is agreed with whoever processes it **before its plans are final**; a spec's layout changes
-  only with a new spec version.
-- **R4. Processing runs off the acquisition machines.** Reduction, integration, PDF, reconstruction and
-  reprocessing run on a machine other than the acquisition workstations and Queue Server hosts. This does not
-  hold today: the pdfstream servers run on `xf28id2-ws1..3`.
+- **R1. Processing reads runs from Tiled.** Every processing step (script, service or notebook) finds its input run
+  in Tiled and reads its metadata and data there, by uid or by a Tiled search. Darks, flats and calibration runs are
+  found the same way, through uids the input run carries. Anything that needs data sooner than Tiled can give it
+  (feedback to a running plan, or to the scientist in the hutch) is an exception, decided and written down.
+- **R2. No side files for processing.** Acquisition writes no file whose purpose is to tell processing about a run:
+  no per-run metadata document and no job file for a watcher. The detector's own data files are not side files.
+- **R3. Each run carries what its processing needs**, in its own documents (the three checks above), with a Tiled
+  spec naming its layout (`TomoDarkFlat`, `TomoFlyscan`). What processing needs is agreed with whoever processes the
+  data **before the plans are final**; a spec's layout changes only with a new spec version.
+- **R4. Processing does not run on the acquisition machines.** Today the pdfstream servers run on the acquisition
+  workstations `xf28id2-ws1..3`.
 
-For XPD-D, R3 is the question for Mehmet: **what does tomography processing need from each run**, beyond what
-the `xpdd-tomo` plans already write (below)?
+## Questions for Mehmet
 
-## D-hutch tomography
+1. What processing do you plan for XPD-D (tomography reconstruction, XRD/PDF integration, XRF fitting, ...), with
+   which tools, and where do you run it today?
+2. The three checks: what is missing for your processing?
+3. xpdDacq writes one netCDF per scan. Should a Tiled-based reader give the same structure, so your notebooks keep
+   working?
+4. Where should results go: back into Tiled, the proposal folder, or both?
 
-Runs from the `xpdd-tomo` plans (`xpd_tools/tomo/`) already carry what processing needs, in Tiled:
+## Things to check about reading from Tiled
 
-- `tomo_dark_flat` writes the `dark` and `flat` streams (spec `TomoDarkFlat`).
-- `tomo_flyscan` writes frames and the PandA angle (`rotation_angle`) in `primary` (spec `TomoFlyscan`).
-- Each scan's start document names its dark/flat run in `last_dark_flat_uid` / `last_dark_flat_scan_id`.
+- **Latency:** fine after a scan; live feedback during a scan may need an exception (R1).
+- **Large frames:** reading through Tiled's API versus the HDF5 files Tiled points to.
+- **Access:** the account that reads needs access to the proposal. HEX's auto-exporter failed under the shared
+  beamline account for this reason (2026-10-26 and 10-29).
 
-So a reconstruction script needs only the scan's uid: it reads the scan, follows `last_dark_flat_uid` to the
-darks and flats, normalises, builds sinograms and reconstructs. The library is not chosen.
+## Background: what processes XPD data today
 
-## Questions
-
-1. Which machine processes for XPD-D and for C-hutch, and who owns it?
-2. What must stay next to acquisition for live feedback, and what can wait for Tiled?
-3. Which account reads Tiled during a beamtime: each person's, or a service account with proposal access?
-4. Large frames: read through Tiled's API, or through the files Tiled points to?
-5. Where do results go: a processed Tiled catalog, the proposal folder, or both?
-6. Should the netCDF that xpdDacq writes stay available as an export, so existing notebooks keep working?
-7. Should the pdfstream servers move to the processing host when they move to Tiled streaming?
+| Tool | What it does | Where it runs | Data source |
+|---|---|---|---|
+| pdfstream servers (`pdfstream_servers` Ansible role) | Live integration to 1D and PDF, save and plot servers, a ZMQ-to-Tiled inserter | `xf28id2-ws1`, `-ws2`, `-ws3` (acquisition workstations) | ZMQ document stream |
+| [xpdAcq](https://github.com/xpdAcq/xpdAcq) (2016-2023) | Acquisition, darks, calibration (`pyFAI-calib2`); no reduction | The acquisition session | Detector images in the session |
+| xpdDacq (Mehmet's D-hutch tools, not in git) | No RunEngine. Writes detector HDF5 plus a job `.yml`; a watcher calls `process_yml`, which packs darks, flats, counts and scans into netCDF; no integration or reconstruction | The watcher's machine | Files under `/nsls2/data/xpd-new/legacy/raw/xpdd/` |
