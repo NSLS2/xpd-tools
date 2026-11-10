@@ -56,6 +56,34 @@ Costs to weigh:
 4. A processing host has to **exist and have an owner**. Data Engineering owns the Tiled-to-analysis side of
    the DAD/DE split. Reconstruction may want a GPU.
 
+## Proposed requirements
+
+Proposed by AJ (2026-11-10) so that processing is built to these from the start. Not agreed yet: comment on the
+line of any you would change. In hextools, an auto-exporter writes a metadata file next to each run so that
+scriptrunner can process it later; these requirements replace that with Tiled.
+
+- **R1. Processing reads runs from Tiled.** Every processing step (script, service or notebook) finds its input
+  run in Tiled and reads that run's metadata and data from Tiled, by uid or by a Tiled search. It does not read
+  them from the acquisition session, its Redis-backed `RE.md`, the ZMQ stream, or files written beside the run
+  for processing. Darks, flats and calibration runs are found the same way, through uids the input run carries.
+  Anything that needs data sooner than Tiled can give it (feedback to a running plan, or to the scientist in
+  the hutch) is an exception, decided and written down on its own.
+- **R2. No side files for processing.** Nothing in xpd-tools acquisition writes a file whose purpose is to tell
+  processing about a run: no per-run metadata document (like hextools' auto-exporter) and no job file for a
+  watcher (like xpdDacq's `.yml`). The detector's own data files, which Tiled references, are not side files.
+- **R3. Each run carries what its processing needs.** In its start document: the proposal (`data_session`),
+  the sample, the uids of the runs it depends on (as `last_dark_flat_uid` does today), and the calibration or
+  a uid that leads to it. In its streams: the data and the positions that index it. And a Tiled spec naming
+  the layout (`TomoDarkFlat`, `TomoFlyscan`), so processing can search runs by spec. What each technique's
+  processing needs is agreed with whoever processes it **before its plans are final**; a spec's layout changes
+  only with a new spec version.
+- **R4. Processing runs off the acquisition machines.** Reduction, integration, PDF, reconstruction and
+  reprocessing run on a machine other than the acquisition workstations and Queue Server hosts. This does not
+  hold today: the pdfstream servers run on `xf28id2-ws1..3`.
+
+For XPD-D, R3 is the question for Mehmet: **what does tomography processing need from each run**, beyond what
+the `xpdd-tomo` plans already write (below)?
+
 ## D-hutch tomography
 
 Runs from the `xpdd-tomo` plans (`xpd_tools/tomo/`) already carry what processing needs, in Tiled:
