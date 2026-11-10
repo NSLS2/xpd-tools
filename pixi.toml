@@ -18,7 +18,7 @@ xpd-tools = { path = ".", editable = true }
 # From PyPI, not conda-forge: their conda builds pull in conda epics-base (via
 # pyepics), a second EPICS base beside epicscorelibs that crashes Python at exit.
 bluesky = ">=1.15.1"
-nslsii = ">=0.11.9,<0.12"
+nslsii = { git = "https://github.com/jwlodek/nslsii", rev = "xspress3-fix-for-ophyd-async-main" }
 ophyd-async = { git = "https://github.com/bluesky/ophyd-async", rev = "main" }
 
 [feature.profile.dependencies]

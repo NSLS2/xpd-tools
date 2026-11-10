@@ -30,7 +30,7 @@ dependencies = [
   "bluesky>=1.15.1",
   "bluesky-tiled-plugins>=2.0.13",
   "ipython>=9.15.0",
-  "nslsii>=0.11.9",
+  "nslsii @ git+https://github.com/jwlodek/nslsii@xspress3-fix-for-ophyd-async-main",
   "ophyd-async[ca,pva] @ git+https://github.com/bluesky/ophyd-async@main",
   "redis-json-dict>=0.2.2",
   "rich>=15.0.0",
