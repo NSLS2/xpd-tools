@@ -32,7 +32,7 @@ Comment on a line of this file to discuss a finding; tick it in the table when i
 | G5 | `xpdd-tomo` also changes the LDRD profile and pins | gap | merge | open |
 | G6 | Sample-out motor default `amTopX` vs `amBaseX` | gap | 11-20 | open |
 | G7 | No real shutter device | gap | 11-20 | open |
-| G8 | Multi-exposure not yet run on hardware or from the locked env | gap | 11-20 | open |
+| G8 | Multi-exposure not yet run on hardware or from the locked env | gap | 11-20 | ran on hardware 11-10; env not known |
 
 Suggested order: **B1 + G7, B2**, then **G1, G8, G6**, then **B3/G4, G3, B4, G2, G5** before merging to `main`.
 
@@ -133,3 +133,14 @@ The multi-exposure commits ([`a0215f8`](https://github.com/NSLS2/xpd-tools/commi
 [`1175d91`](https://github.com/NSLS2/xpd-tools/commit/1175d91)) came after the 2026-11-09 beamline run, and that run
 used a personal `uv` environment, not the branch's locked pixi environment. **Proposed:** rerun the 11-09 scan (and one
 with per-detector exposures) from the locked environment before 11-20.
+
+**Update 2026-11-10.** Mehmet ran it on hardware: scan 12462 (`b7ce33ac`), `pilatus1` 1.0 s and `xspress3-1` 0.5 s,
+`acquire_period` 1.002 s, 101 projections over 0 to 180 degrees, exit `success`. `primary` holds 101 frames of each
+detector and 101 `rotation_angle` values on one shared `time` axis. Still open: whether it ran from the locked
+environment. It also shows what the code does by design: one trigger train at the longest exposure, one frame per
+detector per trigger, so the Xspress3 waits 0.5 s on every trigger. Mehmet wants each detector to run at its own rate
+(e.g. Xspress3 0.1 s, Pilatus 0.01 s: about 1,000 and 10,000 frames over a 100 s rotation), with frames lined up
+across detectors and with the angle. That is new scope rather than a bug here. Kyle is trying independent PandA
+triggering and has asked Jakub to check the approach. Frames at two rates cannot share one `time` axis, so the run
+layout, and with it the `TomoFlyscan` spec ([G3](#g3-tiled-spec-names-shared-with-hextools-different-schema)),
+would change; see R3 in [`XPD_DATA_PROCESSING.md`](XPD_DATA_PROCESSING.md#proposed-requirements).
