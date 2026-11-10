@@ -58,10 +58,13 @@ one rather than record light frames as darks.
 the shared Redis store ([`xpdd.py:146`](https://github.com/NSLS2/xpd-tools/blob/1175d91ea1c8170fb2a5c864aec5be43a73e22a8/src/xpd_tools/profiles/xpdd.py#L146)).
 [`clear_last_dark_flat`](https://github.com/NSLS2/xpd-tools/blob/1175d91ea1c8170fb2a5c864aec5be43a73e22a8/src/xpd_tools/tomo/utils.py#L155) exists, but
 [`start_beamtime`](https://github.com/NSLS2/xpd-tools/blob/1175d91ea1c8170fb2a5c864aec5be43a73e22a8/src/xpd_tools/utils.py#L74) does not call it. The first fly scans of a new proposal therefore
-link to the previous proposal's darks and flats. HEX hit the same bug on 2026-10-21.
+link to the previous proposal's darks and flats. HEX hit the same bug on 2026-10-21; it was fixed in
+[hextools#105](https://github.com/NSLS2/hextools/pull/105) (merged 2026-10-23, `ae14996`). That fix is on the
+reading side: hextools' tomography exporter uses a dark/flat run only if its `data_session` and `cycle` match the
+scan's, and `reset_scan_id` clears the link. hextools' `switch_proposal` still does not clear it (dropped in review).
 
 **Proposed fix:** clear the link in `start_beamtime`, with a test; and have whatever reads the link check it belongs to
-the same proposal, as hextools' exporter does.
+the same proposal and cycle, as hextools' exporter does since #105. At XPD-D that reader is Mehmet's processing.
 
 ### B3. `profiles/devd.py` writes to Tiled unbuffered, with no backup
 
