@@ -176,3 +176,11 @@ def test_validate_rejects_shared_and_reserved_names(tomo_rig: TomoRig):
     rig.iris.set_name(ROTATION_STREAM)
     with pytest.raises(ValueError, match="can't be named 'rotation'"):
         validate_detector_configs([pil, iris])
+
+
+@pytest.mark.parametrize("exposure_time", [math.inf, math.nan])
+def test_config_rejects_non_finite_exposure_time(tomo_rig: TomoRig, exposure_time):
+    with pytest.raises(ValidationError):
+        DetectorConfig(
+            detector=tomo_rig.pilatus, nproj=10, exposure_time=exposure_time, ttl_out=1
+        )

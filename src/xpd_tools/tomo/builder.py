@@ -155,8 +155,8 @@ def image_count_options(
             nproj=count,
             divisor=nproj // count,
             step=(stop - start) / count,
-            first_angle=start,
-            last_angle=stop,
+            first_angle=float(start),
+            last_angle=float(stop),
         )
         for count in divisors(nproj)
     ]

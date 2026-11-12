@@ -180,7 +180,12 @@ class DetectorConfig(BaseModel):
     "ttl_out": 1}``.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True, extra="forbid")
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+        frozen=True,
+        extra="forbid",
+    )
 
     detector: TomoDetector
     nproj: PositiveInt
