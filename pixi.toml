@@ -1,0 +1,45 @@
+# Make sure to export pixi's env so we can use its glibcxx version
+# export LD_LIBRARY_PATH=.pixi/envs/default/lib:$LD_LIBRARY_PATH
+
+[workspace]
+authors = ["XPD Operator <xf28id2@xf28id2-ws3.nsls2.bnl.local>"]
+channels = ["https://prefix.dev/conda-forge", "conda-forge"]
+name = "20261023-uv-vis-testing"
+platforms = [ 
+    # The CUDA platform is listed first, so it wins platform selection on a machine with a CUDA driver.
+  { name = "linux-64-cuda", platform = "linux-64", cuda = "13.0" },
+  { name = "linux-64-cpu", platform = "linux-64" },
+]
+version = "0.1.0"
+preview = ["pixi-build"]
+
+[target.linux-64-cuda.dependencies]
+cuda-version = "13.0.*"
+pytorch-gpu = ">=2.13.0,<3"
+
+[target.linux-64-cpu.dependencies]
+pytorch-cpu = "*"
+
+
+[tasks]
+test-offline = "pytest /nsls2/data/xpd-new/legacy/processed/LDRD_tjb/pkgs/xpd-tools/tests/optimization/test_campaign.py -k 'not single_trial'"
+test-trial = "XPD_RUN_TRIAL=1 pytest /nsls2/data/xpd-new/legacy/processed/LDRD_tjb/pkgs/xpd-tools/tests/optimization/test_campaign.py -k single_trial -v -s"
+test-local-trial = "XPD_RUN_TRIAL=1 XPD_LOCAL_TRIAL=1 XPD_HALIDE_CONFIG='/nsls2/data/xpd-new/legacy/processed/LDRD_tjb/20261023-uv-vis-testing/configs/halide_beamline_local.json' XPD_DATA_SESSION=pass-314159 pytest '/nsls2/data/xpd-new/legacy/processed/LDRD_tjb/pkgs/xpd-tools/tests/optimization/test_local.py' -k local_single_trial -v -s"
+
+[dependencies]
+numpy = ">2.0.0"
+libstdcxx-ng = ">=16.2.0,<17"
+six = ">=1.17.0,<2"
+pyarrow = ">=25.0.0,<26"
+pytest = ">=9.2.0,<10"
+uvicorn = ">=0.54.0,<0.55"
+pytest-asyncio = ">=1.4.1.post1,<2"
+pytest-timeout = ">=2.4.0,<3"
+gsl = ">=2.8,<3"
+
+
+[pypi-dependencies]
+matplotlib = ">=3.11.2, <4"
+autoencoder-pdf = { path = "/nsls2/data/xpd-new/legacy/processed/LDRD_tjb/pkgs/autoencoder-pdf" }
+xpd-tools = { path = "/nsls2/data/xpd-new/legacy/processed/LDRD_tjb/pkgs/xpd-tools", extras=["optimization", "cnn"]}
+pyepics = ">=3.5.10, <4"

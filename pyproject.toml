@@ -122,6 +122,12 @@ cnn = [
     "autoencoder-pdf",
 ]
 
+cnn = [
+    # Not yet on PyPI -- install manually or via the editable path in uv.sources.
+    # Once published, `pip install 'xpd-tools[cnn]'` will pull it in.
+    "autoencoder-pdf",
+]
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
 # autoencoder-pdf = { path = "../autoencoder-pdf", editable = true } # available locally, installed manually for now
