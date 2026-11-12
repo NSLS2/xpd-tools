@@ -173,19 +173,31 @@ def validate_tomo_dark_flat(run: RunLike, version: str | None = "1") -> None:
 # tomo_flyscan (also the per-tomogram run of tomo_flyscan_loop and the
 # tomo_1d/2d/nd_step_scan plans, which open one run per tomogram)
 #
+# A detector's nproj projections are nproj angular intervals over the rotation range,
+# and the scan also images the end of the range, so it writes nproj + 1 images.
+# Each detector runs at its own rate. The PandA makes one base pulse per image of the
+# detector with the most projections, and captures the rotation angle on every
+# base pulse. A detector with trigger_divisor D gets every D-th base pulse, from the
+# first, so its trigger k comes at base pulse k * D and its angles are
+# rotation_angle[::D]. With images_to_average A, image j averages its triggers
+# j * A to (j + 1) * A - 1, and a detector writes nproj + 1 images of A triggers.
+#
 # Start document:
 #   plan_name: "tomo_flyscan"
 #   detectors: list[str]
-#   num_points: int                  projections per detector
-#   exposure_time: dict[str, float] detector name to seconds, an entry for every
-#                                    detector
-#   max_exposure_time: float         seconds, the longest exposure, which sets the
-#                                    trigger train and rotation speed
-#   acquire_period: float            seconds, shared by every detector
+#   detector_configs: dict[str, dict]  detector name to its config, an entry for
+#                                    every detector, each with:
+#     nproj: int                     projections: angular intervals over the range
+#     num_images: int                images written, nproj + 1
+#     exposure_time: float           seconds per frame
+#     images_to_average: int         frames the Proc plugin combines per image
+#     filter_type: str               Proc plugin filter that combined them
+#     ttl_out: int                   PandA TTL output that triggered it
+#     trigger_divisor: int           base pulses per trigger
+#   num_base_pulses: int             base pulses, most projections + 1
+#   trigger_period: float            seconds between base pulses
 #   time_based: bool
 #   start_position, stop_position: float   rotation range, degrees
-#   images_to_average: int
-#   filter_type: str                 Proc plugin filter that combined averaged images
 #   rotation_motor: str
 #   sample_name: str                 optional
 #   last_dark_flat_uid: str          optional, see the dark/flat convention
@@ -200,11 +212,23 @@ def validate_tomo_dark_flat(run: RunLike, version: str | None = "1") -> None:
 #   previous_grid_point_uid: str     optional, from the step scans: start uid of the
 #                                    previous point's successful run; absent on first
 # Streams:
-#   primary: collected while flying
-#     <det>                     (num_points, ...) frames, external
-#     rotation_angle            rotation angle from the PandA, degrees, external. Other
-#                               PandA captures enabled in its settings also appear here.
+#   <det>: one per detector, named after it, collected while flying
+#     <det>                     (num_images, ...) images, external
+#   rotation: collected while flying
+#     rotation_angle            (num_base_pulses,) rotation angle from the PandA,
+#                               degrees, external. Other PandA captures enabled in its
+#                               settings also appear here.
 TOMO_FLYSCAN_V1 = Spec("TomoFlyscan", version="1")
+
+_DETECTOR_CONFIG_KEYS = (
+    "nproj",
+    "num_images",
+    "exposure_time",
+    "images_to_average",
+    "filter_type",
+    "ttl_out",
+    "trigger_divisor",
+)
 
 
 def validate_tomo_flyscan(run: RunLike, version: str | None = "1") -> None:
@@ -226,19 +250,32 @@ def validate_tomo_flyscan(run: RunLike, version: str | None = "1") -> None:
     _require_plan_name(run, "tomo_flyscan")
     _require_start_keys(
         run,
-        "num_points",
-        "exposure_time",
-        "max_exposure_time",
-        "acquire_period",
+        "detector_configs",
+        "num_base_pulses",
+        "trigger_period",
         "time_based",
         "start_position",
         "stop_position",
-        "images_to_average",
         "rotation_motor",
     )
-    _require_exposure_time(run)
     _require_optional_str(run, "last_dark_flat_uid")
-    _require_stream(run, "primary", *_names(run, "detectors"), "rotation_angle")
+    dets = _names(run, "detectors")
+    configs = run.start["detector_configs"]
+    if not isinstance(configs, Mapping):
+        raise SpecValidationError(
+            f"Start document 'detector_configs' must be a mapping, got {configs!r}."
+        )
+    for det in dets:
+        config = configs.get(det)
+        if not isinstance(config, Mapping):
+            raise SpecValidationError(f"'detector_configs' has no entry for {det!r}.")
+        missing = [key for key in _DETECTOR_CONFIG_KEYS if key not in config]
+        if missing:
+            raise SpecValidationError(
+                f"'detector_configs' entry for {det!r} is missing {missing}."
+            )
+        _require_stream(run, det, det)
+    _require_stream(run, "rotation", "rotation_angle")
 
 
 _VALIDATORS: dict[str, Callable[[RunLike, str | None], None]] = {
