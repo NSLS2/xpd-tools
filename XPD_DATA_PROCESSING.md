@@ -39,7 +39,7 @@ please mark what processing needs and what is missing.**
 ### 1. Format
 
 Every detector in the XPD-D profile writes **HDF5** through its ophyd-async writer, into the proposal's folder
-(`NSLS2PathProvider`): Pilatus4 `pilatus1`, Kinetix `iris1`, Xspress3 `xspress3-1`, and the PandA `panda1`. Tiled
+(`NSLS2PathProvider`): Pilatus4 `pilatus1`, IRIS `iris1` (ophyd-async `KinetixDetector` class), Xspress3 `xspress3-1`, and the PandA `panda1`. Tiled
 indexes those files and serves the arrays, so a reader through Tiled does not depend on the format. The format
 matters when processing reads the files directly (large tomography stacks) or needs another format for a tool
 (TIFF, netCDF as xpdDacq writes today). Is HDF5 enough?

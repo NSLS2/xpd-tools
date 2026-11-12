@@ -13,7 +13,7 @@ read from `src/xpd_tools/profiles/xpdd.py`; please correct them.
 
 - `single_axis_flyscan` (PandA-triggered fly scan, stream `tomo`)
 - `RotationMotor` for `amPhi` (PandA encoder 1); stage motors `amBaseX/Y`, `amTopX/Z`
-- Detectors: `pilatus1` (Pilatus4), `iris1` (Kinetix); `panda1`
+- Detectors: `pilatus1` (Pilatus4), `iris1` (IRIS, driven with ophyd-async's `KinetixDetector`); `panda1`
 - Mock tests for the fly-scan core (`tests/test_flyers.py`, `tests/test_plans.py`, `tests/test_motors.py`)
 - The encoder fixes from #24 (merged): counts per revolution and anchoring at the motor's current position.
   #17 and #18 targeted the code #24 replaced and now conflict with `main`.
@@ -29,7 +29,7 @@ one? For each: which PandA encoder input, and the encoder resolution.
 
 ## Q2: Detectors
 
-Which detectors take the tomography images, and is each triggered by the PandA: Pilatus4, IRIS (Kinetix),
+Which detectors take the tomography images, and is each triggered by the PandA: Pilatus4, IRIS,
 Xspress3?
 
 - **Already known:** Jakub added the Xspress3 ophyd object and flew it with and without the Pilatus4

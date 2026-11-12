@@ -18,7 +18,7 @@ regenerated. Built in CI so it cannot silently break.
 
 1. **What XPD-D is.** The D-hutch endstation of XPD (28-ID-2): what it is for (tomography, and X-ray
    diffraction, PDF and fluorescence measured during it), and its hardware: rotation stage, sample stack, PandA,
-   detectors (Pilatus4, Kinetix, Xspress3), shutters.
+   detectors (Pilatus4, IRIS, Xspress3), shutters.
 2. **Getting started.** Which workstation, starting the session with the XPD-D profile, starting a beamtime for a
    proposal.
 3. **Plans.** Darks and flats, fly scans (including different exposures per detector), step and grid scans: what

@@ -4,7 +4,7 @@ Discussion draft (AJ, with ideas from Kyle, 2026-11-10). Comment on a line to di
 
 ## The problem
 
-An XPD-D scan uses 1 to 3 detectors (Pilatus4, Kinetix, Xspress3), and each can need its own settings: at least
+An XPD-D scan uses 1 to 3 detectors (Pilatus4, IRIS, Xspress3), and each can need its own settings: at least
 an exposure time, and, for the per-detector rates Mehmet asked for, how many frames it takes per projection. The
 same scan must be easy to start from:
 
@@ -73,7 +73,7 @@ Why this shape:
 | | Idea | Why not (or not yet) |
 |---|---|---|
 | A | A mapping keyed by detector (today's `exposure_time`), one GUI row per picked detector | The Queue Server leaves dict keys as names, which do not match `.name` (`xs3` vs `xspress3-1`, `pilatus1_fly` vs `pilatus1`); one value per detector only |
-| B | A different settings class per detector type (Pilatus: exposure, threshold; Kinetix: readout mode) | More machinery than needed now; can grow out of `DetConfig` later (subclasses), with the same list shape |
+| B | A different settings class per detector type (Pilatus: exposure, threshold; IRIS: readout mode) | More machinery than needed now; can grow out of `DetConfig` later (subclasses), with the same list shape |
 | C | A Detectors tab that sets standing detector settings, and scans only take the list | Settings live outside the scan call; per-scan values (exposure) still belong to the plan |
 | D | An XPD-D-only tomography tab with 3 detector slots | A device-specific widget, which the generic GUI is meant to avoid |
 | E | The full ophyd-async `TriggerInfo` per detector (Kyle) | Users could set what the plan must own (trigger type, event count); xpd-tools follows ophyd-async `main`, where this API moves (a related helper removed in #1329 broke the Pilatus4 on 11-03). `DetConfig` keeps the idea with only the user's fields |
@@ -84,5 +84,5 @@ Why this shape:
 
 1. Kyle: is `frames_per_point` the right knob for per-detector rates, or would you rather give each detector its own
    period?
-2. Mehmet: which settings besides exposure do you change per scan (Pilatus threshold, Kinetix mode, ...)?
+2. Mehmet: which settings besides exposure do you change per scan (Pilatus threshold, IRIS readout mode, ...)?
 3. Name and home: `DetConfig` in xpd-tools, or shared with hextools from the start?

@@ -13,7 +13,7 @@ Comment on a line of this file to discuss a finding; tick it in the table when i
   pre-commit clean.
 - Read against hextools' `tomography/` (the template). The port keeps hextools' fixes: rotation speed restored after a
   fly scan, a few missed frames tolerated, the Proc filter type set, data in `primary` with the PandA position in
-  `rotation_angle`, darks and flats in `dark` / `flat`. It adds per-detector exposure times (Pilatus4, Kinetix
+  `rotation_angle`, darks and flats in `dark` / `flat`. It adds per-detector exposure times (Pilatus4, IRIS
   `iris1`, Xspress3), a configurable sample-out motor for flats, and relative step axes.
 - Everything below was **read from the code**, not run on hardware.
 
