@@ -26,7 +26,7 @@ class XraySettings:
 
     exposure: float = 5.0
     frame_acq_time: float = 0.2
-    no_dark: bool = True
+    no_dark: bool = False
     stream_name: str = "scattering"
 
 

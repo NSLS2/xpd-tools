@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from typing import Any, TypeVar
+
+import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +84,63 @@ def _retry_access(
         f"Failed to read {operation} for uid={uid!r} after "
         f"{max_retries} attempts.{suffix}"
     ) from last_access_error
+
+
+def pdfstream_str_to_1d(x: ArrayLike | str | bytes | np.str_ | np.bytes_) -> NDArray[np.float64]:
+    """Convert numeric or string-like containers to a 1D float64 array.
+
+    This handles cases where tiled (or intermediate serializers) return values
+    as:
+    - plain strings / numpy string scalars,
+    - 0-D arrays holding one string,
+    - 1-D object/string arrays,
+    - ordinary numeric array-likes.
+    """
+
+    def _parse_text(text: str) -> NDArray[np.float64]:
+        s = text.strip()
+        if not s:
+            return np.array([], dtype=float)
+        s = s.strip("[]")
+
+        # Fast path: whitespace-delimited numeric text.
+        try:
+            arr = np.fromstring(s, sep=" ", dtype=float)
+            if arr.size > 0:
+                return arr
+        except ValueError:
+            pass
+
+        # Robust fallback: extract numeric literals from mixed wrapper text.
+        vals = re.findall(
+            r"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?|(?:nan|inf|-inf)",
+            s,
+            flags=re.IGNORECASE,
+        )
+        return np.array([float(v) for v in vals], dtype=float)
+
+    if isinstance(x, (str, np.str_)):
+        return _parse_text(str(x))
+    if isinstance(x, (bytes, np.bytes_)):
+        return _parse_text(bytes(x).decode(errors="ignore"))
+
+    arr = np.asarray(x)
+
+    # Numeric fast path.
+    if arr.dtype.kind in {"f", "i", "u", "b"}:
+        return arr.astype(float).ravel()
+
+    # Scalar container (often a 0-D array with one string/object).
+    if arr.ndim == 0:
+        return _parse_text(str(arr.item()))
+
+    # String/object arrays: try direct cast, then text parse fallback.
+    if arr.dtype.kind in {"U", "S", "O"}:
+        try:
+            return arr.astype(float).ravel()
+        except (TypeError, ValueError):
+            joined = " ".join(map(str, arr.ravel()))
+            return _parse_text(joined)
+
+    # Last resort.
+    return np.asarray(x, dtype=float).ravel()

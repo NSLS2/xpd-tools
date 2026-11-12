@@ -112,7 +112,14 @@ optimization = [
     "pymatgen>=2025.6",
     "scipy>=1.14",
     "torch",
-    "bluesky_queueserver_api"
+    "bluesky_adaptive[ax,queueserver]",
+    "bluesky_queueserver_api",
+]
+
+cnn = [
+    # Not yet on PyPI -- install manually or via the editable path in uv.sources.
+    # Once published, `pip install 'xpd-tools[cnn]'` will pull it in.
+    "autoencoder-pdf",
 ]
 
 cnn = [

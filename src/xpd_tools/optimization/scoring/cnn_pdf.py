@@ -10,6 +10,8 @@ import numpy as np
 import torch
 from numpy.typing import ArrayLike
 
+from xpd_tools.optimization.helpers.common import pdfstream_str_to_1d
+
 if TYPE_CHECKING:
     # Only needed by type checkers; autoencoder-pdf is not yet on PyPI so we
     # never import it at module load time.  The real import is deferred to
@@ -52,8 +54,8 @@ class CnnScorer:
         -------
             - {phase_name: predicted fraction} for each requested name.
         """
-        r_exp = np.asarray(r_exp, dtype=float)
-        g_exp = np.asarray(g_exp, dtype=float)
+        r_exp = pdfstream_str_to_1d(r_exp)
+        g_exp = pdfstream_str_to_1d(g_exp)
 
         if r_exp.min() > r_min or r_exp.max() < r_max:
             warnings.warn(
