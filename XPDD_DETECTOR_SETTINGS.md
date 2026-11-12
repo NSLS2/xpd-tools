@@ -2,6 +2,12 @@
 
 Discussion draft (AJ, with ideas from Kyle, 2026-11-10). Comment on a line to discuss.
 
+**Status 2026-11-12:** implemented in [#51](https://github.com/NSLS2/xpd-tools/pull/51) by Kyle's `DetectorConfig`
+(`xpd_tools.tomo.utils`), tested at the beamline. It follows this recommendation's shape (one list of entries, or
+dicts, plus `validate_detector_configs`), but each detector gives its own `nproj` instead of a
+`collections_per_event` ratio, and also carries `ttl_out`, `images_to_average` and `filter_type`. The sections below
+are the discussion that led there.
+
 ## The problem
 
 An XPD-D scan uses 1 to 3 detectors (Pilatus4, IRIS, Xspress3), and each can need its own settings: at least
