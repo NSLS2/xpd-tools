@@ -1,6 +1,8 @@
 """Flyer classes for XPD beamline at NSLS-II."""
 
 import asyncio
+from collections.abc import Awaitable
+from typing import Any
 
 from ophyd_async.core import (
     ConfinedModel,
@@ -9,6 +11,35 @@ from ophyd_async.core import (
     wait_for_value,
 )
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
+
+#: PandA TTL outputs wired to detectors (``MultiTrigMultiDetV1.yaml``). TTL1 is the
+#: Pilatus, TTL2 the Xspress3 and TTL3 the Kinetix (iris).
+PANDA_TTL_OUTPUTS = (1, 2, 3)
+
+#: PandA pulse dividers (DIV blocks) available to slow detectors' triggers.
+PANDA_DIV_BLOCKS = (1, 2)
+
+#: The PandA output every detector trigger derives from.
+BASE_TRIGGER = "PULSE1.OUT"
+
+
+class TtlRoute(ConfinedModel):
+    """Where one TTL output takes its triggers from during a flyscan.
+
+    Attributes
+    ----------
+    ttl_out : int
+        The PandA TTL output, one of :data:`PANDA_TTL_OUTPUTS`.
+    divisor : int
+        Every how many base pulses (``PULSE1.OUT``) this TTL fires, from the first.
+    div_block : int | None
+        The DIV block dividing the base pulses; None when ``divisor`` is 1 and the
+        TTL is fed ``PULSE1.OUT`` directly.
+    """
+
+    ttl_out: int
+    divisor: int = 1
+    div_block: int | None = None
 
 
 class SingleAxisFlyscanInfo(ConfinedModel):
@@ -28,6 +59,9 @@ class SingleAxisFlyscanInfo(ConfinedModel):
         The step between pulses, in counts for position based scans, s for time based
     time_based : bool
         If true, equally spaced in time triggers. Otherwise, equally spaced in position
+    ttl_routes : list[TtlRoute]
+        How each detector's TTL output is fed from the base pulses. Empty leaves the
+        TTL outputs and DIV blocks as they are.
     """
 
     start: int
@@ -40,6 +74,7 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     position_dataset_units: str = "deg"
     position_scale: float = 1.0
     position_offset: float = 0.0
+    ttl_routes: list[TtlRoute] = []
 
 
 class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
@@ -104,7 +139,41 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
                     pulse.step.set(value.pulse_step),
                 ]
             )
+        coros.extend(self._route_ttls(value.ttl_routes))
         await asyncio.gather(*coros)
+
+    def _route_ttls(self, routes: list[TtlRoute]) -> list[Awaitable[Any]]:
+        """Return the sets that route each TTL output to its detector's triggers.
+
+        A TTL output with divisor 1 is fed the base pulses directly. Any other is fed
+        from its DIV block, which divides the base pulses and passes the first one,
+        so every detector's first trigger comes with the first base pulse. Wired
+        TTL outputs no route uses are switched off.
+        """
+        if not routes:
+            return []
+        coros: list[Awaitable[Any]] = []
+        used = set()
+        for route in routes:
+            used.add(route.ttl_out)
+            ttlout = self.panda.ttlout[route.ttl_out]  # type: ignore
+            if route.div_block is None:
+                coros.append(ttlout.val.set(BASE_TRIGGER))
+                continue
+            div = self.panda.div[route.div_block]  # type: ignore
+            coros.extend(
+                [
+                    div.inp.set(BASE_TRIGGER),
+                    div.enable.set("PCAP.ACTIVE"),
+                    div.first_pulse.set("OutD"),
+                    div.divisor.set(float(route.divisor)),
+                    ttlout.val.set(f"DIV{route.div_block}.OUTD"),
+                ]
+            )
+        for ttl_out in PANDA_TTL_OUTPUTS:
+            if ttl_out not in used:
+                coros.append(self.panda.ttlout[ttl_out].val.set("ZERO"))  # type: ignore
+        return coros
 
     async def on_kickoff(self, ctx: None) -> None:
         await wait_for_value(self.pcomp.active, True, timeout=1)
