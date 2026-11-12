@@ -36,6 +36,7 @@ uvicorn = ">=0.54.0,<0.55"
 pytest-asyncio = ">=1.4.1.post1,<2"
 pytest-timeout = ">=2.4.0,<3"
 gsl = ">=2.8,<3"
+ninja = ">=1.13.2,<2"
 
 
 [pypi-dependencies]
