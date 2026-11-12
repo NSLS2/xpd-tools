@@ -2,7 +2,7 @@
 
 Discussion draft (AJ, with ideas from Kyle, 2026-11-10). Comment on a line to discuss.
 
-**Status 2026-11-12:** implemented in [#51](https://github.com/NSLS2/xpd-tools/pull/51) by Kyle's `DetectorConfig`
+**Status 2026-11-12:** implemented in Kyle's [#53](https://github.com/NSLS2/xpd-tools/pull/53) by `DetectorConfig`
 (`xpd_tools.tomo.utils`), tested at the beamline. It follows this recommendation's shape (one list of entries, or
 dicts, plus `validate_detector_configs`), but each detector gives its own `nproj` instead of a
 `collections_per_event` ratio, and also carries `ttl_out`, `images_to_average` and `filter_type`. The sections below
@@ -68,7 +68,7 @@ Why this shape:
 
 ### Order of work
 
-Implementation: [#51](https://github.com/NSLS2/xpd-tools/pull/51) (`DetConfig` and the check, into `xpdd-tomo`).
+Implementation: Kyle's [#53](https://github.com/NSLS2/xpd-tools/pull/53) (`DetectorConfig` and `validate_detector_configs`, into `xpdd-tomo`); #51 was closed in its favour.
 
 1. Now: `DetConfig`, the check function, and `tomo_flyscan` accepting the list (with `collections_per_event` held at 1
    until the PandA can trigger detectors at different rates; Kyle is working on that).
