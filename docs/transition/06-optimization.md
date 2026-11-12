@@ -22,4 +22,5 @@ Each PR moves its tests from `tests/optimization` with it.
 
 - **6.8:** `agent.py` alone is 1,741 lines. Should it be split before it moves, so it fits the "small PR" rule?
 - **6.10:** should the web GUI (React and a server) live in xpd-tools, or in a repo of its own?
-- Which optional dependencies (for example the CNN scorer's) belong in `main`'s `pyproject.toml`, and as extras?
+- Which optional dependencies (for example the CNN scorer's) belong in `main`'s `pyproject.toml`, and as extras? `autonomous` now adds a `cnn` extra on `autoencoder-pdf`, which is not on PyPI and is installed from a path on
+  the beamline file system.
