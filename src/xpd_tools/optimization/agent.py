@@ -1249,6 +1249,7 @@ class BuildAgent:
             evaluation_function=_evaluator,
             acquisition_plan=acquisition_plan,
             acquisition_plan_kwargs=self._acquisition_plan_kwargs(),
+            acquisition_run_filter=lambda start: not start.get("dark_frame", False),
             outcome_constraints=constraints,
             checkpoint_path=(
                 None if self.checkpoint_path is None else str(self.checkpoint_path)
