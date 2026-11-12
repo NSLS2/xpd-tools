@@ -12,7 +12,7 @@ def dets() -> tuple[Device, Device, Device]:
 
 def test_det_config_defaults_to_one_frame_per_point(dets) -> None:
     config = DetConfig(detector=dets[0], exposure=0.01)
-    assert config.frames_per_point == 1
+    assert config.collections_per_event == 1
 
 
 @pytest.mark.parametrize(
@@ -20,8 +20,8 @@ def test_det_config_defaults_to_one_frame_per_point(dets) -> None:
     [
         {"exposure": 0},
         {"exposure": -0.1},
-        {"exposure": 0.1, "frames_per_point": 0},
-        {"exposure": 0.1, "frames_per_point": 1.5},
+        {"exposure": 0.1, "collections_per_event": 0},
+        {"exposure": 0.1, "collections_per_event": 1.5},
         {"exposure": 0.1, "threshold": 8.0},
     ],
 )
@@ -43,7 +43,7 @@ def test_det_config_is_frozen(dets) -> None:
 
 def test_as_det_configs_accepts_a_mix_in_order(dets) -> None:
     pil, iris, xs3 = dets
-    given = DetConfig(detector=iris, exposure=0.05, frames_per_point=2)
+    given = DetConfig(detector=iris, exposure=0.05, collections_per_event=2)
     configs = as_det_configs(
         [pil, given, {"detector": xs3, "exposure": 0.1}], default_exposure=0.01
     )
@@ -73,7 +73,7 @@ def test_as_det_configs_rejects_other_types() -> None:
 def test_check_accepts_whole_multiples(dets, counts) -> None:
     check_det_configs(
         [
-            DetConfig(detector=det, exposure=0.01, frames_per_point=count)
+            DetConfig(detector=det, exposure=0.01, collections_per_event=count)
             for det, count in zip(dets, counts, strict=False)
         ]
     )
@@ -82,7 +82,7 @@ def test_check_accepts_whole_multiples(dets, counts) -> None:
 @pytest.mark.parametrize("counts", [(2, 3), (2, 4, 6), (3, 4)])
 def test_check_rejects_counts_that_are_not_multiples(dets, counts) -> None:
     configs = [
-        DetConfig(detector=det, exposure=0.01, frames_per_point=count)
+        DetConfig(detector=det, exposure=0.01, collections_per_event=count)
         for det, count in zip(dets, counts, strict=False)
     ]
     with pytest.raises(ValueError, match="does not divide"):
@@ -119,7 +119,7 @@ def test_check_rejects_two_detectors_with_one_name() -> None:
 def test_check_accepts_frames_that_fit_the_period(dets) -> None:
     pil, iris, _ = dets
     configs = [
-        DetConfig(detector=pil, exposure=0.009, frames_per_point=10),
+        DetConfig(detector=pil, exposure=0.009, collections_per_event=10),
         DetConfig(detector=iris, exposure=0.09),
     ]
     check_det_configs(configs, period=0.1, deadtimes={pil: 0.001, iris: 0.01})
@@ -127,16 +127,16 @@ def test_check_accepts_frames_that_fit_the_period(dets) -> None:
 
 def test_check_rejects_frames_that_do_not_fit_the_period(dets) -> None:
     pil = dets[0]
-    configs = [DetConfig(detector=pil, exposure=0.01, frames_per_point=10)]
-    with pytest.raises(ValueError, match="'pilatus1' needs 0.11 s per point"):
+    configs = [DetConfig(detector=pil, exposure=0.01, collections_per_event=10)]
+    with pytest.raises(ValueError, match="'pilatus1' needs 0.11 s per event"):
         check_det_configs(configs, period=0.1, deadtimes={pil: 0.001})
 
 
 def test_check_reports_every_problem_at_once(dets) -> None:
     pil, iris, _ = dets
     configs = [
-        DetConfig(detector=pil, exposure=0.2, frames_per_point=2),
-        DetConfig(detector=iris, exposure=0.01, frames_per_point=3),
+        DetConfig(detector=pil, exposure=0.2, collections_per_event=2),
+        DetConfig(detector=iris, exposure=0.01, collections_per_event=3),
         DetConfig(detector=pil, exposure=0.01),
     ]
     with pytest.raises(ValueError) as error:
@@ -144,7 +144,7 @@ def test_check_reports_every_problem_at_once(dets) -> None:
     message = str(error.value)
     assert "given more than once" in message
     assert "does not divide" in message
-    assert "needs 0.4 s per point" in message
+    assert "needs 0.4 s per event" in message
 
 
 @pytest.mark.parametrize("exposure", [float("inf"), float("nan")])

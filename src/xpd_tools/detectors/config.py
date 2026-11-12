@@ -30,14 +30,16 @@ class DetConfig(BaseModel):
         The detector.
     exposure : float
         Exposure time of each frame, in seconds.
-    frames_per_point : int, optional
-        Frames the detector takes at each point of the scan. Default 1.
+    collections_per_event : int, optional
+        Frames the detector takes per event of the scan, that is per frame of
+        the slowest detector; ophyd-async's ``TriggerInfo.collections_per_event``.
+        Default 1.
 
     Examples
     --------
     >>> from ophyd_async.core import Device
     >>> config = DetConfig(detector=Device(name="pilatus1"), exposure=0.01)
-    >>> config.exposure, config.frames_per_point
+    >>> config.exposure, config.collections_per_event
     (0.01, 1)
     """
 
@@ -50,7 +52,7 @@ class DetConfig(BaseModel):
 
     detector: Device
     exposure: PositiveFloat
-    frames_per_point: PositiveInt = 1
+    collections_per_event: PositiveInt = 1
 
 
 def as_det_configs(
@@ -124,8 +126,8 @@ def check_det_configs(
     configs : Sequence[DetConfig]
         The scan's detectors and their settings.
     period : float, optional
-        Time between points of the scan, in seconds; finite and above 0. If
-        given, each detector's frames must fit in it: ``frames_per_point *
+        Time between events of the scan, in seconds; finite and above 0. If
+        given, each detector's frames must fit in it: ``collections_per_event *
         (exposure + deadtime) <= period``.
     deadtimes : Mapping[Device, float], optional
         Each detector's deadtime in seconds, finite and 0 or more, used with
@@ -147,14 +149,14 @@ def check_det_configs(
     >>> pil, xs3 = Device(name="pilatus1"), Device(name="xspress3-1")
     >>> check_det_configs(  # doctest: +ELLIPSIS
     ...     [
-    ...         DetConfig(detector=pil, exposure=0.01, frames_per_point=2),
-    ...         DetConfig(detector=xs3, exposure=0.01, frames_per_point=3),
+    ...         DetConfig(detector=pil, exposure=0.01, collections_per_event=2),
+    ...         DetConfig(detector=xs3, exposure=0.01, collections_per_event=3),
     ...     ]
     ... )
     Traceback (most recent call last):
     ...
     ValueError: Detector settings do not work together:
-    - frames_per_point 2 does not divide 3; ...
+    - collections_per_event 2 does not divide 3; ...
     """
     problems = []
     if not configs:
@@ -175,11 +177,11 @@ def check_det_configs(
 
     # Each smaller count dividing the next makes every count a multiple of every
     # smaller one.
-    counts = sorted({config.frames_per_point for config in configs})
+    counts = sorted({config.collections_per_event for config in configs})
     for smaller, larger in pairwise(counts):
         if larger % smaller:
             problems.append(
-                f"frames_per_point {smaller} does not divide {larger}; each "
+                f"collections_per_event {smaller} does not divide {larger}; each "
                 "detector's frame count must be a whole multiple of the others'."
             )
 
@@ -195,12 +197,13 @@ def check_det_configs(
                     f"0 or more, not {deadtime!r}."
                 )
                 continue
-            needed = config.frames_per_point * (config.exposure + deadtime)
+            needed = config.collections_per_event * (config.exposure + deadtime)
             if needed > period and not isclose(needed, period):
                 problems.append(
-                    f"{config.detector.name!r} needs {needed:g} s per point "
-                    f"({config.frames_per_point} x ({config.exposure:g} s exposure "
-                    f"+ {deadtime:g} s deadtime)) but the period is {period:g} s."
+                    f"{config.detector.name!r} needs {needed:g} s per event "
+                    f"({config.collections_per_event} x ({config.exposure:g} s "
+                    f"exposure + {deadtime:g} s deadtime)) but the period is "
+                    f"{period:g} s."
                 )
 
     if problems:
