@@ -1,9 +1,18 @@
 import pytest
-from ophyd_async.core import FlyMotorInfo
+from ophyd_async.core import (
+    FlyMotorInfo,
+    StaticPathProvider,
+    UUIDFilenameProvider,
+    get_mock_put,
+    init_devices,
+)
+from panda_sim import HDFPandaWithCalc, add_pcomp_inp
 
 from xpd_tools.flyers import (
     PandaPcompDirection,
+    SingleAxisFlyableLogic,
     SingleAxisFlyscanInfo,
+    TtlRoute,
     calculate_move_time_for_flyscan,
     construct_fly_info_models,
 )
@@ -261,3 +270,52 @@ def test_pcomp_start_does_not_depend_on_where_the_motor_is():
         )
         starts.add(flyer_info.start)
     assert starts == {1000 + 1111}
+
+
+@pytest.fixture
+async def panda(tmp_path) -> HDFPandaWithCalc:
+    path_provider = StaticPathProvider(UUIDFilenameProvider(), tmp_path)
+    async with init_devices(mock=True):
+        panda = HDFPandaWithCalc("PANDA:", path_provider)
+    await add_pcomp_inp(panda)
+    return panda
+
+
+def _flyscan_info(**kwargs) -> SingleAxisFlyscanInfo:
+    return SingleAxisFlyscanInfo(
+        start=0,
+        num_pulses=12,
+        direction=PandaPcompDirection.POSITIVE,
+        pulse_width=0.01,
+        pulse_step=0.02,
+        time_based=True,
+        **kwargs,
+    )
+
+
+async def test_prepare_routes_ttls(panda: HDFPandaWithCalc):
+    routes = [
+        TtlRoute(ttl_out=3, divisor=1),
+        TtlRoute(ttl_out=1, divisor=4, div_block=1),
+    ]
+    await SingleAxisFlyableLogic(panda, 1).on_prepare(_flyscan_info(ttl_routes=routes))
+
+    assert await panda.ttlout[3].val.get_value() == "PULSE1.OUT"
+    assert await panda.ttlout[1].val.get_value() == "DIV1.OUTD"
+    # A wired TTL output no detector uses gets no triggers.
+    assert await panda.ttlout[2].val.get_value() == "ZERO"
+    div = panda.div[1]
+    assert await div.divisor.get_value() == 4.0
+    assert await div.first_pulse.get_value() == "OutD"
+    assert await div.inp.get_value() == "PULSE1.OUT"
+    assert await div.enable.get_value() == "PCAP.ACTIVE"
+
+
+async def test_prepare_without_routes_leaves_ttls(panda: HDFPandaWithCalc):
+    await SingleAxisFlyableLogic(panda, 1).on_prepare(_flyscan_info())
+    assert [await panda.ttlout[n].val.get_value() for n in (1, 2, 3)] == [
+        "DIV1.OUTD",
+        "DIV2.OUTD",
+        "PULSE1.OUT",
+    ]
+    get_mock_put(panda.div[1].divisor).assert_not_called()

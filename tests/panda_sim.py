@@ -128,6 +128,25 @@ class InencBlock(Device):
         super().__init__(name="inenc1")
 
 
+class DivBlock(Device):
+    """A PandA pulse divider, as saved in ``MultiTrigMultiDetV1.yaml``."""
+
+    def __init__(self):
+        self.divisor = soft_signal_rw(float, initial_value=1.0)
+        self.first_pulse = soft_signal_rw(str, initial_value="OutN")
+        self.inp = soft_signal_rw(str, initial_value="PULSE1.OUT")
+        self.enable = soft_signal_rw(str, initial_value="PCAP.ACTIVE")
+        super().__init__(name="div")
+
+
+class TtlOutBlock(Device):
+    """A PandA TTL output."""
+
+    def __init__(self, val: str = "ZERO"):
+        self.val = soft_signal_rw(str, initial_value=val)
+        super().__init__(name="ttlout")
+
+
 async def add_pcomp_inp(panda: HDFPanda) -> None:
     """Add the PCOMP1 input signal, which the flyer logic
     selects but PcompBlock lacks."""
@@ -140,3 +159,13 @@ class HDFPandaWithCalc(HDFPanda):
         super().__init__(prefix, path_provider)
         self.calc = DeviceVector({1: CalcBlock(), 2: CalcBlock()})
         self.inenc = DeviceVector({1: InencBlock(), 2: InencBlock()})
+        self.div = DeviceVector({1: DivBlock(), 2: DivBlock()})
+        # Wired as saved in MultiTrigMultiDetV1.yaml.
+        self.ttlout = DeviceVector(
+            {
+                1: TtlOutBlock("DIV1.OUTD"),
+                2: TtlOutBlock("DIV2.OUTD"),
+                3: TtlOutBlock("PULSE1.OUT"),
+                4: TtlOutBlock(),
+            }
+        )
