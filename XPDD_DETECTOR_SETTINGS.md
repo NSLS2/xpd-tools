@@ -24,23 +24,24 @@ Today `tomo_flyscan` takes `detectors: list[...]` and `exposure_time: float | Ma
 
 ```python
 # bsui: objects, or a bare detector for the defaults
-RE(tomo_flyscan([DetConfig(pilatus1, exposure=0.01, frames_per_point=10),
-                 DetConfig(xs3, exposure=0.1)], num_projections=1000))
+RE(tomo_flyscan([DetConfig(detector=pilatus1, exposure=0.01, collections_per_event=10),
+                 DetConfig(detector=xs3, exposure=0.1)], num_projections=1000))
 
 # Queue Server and GUI: the same entries as plain data
-detectors = [{"detector": "pilatus1", "exposure": 0.01, "frames_per_point": 10},
+detectors = [{"detector": "pilatus1", "exposure": 0.01, "collections_per_event": 10},
              {"detector": "xs3", "exposure": 0.1}]
 ```
 
 1. **`DetConfig`** (name to be agreed): a small pydantic model in xpd-tools with only what a user chooses:
-   `detector`, `exposure` (s), `frames_per_point` (integer, default 1). The plan builds each detector's full
+   `detector`, `exposure` (s), `collections_per_event` (integer, default 1: frames per frame of the slowest detector,
+   ophyd-async's `TriggerInfo` name, since a fly scan has no points). The plan builds each detector's full
    ophyd-async `TriggerInfo` from it (trigger type, number of events, deadtime), so a user cannot enter values that
    contradict the scan.
 2. **The plan accepts any mix** of bare detectors, `DetConfig` objects and the equivalent dicts, and turns each into a
    `DetConfig` first.
 3. **One check function**, pure and tested, called by the plan before anything moves, and by the GUI for live
-   feedback: at most 3 detectors; no detector twice; `frames_per_point` a whole number, so frame counts are
-   multiples of each other by construction; each detector's exposure plus deadtime fits its period.
+   feedback: at most 3 detectors; no detector twice; each `collections_per_event` divides the larger ones, so frame
+   counts are whole multiples of each other; each detector's frames (exposure plus deadtime) fit the period.
 4. **The run records it**: each detector's settings go into the start document, so processing finds them in Tiled
    (R3 in [`XPD_DATA_PROCESSING.md`](XPD_DATA_PROCESSING.md#proposed-requirements)).
 5. **The GUI form (hextools)** learns one generic thing: a list whose entries are a pydantic model gets one row per
@@ -61,12 +62,14 @@ Why this shape:
 
 ### Order of work
 
-1. Now: `DetConfig`, the check function, and `tomo_flyscan` accepting the list (with `frames_per_point` held at 1
+Implementation: [#51](https://github.com/NSLS2/xpd-tools/pull/51) (`DetConfig` and the check, into `xpdd-tomo`).
+
+1. Now: `DetConfig`, the check function, and `tomo_flyscan` accepting the list (with `collections_per_event` held at 1
    until the PandA can trigger detectors at different rates; Kyle is working on that).
 2. hextools plan form: show "unsupported type" instead of a device dropdown for any type it does not know (today an
    unrecognised required parameter falls through to a device dropdown, [`_build_fields`](https://github.com/NSLS2/hextools/blob/f1aa3bc6ef452607162b381e40c9a445263eec3c/src/hextools/gui/plan_widget.py#L338)); then the
    list-of-entries editor.
-3. `frames_per_point > 1` once per-detector triggering is in, with the run layout agreed with Mehmet (R3).
+3. `collections_per_event > 1` once per-detector triggering is in, with the run layout agreed with Mehmet (R3).
 
 ## Alternatives considered
 
@@ -82,7 +85,7 @@ Why this shape:
 
 ## Questions
 
-1. Kyle: is `frames_per_point` the right knob for per-detector rates, or would you rather give each detector its own
+1. Kyle: is `collections_per_event` the right knob for per-detector rates, or would you rather give each detector its own
    period?
 2. Mehmet: which settings besides exposure do you change per scan (Pilatus threshold, IRIS readout mode, ...)?
 3. Name and home: `DetConfig` in xpd-tools, or shared with hextools from the start?
