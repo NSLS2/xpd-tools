@@ -145,3 +145,24 @@ def test_check_reports_every_problem_at_once(dets) -> None:
     assert "given more than once" in message
     assert "does not divide" in message
     assert "needs 0.4 s per point" in message
+
+
+@pytest.mark.parametrize("exposure", [float("inf"), float("nan")])
+def test_det_config_rejects_non_finite_exposure(dets, exposure) -> None:
+    with pytest.raises(ValidationError):
+        DetConfig(detector=dets[0], exposure=exposure)
+
+
+@pytest.mark.parametrize("period", [0, -0.1, float("inf"), float("nan")])
+def test_check_rejects_an_invalid_period(dets, period) -> None:
+    configs = [DetConfig(detector=dets[0], exposure=0.01)]
+    with pytest.raises(ValueError, match="period must be a finite number above 0"):
+        check_det_configs(configs, period=period)
+
+
+@pytest.mark.parametrize("deadtime", [-0.15, float("inf"), float("nan")])
+def test_check_rejects_an_invalid_deadtime(dets, deadtime) -> None:
+    pil = dets[0]
+    configs = [DetConfig(detector=pil, exposure=0.2)]
+    with pytest.raises(ValueError, match="'pilatus1' deadtime must be a finite"):
+        check_det_configs(configs, period=0.1, deadtimes={pil: deadtime})

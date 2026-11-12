@@ -8,7 +8,7 @@ dict values, but not in dict keys, so the detector is a value.
 
 from collections.abc import Iterable, Mapping, Sequence
 from itertools import pairwise
-from math import isclose
+from math import isclose, isfinite
 from typing import Any
 
 from ophyd_async.core import Device
@@ -41,7 +41,12 @@ class DetConfig(BaseModel):
     (0.01, 1)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+        extra="forbid",
+        frozen=True,
+    )
 
     detector: Device
     exposure: PositiveFloat
@@ -119,12 +124,12 @@ def check_det_configs(
     configs : Sequence[DetConfig]
         The scan's detectors and their settings.
     period : float, optional
-        Time between points of the scan, in seconds. If given, each detector's
-        frames must fit in it: ``frames_per_point * (exposure + deadtime) <=
-        period``.
+        Time between points of the scan, in seconds; finite and above 0. If
+        given, each detector's frames must fit in it: ``frames_per_point *
+        (exposure + deadtime) <= period``.
     deadtimes : Mapping[Device, float], optional
-        Each detector's deadtime in seconds, used with ``period``; a missing
-        detector counts as 0.
+        Each detector's deadtime in seconds, finite and 0 or more, used with
+        ``period``; a missing detector counts as 0.
     max_detectors : int, optional
         Most detectors allowed. Default :data:`MAX_DETECTORS`.
 
@@ -133,7 +138,8 @@ def check_det_configs(
     ValueError
         Listing every problem: no detectors, too many, a detector given twice
         (or two with the same name), frame counts that are not whole multiples
-        of each other, or frames that do not fit the period.
+        of each other, an invalid period or deadtime, or frames that do not fit
+        the period.
 
     Examples
     --------
@@ -177,10 +183,18 @@ def check_det_configs(
                 "detector's frame count must be a whole multiple of the others'."
             )
 
-    if period is not None:
+    if period is not None and not (isfinite(period) and period > 0):
+        problems.append(f"period must be a finite number above 0, not {period!r}.")
+    elif period is not None:
         deadtimes = deadtimes or {}
         for config in configs:
             deadtime = deadtimes.get(config.detector, 0.0)
+            if not (isfinite(deadtime) and deadtime >= 0):
+                problems.append(
+                    f"{config.detector.name!r} deadtime must be a finite number of "
+                    f"0 or more, not {deadtime!r}."
+                )
+                continue
             needed = config.frames_per_point * (config.exposure + deadtime)
             if needed > period and not isclose(needed, period):
                 problems.append(
