@@ -39,16 +39,21 @@ def _run_from_docs(docs: dict[str, list[dict]]) -> FakeRun:
 
 
 def test_tomo_flyscan_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sleeps):
-    tomo_rig.num_frames = 5
-    RE(tomo_flyscan([tomo_rig.pilatus], 5, 0.001, **tomo_rig.device_kwargs()))
+    rig = tomo_rig
+    rig.num_frames = 6
+    RE(
+        tomo_flyscan(
+            [rig.config(rig.pilatus, 6, 0.001), rig.config(rig.iris, 3, 0.001)],
+            **rig.device_kwargs(),
+        )
+    )
     validate_run(_run_from_docs(docs), TOMO_FLYSCAN_V1)
 
 
 def test_tomo_dark_flat_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sleeps):
     RE(
         tomo_dark_flat(
-            [tomo_rig.pilatus],
-            0.001,
+            [tomo_rig.config(tomo_rig.pilatus, 1, 0.001)],
             num_dark_images=1,
             num_flat_images=1,
             sample_out_motor=tomo_rig.sample_out_motor,
@@ -59,59 +64,93 @@ def test_tomo_dark_flat_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sle
     validate_run(_run_from_docs(docs), TOMO_DARK_FLAT_V1)
 
 
+def _det_config(divisor: int) -> dict[str, Any]:
+    return {
+        "nproj": 6 // divisor,
+        "num_images": 6 // divisor + 1,
+        "exposure_time": 0.1,
+        "images_to_average": 1,
+        "filter_type": "Average",
+        "ttl_out": divisor,
+        "trigger_divisor": divisor,
+    }
+
+
 FLYSCAN_START = {
     "plan_name": "tomo_flyscan",
-    "detectors": ["iris1", "pilatus1"],
-    "num_points": 3,
-    "exposure_time": {"iris1": 0.1, "pilatus1": 0.05},
-    "max_exposure_time": 0.1,
-    "acquire_period": 0.11,
+    "detectors": ["pilatus1", "iris1"],
+    "detector_configs": {"pilatus1": _det_config(1), "iris1": _det_config(2)},
+    "num_base_pulses": 6,
+    "trigger_period": 0.11,
     "time_based": True,
     "start_position": 0,
     "stop_position": 180,
-    "images_to_average": 1,
     "rotation_motor": "amPhi",
 }
-FLYSCAN_STREAMS = {"primary": ["iris1", "pilatus1", "rotation_angle"]}
+FLYSCAN_STREAMS = {
+    "pilatus1": ["pilatus1"],
+    "iris1": ["iris1"],
+    "rotation": ["rotation_angle"],
+}
+
+
+def _without(mapping: dict, key: str) -> dict:
+    return {k: v for k, v in mapping.items() if k != key}
 
 
 @pytest.mark.parametrize(
     ("start", "streams", "match"),
     [
         ({**FLYSCAN_START, "plan_name": "count"}, {}, "plan_name"),
+        (_without(FLYSCAN_START, "detector_configs"), {}, "detector_configs"),
+        (_without(FLYSCAN_START, "trigger_period"), {}, "trigger_period"),
         (
-            {k: v for k, v in FLYSCAN_START.items() if k != "exposure_time"},
-            {},
-            "exposure_time",
+            {**FLYSCAN_START, "detector_configs": [1, 2]},
+            FLYSCAN_STREAMS,
+            "must be a mapping",
         ),
         (
-            {k: v for k, v in FLYSCAN_START.items() if k != "max_exposure_time"},
-            {},
-            "max_exposure_time",
+            {
+                **FLYSCAN_START,
+                "detector_configs": {"pilatus1": _det_config(1)},
+            },
+            FLYSCAN_STREAMS,
+            "no entry for 'iris1'",
         ),
-        (FLYSCAN_START, {}, "no 'primary' stream"),
-        (FLYSCAN_START, {"primary": ["iris1", "pilatus1"]}, "rotation_angle"),
+        (
+            {
+                **FLYSCAN_START,
+                "detector_configs": {
+                    "pilatus1": _det_config(1),
+                    "iris1": _without(_det_config(2), "ttl_out"),
+                },
+            },
+            FLYSCAN_STREAMS,
+            r"'iris1' is missing \['ttl_out'\]",
+        ),
+        (FLYSCAN_START, _without(FLYSCAN_STREAMS, "iris1"), "no 'iris1' stream"),
+        (
+            FLYSCAN_START,
+            {**FLYSCAN_STREAMS, "iris1": ["iris1-stats"]},
+            r"'iris1' is missing \['iris1'\]",
+        ),
+        (FLYSCAN_START, _without(FLYSCAN_STREAMS, "rotation"), "no 'rotation' stream"),
+        (
+            FLYSCAN_START,
+            {**FLYSCAN_STREAMS, "rotation": []},
+            "rotation_angle",
+        ),
         (
             {**FLYSCAN_START, "last_dark_flat_uid": 5},
             FLYSCAN_STREAMS,
             "must be a string",
         ),
-        ({**FLYSCAN_START, "detectors": "iris1"}, {}, "list of names"),
-        ({**FLYSCAN_START, "exposure_time": 0.1}, {}, "map detector names"),
-        (
-            {**FLYSCAN_START, "exposure_time": {"iris1": 0.1}},
-            {},
-            r"no entry for \['pilatus1'\]",
-        ),
+        ({**FLYSCAN_START, "detectors": "iris1"}, FLYSCAN_STREAMS, "list of names"),
     ],
 )
 def test_validate_tomo_flyscan_rejects(start, streams, match: str):
     with pytest.raises(SpecValidationError, match=match):
         validate_run(FakeRun(start, streams), TOMO_FLYSCAN_V1)
-
-
-def test_validate_tomo_flyscan_accepts():
-    validate_run(FakeRun(FLYSCAN_START, FLYSCAN_STREAMS), TOMO_FLYSCAN_V1)
 
 
 def test_validate_rejects_unknown_version():
@@ -130,11 +169,6 @@ DARK_FLAT_START = {
     "sample_out_motor": "amTopX",
     "sample_out_offset": 2.0,
 }
-
-
-def test_validate_tomo_dark_flat_accepts():
-    streams = {"dark": ["iris1"], "flat": ["iris1"]}
-    validate_run(FakeRun(DARK_FLAT_START, streams), TOMO_DARK_FLAT_V1)
 
 
 @pytest.mark.parametrize(
