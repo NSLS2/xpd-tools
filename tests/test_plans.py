@@ -503,3 +503,23 @@ def test_single_axis_flyscan_on_encoder_axis_2(
     assert docs["stop"][0]["exit_status"] == "success"
     position_at_first_trigger = 366.0 + (sim.pcomp.start - 5_000) * ENCODER_RESOLUTION
     assert position_at_first_trigger == pytest.approx(1.0, abs=1e-3)
+
+
+def test_single_axis_flyscan_routes_detector_ttls(
+    RE: RunEngine,
+    devices: tuple[Pilatus4Detector, HDFPandaWithCalc, RotationMotor],
+):
+    """Each detector's TTL output is fed from the base pulses, others switched off."""
+    pilatus1, panda, motor = devices
+    RE(
+        single_axis_flyscan(
+            detectors=[pilatus1],
+            panda=panda,
+            motor=motor,
+            num_images=NUM_IMAGES,
+            start=SCAN_START,
+            stop=SCAN_STOP,
+        )
+    )
+    assert asyncio.run(panda.ttlout[1].val.get_value()) == "PULSE1.OUT"
+    assert asyncio.run(panda.ttlout[2].val.get_value()) == "ZERO"

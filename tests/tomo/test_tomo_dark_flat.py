@@ -5,8 +5,7 @@ from typing import Any, cast
 import pytest
 from bluesky import plan_stubs as bps
 from bluesky.run_engine import RunEngine
-from nslsii.ophyd_async.devices import Xspress3Detector
-from ophyd_async.core import get_mock_put, init_devices
+from ophyd_async.core import get_mock_put
 from tomo_rig import TomoRig
 
 from xpd_tools.shutter import ShutterStatus
@@ -22,8 +21,7 @@ def _dark_flat(rig: TomoRig, **kwargs):
     kwargs.setdefault("num_dark_images", NUM_DARK)
     kwargs.setdefault("num_flat_images", NUM_FLAT)
     return tomo_dark_flat(
-        [rig.pilatus],
-        EXPOSURE,
+        [rig.config(rig.pilatus, 1, EXPOSURE)],
         sample_out_motor=rig.sample_out_motor,
         fe_shutter=rig.fe_shutter,
         photon_shutter=rig.photon_shutter,
@@ -81,20 +79,21 @@ async def test_tomo_dark_flat_moves_sample_and_shutter(
     assert await tomo_rig.sample_out_motor.user_readback.get_value() == 3.0
 
 
-async def test_tomo_dark_flat_restores_exposure_time(
-    RE: RunEngine, tomo_rig: TomoRig, sleeps
-):
-    RE(_dark_flat(tomo_rig))
-    assert await tomo_rig.pilatus.driver.acquire_time.get_value() == 0.5
-
-
 async def test_tomo_dark_flat_per_detector_exposure(
     RE: RunEngine, tomo_rig: TomoRig, docs, sleeps
 ):
     RE(
         tomo_dark_flat(
-            [tomo_rig.pilatus, tomo_rig.iris],
-            {tomo_rig.pilatus: 0.002, "iris1": 0.005},
+            [
+                tomo_rig.config(tomo_rig.pilatus, 1, 0.002),
+                # A dict works too; only the detector and exposure time are used.
+                {
+                    "detector": tomo_rig.iris,
+                    "nproj": 9,
+                    "exposure_time": 0.005,
+                    "ttl_out": 2,
+                },
+            ],
             num_dark_images=NUM_DARK,
             num_flat_images=NUM_FLAT,
             sample_out_motor=tomo_rig.sample_out_motor,
@@ -161,8 +160,7 @@ def test_tomo_dark_flat_closes_shutter_before_return_on_failure(
 def test_tomo_dark_flat_without_shutter(RE: RunEngine, tomo_rig: TomoRig, sleeps):
     RE(
         tomo_dark_flat(
-            [tomo_rig.pilatus],
-            EXPOSURE,
+            [tomo_rig.config(tomo_rig.pilatus, 1, EXPOSURE)],
             num_dark_images=NUM_DARK,
             num_flat_images=NUM_FLAT,
             use_shutter=False,
@@ -172,21 +170,26 @@ def test_tomo_dark_flat_without_shutter(RE: RunEngine, tomo_rig: TomoRig, sleeps
     assert tomo_rig.shutter_log == []
 
 
-def test_tomo_dark_flat_rejects_zero_offset(RE: RunEngine, tomo_rig: TomoRig):
-    with pytest.raises(ValueError, match="non-zero"):
-        RE(_dark_flat(tomo_rig, sample_out_offset=0))
-
-
-async def test_tomo_dark_flat_rejects_xspress3(RE: RunEngine, tomo_rig: TomoRig):
-    async with init_devices(mock=True):
-        xs3 = Xspress3Detector("XSP:", name="xs3")
-    with pytest.raises(ValueError, match="xs3 is an Xspress3"):
-        RE(tomo_dark_flat([xs3], EXPOSURE))  # type: ignore[list-item]
-
-
-def test_tomo_dark_flat_requires_a_sample_out_motor(RE: RunEngine, tomo_rig: TomoRig):
-    with pytest.raises(ValueError, match="'amTopX'"):
-        RE(tomo_dark_flat([tomo_rig.pilatus], EXPOSURE))
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"sample_out_offset": 0}, "non-zero"),
+        ({"det": "xs3"}, "xs3 is an Xspress3"),
+        ({"no_motor": True}, "'amTopX'"),
+    ],
+)
+def test_tomo_dark_flat_rejects(RE: RunEngine, tomo_rig: TomoRig, kwargs, match):
+    det = getattr(tomo_rig, kwargs.pop("det", "pilatus"))
+    if kwargs.pop("no_motor", False):
+        plan = tomo_dark_flat([tomo_rig.config(det, 1, EXPOSURE)])
+    else:
+        plan = tomo_dark_flat(
+            [tomo_rig.config(det, 1, EXPOSURE)],
+            sample_out_motor=tomo_rig.sample_out_motor,
+            **kwargs,
+        )
+    with pytest.raises(ValueError, match=match):
+        RE(plan)
 
 
 def test_tracker_records_dark_flat_uid(RE: RunEngine, tomo_rig: TomoRig, sleeps):

@@ -1,14 +1,123 @@
 """Flyer classes for XPD beamline at NSLS-II."""
 
 import asyncio
+from collections.abc import Awaitable
+from typing import Any
 
+from nslsii.ophyd_async.devices import Xspress3Detector
 from ophyd_async.core import (
     ConfinedModel,
     FlyableLogic,
     FlyMotorInfo,
     wait_for_value,
 )
+from ophyd_async.epics.adkinetix import KinetixDetector
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
+from pydantic import model_validator
+
+from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+
+#: PandA TTL outputs wired to detectors (``MultiTrigMultiDetV1.yaml``). TTL1 is the
+#: Pilatus, TTL2 the Xspress3 and TTL3 the Kinetix (iris).
+PANDA_TTL_OUTPUTS = (1, 2, 3)
+
+#: PandA pulse dividers (DIV blocks) available to slow detectors' triggers.
+PANDA_DIV_BLOCKS = (1, 2)
+
+#: The PandA output every detector trigger derives from.
+BASE_TRIGGER = "PULSE1.OUT"
+
+
+#: The PandA TTL output each kind of detector is wired to at the TOMO endstation.
+DEFAULT_TTL_OUT: dict[type, int] = {
+    Pilatus4Detector: 1,
+    Xspress3Detector: 2,
+    KinetixDetector: 3,
+}
+
+
+def default_ttl_out(detector: object) -> int | None:
+    """Return the PandA TTL output a detector is wired to, or None if unknown.
+
+    Parameters
+    ----------
+    detector : object
+        A detector.
+
+    Returns
+    -------
+    int | None
+        The TTL output for the detector's kind, from :data:`DEFAULT_TTL_OUT`.
+    """
+    for kind, ttl_out in DEFAULT_TTL_OUT.items():
+        if isinstance(detector, kind):
+            return ttl_out
+    return None
+
+
+def check_position_triggers(travel_counts: int, num_pulses: int) -> None:
+    """Check that ``num_pulses`` position triggers fit in ``travel_counts``.
+
+    Parameters
+    ----------
+    travel_counts : int
+        The encoder counts the motor travels over the scan.
+    num_pulses : int
+        The number of pulses the PandA sends.
+
+    Raises
+    ------
+    ValueError
+        If there is fewer than 2 pulses, the travel is not a whole number of counts
+        per step, or there are fewer than two counts per step (one live, one dead).
+    """
+    num_steps = num_pulses - 1
+    if num_steps < 1:
+        raise ValueError(f"A flyscan needs at least 2 pulses, got {num_pulses}.")
+    if travel_counts % num_steps != 0:
+        raise ValueError(
+            f"Travel distance in counts ({travel_counts}) is not evenly divisible "
+            f"by the number of steps ({num_steps})."
+        )
+    if travel_counts < num_steps * 2:
+        raise ValueError(
+            f"Travel distance in counts ({travel_counts}) is less than the minimum"
+            f" required for the number of pulses ({num_pulses}). At least two "
+            f"counts are required between each pulse, one for livetime, one "
+            f"for deadtime({2 * num_steps})."
+        )
+
+
+class TtlRoute(ConfinedModel):
+    """Where one TTL output takes its triggers from during a flyscan.
+
+    Attributes
+    ----------
+    ttl_out : int
+        The PandA TTL output, one of :data:`PANDA_TTL_OUTPUTS`.
+    divisor : int
+        Every how many base pulses (``PULSE1.OUT``) this TTL fires, from the first.
+    div_block : int | None
+        The DIV block dividing the base pulses; None when ``divisor`` is 1 and the
+        TTL is fed ``PULSE1.OUT`` directly.
+    """
+
+    ttl_out: int
+    divisor: int = 1
+    div_block: int | None = None
+
+    @model_validator(mode="after")
+    def _check_div_block(self) -> "TtlRoute":
+        if self.divisor < 1:
+            raise ValueError(f"divisor must be at least 1, got {self.divisor}.")
+        if self.divisor > 1 and self.div_block is None:
+            raise ValueError(f"A divisor of {self.divisor} requires a div_block.")
+        if self.divisor == 1 and self.div_block is not None:
+            raise ValueError(
+                f"A divisor of 1 is fed PULSE1.OUT directly; div_block "
+                f"{self.div_block} must be None."
+            )
+        return self
 
 
 class SingleAxisFlyscanInfo(ConfinedModel):
@@ -28,6 +137,9 @@ class SingleAxisFlyscanInfo(ConfinedModel):
         The step between pulses, in counts for position based scans, s for time based
     time_based : bool
         If true, equally spaced in time triggers. Otherwise, equally spaced in position
+    ttl_routes : list[TtlRoute]
+        How each detector's TTL output is fed from the base pulses. Empty leaves the
+        TTL outputs and DIV blocks as they are.
     """
 
     start: int
@@ -40,6 +152,7 @@ class SingleAxisFlyscanInfo(ConfinedModel):
     position_dataset_units: str = "deg"
     position_scale: float = 1.0
     position_offset: float = 0.0
+    ttl_routes: list[TtlRoute] = []
 
 
 class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
@@ -104,7 +217,41 @@ class SingleAxisFlyableLogic(FlyableLogic[SingleAxisFlyscanInfo, None]):
                     pulse.step.set(value.pulse_step),
                 ]
             )
+        coros.extend(self._route_ttls(value.ttl_routes))
         await asyncio.gather(*coros)
+
+    def _route_ttls(self, routes: list[TtlRoute]) -> list[Awaitable[Any]]:
+        """Return the sets that route each TTL output to its detector's triggers.
+
+        A TTL output with divisor 1 is fed the base pulses directly. Any other is fed
+        from its DIV block, which divides the base pulses and passes the first one,
+        so every detector's first trigger comes with the first base pulse. Wired
+        TTL outputs no route uses are switched off.
+        """
+        if not routes:
+            return []
+        coros: list[Awaitable[Any]] = []
+        used = set()
+        for route in routes:
+            used.add(route.ttl_out)
+            ttlout = self.panda.ttlout[route.ttl_out]  # type: ignore
+            if route.div_block is None:
+                coros.append(ttlout.val.set(BASE_TRIGGER))
+                continue
+            div = self.panda.div[route.div_block]  # type: ignore
+            coros.extend(
+                [
+                    div.inp.set(BASE_TRIGGER),
+                    div.enable.set("PCAP.ACTIVE"),
+                    div.first_pulse.set("OutD"),
+                    div.divisor.set(float(route.divisor)),
+                    ttlout.val.set(f"DIV{route.div_block}.OUTD"),
+                ]
+            )
+        for ttl_out in PANDA_TTL_OUTPUTS:
+            if ttl_out not in used:
+                coros.append(self.panda.ttlout[ttl_out].val.set("ZERO"))  # type: ignore
+        return coros
 
     async def on_kickoff(self, ctx: None) -> None:
         await wait_for_value(self.pcomp.active, True, timeout=1)
@@ -222,20 +369,7 @@ def construct_fly_info_models(
     num_steps = num_pulses - 1
 
     if not time_based:
-        # Check to make sure the travel distance is evenly divisible by the number of
-        # steps, and that the travel distance is at least twice the number of steps.
-        if travel_counts % num_steps != 0:
-            raise ValueError(
-                f"Travel distance in counts ({travel_counts}) is not evenly divisible "
-                f"by the number of steps ({num_steps})."
-            )
-        elif travel_counts < num_steps * 2:
-            raise ValueError(
-                f"Travel distance in counts ({travel_counts}) is less than the minimum"
-                f" required for the number of pulses ({num_pulses}). At least two "
-                f"counts are required between each pulse, one for livetime, one "
-                f"for deadtime({2 * num_steps})."
-            )
+        check_position_triggers(travel_counts, num_pulses)
         pulse_width = 1
         pulse_step = travel_counts // num_steps
     else:

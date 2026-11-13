@@ -19,16 +19,15 @@ from typing import Any, cast
 from bluesky import plan_patterns
 from bluesky import plan_stubs as bps
 from bluesky import preprocessors as bpp
-from bluesky.protocols import Collectable
 from bluesky.utils import (
     FailedStatus,
     MsgGenerator,
     PlanHalt,
     RunEngineControlException,
+    short_uid,
 )
 from nslsii.ophyd_async.devices import Xspress3Detector
 from ophyd_async.core import DetectorTrigger, TriggerInfo
-from ophyd_async.epics.adcore import NDProcessFilterType
 from ophyd_async.epics.motor import Motor as AsyncEpicsMotor
 from ophyd_async.fastcs.panda import HDFPanda
 
@@ -39,11 +38,16 @@ from xpd_tools.plans.plans import compute_flyscan_models
 from xpd_tools.shutter import Shutter, ensure_shutter_closed, ensure_shutter_open
 from xpd_tools.specs import TOMO_DARK_FLAT_V1, TOMO_FLYSCAN_V1, spec_md
 from xpd_tools.tomo.utils import (
+    ROTATION_STREAM,
+    DetectorConfig,
+    DetectorConfigLike,
     ExposureTime,
-    ImagingDetector,
     TomoDetector,
+    TriggerRouting,
     exposure_md,
     resolve_exposure_times,
+    to_detector_configs,
+    validate_detector_configs,
 )
 from xpd_tools.utils import ensure_available
 
@@ -52,7 +56,7 @@ logger = logging.getLogger(__name__)
 #: Most frames any detector may drop before a flyscan is treated as failed.
 MAX_MISSING_FRAMES = 10
 
-#: Time added to the detectors' deadtime when ``acquire_period`` is not given.
+#: Time added to the base trigger period when ``trigger_period`` is not given.
 FRAME_PERIOD_MARGIN = 0.001
 
 #: Name of the PandA dataset holding the captured rotation angle.
@@ -86,8 +90,7 @@ def _shutters(
 
 
 def tomo_dark_flat(
-    detectors: list[ImagingDetector],
-    exposure_time: ExposureTime,
+    detector_configs: Sequence[DetectorConfigLike],
     num_dark_images: int = 20,
     num_flat_images: int = 50,
     sample_out_offset: float = 2.0,
@@ -107,18 +110,15 @@ def tomo_dark_flat(
     are restored, even if the plan fails. The shutter always closes before the
     sample moves back into the beam.
 
-    Take darks and flats with the same exposure time as the projections they
-    correct. Later runs link to this one through ``last_dark_flat_uid``, see
-    :class:`xpd_tools.tomo.utils.LastDarkFlatUIDTracker`.
+    Each detector takes its darks and flats with the exposure time of its config,
+    the same as the projections they correct. Later runs link to this one through
+    ``last_dark_flat_uid``, see :class:`xpd_tools.tomo.utils.LastDarkFlatUIDTracker`.
 
     Parameters
     ----------
-    detectors : list[ImagingDetector]
-        The imaging detectors (Pilatus4 or Kinetix) to take darks and flats with.
-    exposure_time : ExposureTime
-        The exposure time of each image, in seconds: one number for every detector,
-        or a mapping that gives every detector its own, keyed by detector or by its
-        ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
+    detector_configs : Sequence[DetectorConfigLike]
+        One detector config (or dict) per imaging detector (Pilatus4 or Kinetix).
+        Only each config's detector and exposure time are used.
     num_dark_images : int, default 20
         The number of dark images to acquire.
     num_flat_images : int, default 50
@@ -149,19 +149,22 @@ def tomo_dark_flat(
     Raises
     ------
     ValueError
-        If a detector is not an imaging detector, ``sample_out_offset`` is zero, or
-        ``exposure_time`` is invalid,
-        see :func:`xpd_tools.tomo.utils.resolve_exposure_times`.
+        If a detector is not an imaging detector, appears twice or shares a name,
+        or ``sample_out_offset`` is zero.
     """
-    for det in detectors:
-        if isinstance(det, Xspress3Detector):
+    configs = to_detector_configs(detector_configs)
+    for config in configs:
+        if isinstance(config.detector, Xspress3Detector):
             raise ValueError(
-                f"{det.name} is an Xspress3 fluorescence detector, which takes no "
+                f"{config.name} is an Xspress3 fluorescence detector, which takes no "
                 "darks or flats. Pass only imaging detectors."
             )
     if sample_out_offset == 0:
         raise ValueError("sample_out_offset must be non-zero to move the sample out.")
-    exposure_times = resolve_exposure_times(detectors, exposure_time)
+    detectors = [config.detector for config in configs]
+    exposure_times = resolve_exposure_times(
+        detectors, {config.detector: config.exposure_time for config in configs}
+    )
 
     sample_out_motor = ensure_available(
         AsyncEpicsMotor, sample_out_motor, DEFAULT_DEVICE_NAMES["sample_out_motor"]
@@ -233,17 +236,13 @@ def tomo_dark_flat(
 
 
 def tomo_flyscan(
-    detectors: list[TomoDetector],
-    num_projections: int,
-    exposure_time: ExposureTime,
-    acquire_period: float | None = None,
-    images_to_average: int = 1,
-    filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
+    detector_configs: Sequence[DetectorConfigLike],
+    trigger_period: float | None = None,
     start: float = 0,
     stop: float = 180,
     use_shutter: bool = True,
     sample_name: str | None = None,
-    time_based: bool = True,
+    time_based: bool = False,
     panda: HDFPanda | None = None,
     rot_motor: RotationMotor | None = None,
     fe_shutter: Shutter | None = None,
@@ -252,36 +251,41 @@ def tomo_flyscan(
 ) -> MsgGenerator[str]:
     """Take a single tomography fly scan, triggered by the PandA.
 
+    ``nproj`` projections are ``nproj`` angular intervals over ``start`` to ``stop``,
+    and the scan also takes an image at ``stop`` (0 and 360 degrees are the same view),
+    so a detector writes ``nproj + 1`` images, ``(stop - start) / nproj`` apart.
+
+    Each detector runs at its own rate. The PandA produces one base pulse
+    (``PULSE1.OUT``) per image of the detector with the most projections, and
+    captures ``rotation_angle`` on every base pulse. A detector needing fewer
+    triggers is fed every D-th base pulse through a PandA DIV block, starting with
+    the first, so trigger ``k`` of a detector with divisor D comes at base pulse
+    ``k * D``. Each detector writes to a stream named after it, and the PandA to
+    the ``rotation`` stream.
+
     The rotation motor moves to its run-up position while the photon shutter
     opens. Only then are the flyer and detectors armed, the PandA last, so no
-    frames are taken before the motor reaches speed. The detectors and the PandA
-    (which captures ``rotation_angle``) write to the ``primary`` stream.
+    frames are taken before the motor reaches speed.
 
-    If a few frames are dropped (at most :data:`MAX_MISSING_FRAMES`) the scan
-    keeps the frames it has and only logs a warning.
+    If a few frames are dropped (at most :data:`MAX_MISSING_FRAMES` per device) the
+    scan keeps the frames it has and only logs a warning.
 
     Afterwards the photon shutter is closed, the motor stopped, and its velocity
     restored, even if the plan fails.
 
     Parameters
     ----------
-    detectors : list[TomoDetector]
-        The detectors (Pilatus4, Kinetix or Xspress3) to take projections with.
-    num_projections : int
-        The number of projections to acquire.
-    exposure_time : ExposureTime
-        The exposure time of each projection, in seconds: one number for every
-        detector, or a mapping that gives every detector its own, keyed by detector
-        or by its ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
-    acquire_period : float | None, default None
-        The period between projections, in seconds, shared by every detector. None
-        uses the longest of each detector's exposure time plus its deadtime, plus
+    detector_configs : Sequence[DetectorConfigLike]
+        One :class:`~xpd_tools.tomo.utils.DetectorConfig` (or a dict of its
+        fields) per detector: the detector, its number of projections ``nproj``,
+        exposure time, PandA TTL output and filter type. At most three, and the
+        most projections must be a multiple of every detector's, see
+        :func:`~xpd_tools.tomo.utils.validate_detector_configs`.
+    trigger_period : float | None, default None
+        The time between base pulses, in seconds: the frame period of the fastest
+        detector. A detector with divisor D fires every D base pulses. None uses
+        the shortest period every detector can keep up with, plus
         :data:`FRAME_PERIOD_MARGIN`.
-    images_to_average : int, default 1
-        The number of images the Proc plugin combines into each projection. Only
-        detectors with a ``proc`` plugin support more than 1.
-    filter_type : NDProcessFilterType, default NDProcessFilterType.AVERAGE
-        How the Proc plugin combines the averaged images.
     start : float, default 0
         The starting angle of the rotation, in degrees.
     stop : float, default 180
@@ -291,7 +295,7 @@ def tomo_flyscan(
         shutter is open. If False the plan never touches the shutters.
     sample_name : str | None, default None
         The name of the sample being scanned.
-    time_based : bool, default True
+    time_based : bool, default False
         Whether the triggers are equally spaced in time, as opposed to in position.
     panda : HDFPanda | None, default None
         The PandA producing the triggers; None uses ``panda1``.
@@ -312,32 +316,35 @@ def tomo_flyscan(
     Raises
     ------
     ValueError
-        If ``acquire_period`` is shorter than a detector's exposure plus deadtime,
-        or ``exposure_time`` is invalid, see
-        :func:`xpd_tools.tomo.utils.resolve_exposure_times`.
+        If the detector configs don't work together, see
+        :func:`~xpd_tools.tomo.utils.validate_detector_configs`, or
+        ``trigger_period`` is too short for a detector's exposure plus deadtime.
     RuntimeError
-        If a detector drops more than :data:`MAX_MISSING_FRAMES` frames.
+        If a device drops more than :data:`MAX_MISSING_FRAMES` frames.
     """
-    if not detectors:
-        raise ValueError("tomo_flyscan needs at least one detector.")
-    filter_type = NDProcessFilterType(filter_type)
-    exposure_times = resolve_exposure_times(detectors, exposure_time)
-    # The trigger train and motor speed follow the longest exposure.
-    longest_exposure = max(exposure_times.values())
-    if images_to_average > 1:
-        no_proc = [det.name for det in detectors if not hasattr(det, "proc")]
-        if no_proc:
-            raise ValueError(
-                f"images_to_average={images_to_average} needs a Proc plugin, which "
-                f"{no_proc} lack(s)."
-            )
+    configs = to_detector_configs(detector_configs)
     panda = ensure_available(HDFPanda, panda, DEFAULT_DEVICE_NAMES["panda"])
     rot_motor = ensure_available(
         RotationMotor, rot_motor, DEFAULT_DEVICE_NAMES["rot_motor"]
     )
+    # Check the base pulses fit the encoder counts of the scan before touching
+    # any hardware.
+    encoder_resolution = yield from bps.rd(rot_motor.encoder_resolution)
+    counts = (
+        {}
+        if time_based
+        else {"start": start, "stop": stop, "encoder_resolution": encoder_resolution}
+    )
+    routing = validate_detector_configs(configs, **counts)
+    detectors = [config.detector for config in configs]
+    divisors = {
+        config.detector: route.divisor
+        for config, route in zip(configs, routing.routes, strict=True)
+    }
     fe_shutter, photon_shutter = _shutters(use_shutter, fe_shutter, photon_shutter)
 
-    # The shortest period each detector can run at: its exposure plus deadtime.
+    # A detector fired every D base pulses needs D base periods for its exposure
+    # plus deadtime, so the base period must be at least (exposure + deadtime) / D.
     deadtime_results = cast(
         list[asyncio.Future[tuple[Any, float | None]]],
         (yield from bps.wait_for([det.get_trigger_deadtime for det in detectors])),
@@ -346,30 +353,45 @@ def tomo_flyscan(
         det: result.result()[1] or 0.0
         for det, result in zip(detectors, deadtime_results, strict=True)
     }
-    min_periods = {det: exposure_times[det] + deadtimes[det] for det in detectors}
-    if acquire_period is None:
-        acquire_period = max(min_periods.values()) + FRAME_PERIOD_MARGIN
+    min_periods = {
+        config.detector: (config.exposure_time + deadtimes[config.detector])
+        / divisors[config.detector]
+        for config in configs
+    }
+    if trigger_period is None:
+        trigger_period = max(min_periods.values()) + FRAME_PERIOD_MARGIN
     else:
-        for det, min_period in min_periods.items():
-            if acquire_period < min_period:
+        for config in configs:
+            det = config.detector
+            if trigger_period < min_periods[det]:
                 raise ValueError(
-                    f"acquire_period {acquire_period} s is shorter than {det.name}'s "
-                    f"exposure time {exposure_times[det]} s plus its deadtime "
+                    f"trigger_period {trigger_period} s is too short for "
+                    f"{config.name}: fired every {divisors[det]} base pulse(s), it "
+                    f"needs {min_periods[det] * divisors[det]} s for its exposure "
+                    f"time {config.exposure_time} s plus its deadtime "
                     f"{deadtimes[det]} s."
                 )
 
     _md: dict[str, Any] = {
         "plan_name": "tomo_flyscan",
-        "detectors": [det.name for det in detectors],
-        "num_points": num_projections,
-        "exposure_time": exposure_md(exposure_times),
-        "max_exposure_time": longest_exposure,
-        "acquire_period": acquire_period,
+        "detectors": [config.name for config in configs],
+        "detector_configs": {
+            config.name: {
+                "nproj": config.nproj,
+                "num_images": config.num_images,
+                "exposure_time": config.exposure_time,
+                "images_to_average": config.images_to_average,
+                "filter_type": config.filter_type.value,
+                "ttl_out": config.ttl_out,
+                "trigger_divisor": divisors[config.detector],
+            }
+            for config in configs
+        },
+        "num_base_pulses": routing.num_base_pulses,
+        "trigger_period": trigger_period,
         "time_based": time_based,
         "start_position": start,
         "stop_position": stop,
-        "images_to_average": images_to_average,
-        "filter_type": filter_type.value,
         "rotation_motor": rot_motor.name,
         "tiled_specs": [spec_md(TOMO_FLYSCAN_V1)],
     }
@@ -383,40 +405,43 @@ def tomo_flyscan(
     flyer_info, motor_info = yield from compute_flyscan_models(
         panda,
         rot_motor,
-        num_pulses=num_projections * images_to_average,
-        max_exposure_time=longest_exposure,
+        num_pulses=routing.num_base_pulses,
+        max_exposure_time=trigger_period,
         start=start,
         stop=stop,
-        acq_time_overhead=acquire_period - longest_exposure,
+        acq_time_overhead=0.0,
         time_based=time_based,
         position_dataset_name=ROTATION_DATASET_NAME,
     )
+    flyer_info = flyer_info.model_copy(update={"ttl_routes": routing.routes})
 
-    # Every detector exposes for its own time on each trigger, and fills the rest
-    # of the shared period with deadtime.
+    # Each detector exposes for its own time on each of its triggers, and fills the
+    # rest of its D base periods with deadtime.
     det_trigger_infos = {
-        det: TriggerInfo(
-            number_of_events=num_projections,
-            livetime=exposure_times[det],
-            deadtime=acquire_period - exposure_times[det],
+        config.detector: TriggerInfo(
+            number_of_events=config.num_images,
+            livetime=config.exposure_time,
+            deadtime=divisors[config.detector] * trigger_period - config.exposure_time,
             trigger=DetectorTrigger.EXTERNAL_EDGE,
-            exposures_per_collection=images_to_average,
+            exposures_per_collection=config.images_to_average,
         )
-        for det in detectors
+        for config in configs
     }
     panda_trigger_info = TriggerInfo(
-        number_of_events=num_projections,
-        livetime=longest_exposure,
+        number_of_events=routing.num_base_pulses,
+        livetime=trigger_period,
         trigger=DetectorTrigger.EXTERNAL_LEVEL,
-        collections_per_event=images_to_average,
     )
 
     # The motor's fly prepare leaves VELO at the fly speed; restored in _cleanup.
     initial_velocity = yield from bps.rd(rot_motor.velocity)
 
     flyer = SingleAxisFlyableLogic(panda, rot_motor.panda_encoder).with_device()
-    all_detectors = [*detectors, panda]
-    all_devices = [*all_detectors, flyer, rot_motor]
+    all_devices = [*detectors, panda, flyer, rot_motor]
+    streams: dict[str, list[Any]] = {
+        **{config.name: [config.detector] for config in configs},
+        ROTATION_STREAM: [panda],
+    }
 
     @bpp.stage_decorator(all_devices)
     @bpp.run_decorator(md=_md)
@@ -430,29 +455,24 @@ def tomo_flyscan(
 
         # Arm the PandA and detectors only once the motor is at its run-up position,
         # so no frames are captured before kickoff.
-        yield from set_proc_filter_type(detectors, filter_type)
+        for config in configs:
+            yield from set_proc_filter_type([config.detector], config.filter_type)
+            # Let the plugins buffer the whole scan.
+            yield from set_plugin_queue_sizes(config.detector, config.num_triggers)
         yield from bps.prepare(flyer, flyer_info, group="arm")
         for det in detectors:
             yield from bps.prepare(det, det_trigger_infos[det], group="arm")
-        # Let the plugins buffer the whole scan.
-        yield from set_plugin_queue_sizes(
-            detectors, queue_size=num_projections * images_to_average
-        )
         yield from bps.wait(group="arm")
         # Preparing the PandA arms PCAP, which enables position compare, so it must
         # come after position compare is configured.
         yield from bps.prepare(panda, panda_trigger_info, wait=True)
 
         try:
-            yield from bps.fly_stub(
-                all_devices,  # type: ignore[arg-type]
-                collect_flush_period=max(1.0, acquire_period),
-                stream_name="primary",
+            yield from _fly_to_streams(
+                all_devices, streams, flush_period=max(1.0, trigger_period)
             )
         except FailedStatus as err:
-            yield from _tolerate_missed_frames(
-                detectors, all_devices, num_projections, err
-            )
+            yield from _tolerate_missed_frames(configs, panda, routing, streams, err)
 
     def _cleanup() -> MsgGenerator[None]:
         if photon_shutter is not None:
@@ -463,47 +483,81 @@ def tomo_flyscan(
     return (yield from bpp.finalize_wrapper(_body(), _cleanup()))
 
 
+def _collect_streams(streams: Mapping[str, Sequence[Any]]) -> MsgGenerator[None]:
+    """Collect each stream's devices into that stream."""
+    for name, devices in streams.items():
+        yield from bps.collect_all(*devices, name=name)
+
+
+def _fly_to_streams(
+    flyers: Sequence[Any],
+    streams: Mapping[str, Sequence[Any]],
+    flush_period: float,
+) -> MsgGenerator[None]:
+    """Fly ``flyers``, collecting each stream's devices into its own stream.
+
+    :func:`bluesky.plan_stubs.fly_stub` collects every device into one stream,
+    which needs them all to produce the same number of frames. Detectors running
+    at different rates each get a stream instead.
+    """
+    for name, devices in streams.items():
+        yield from bps.declare_stream(*devices, name=name)
+    yield from bps.kickoff_all(*flyers, wait=True)
+    group = short_uid(label="complete")
+    yield from bps.complete_all(*flyers, group=group, wait=False)
+    done = False
+    while not done:
+        done = yield from bps.wait(
+            group=group, timeout=flush_period, error_on_timeout=False
+        )
+        yield from _collect_streams(streams)
+
+
 def _tolerate_missed_frames(
-    detectors: Sequence[TomoDetector],
-    all_devices: Sequence[Any],
-    num_projections: int,
+    configs: Sequence[DetectorConfig],
+    panda: HDFPanda,
+    routing: TriggerRouting,
+    streams: Mapping[str, Sequence[Any]],
     err: FailedStatus,
 ) -> MsgGenerator[None]:
     """Keep a flyscan that dropped only a few frames, or re-raise its failure."""
+    expected: dict[Any, int] = {
+        **{config.detector: config.num_images for config in configs},
+        panda: routing.num_base_pulses,
+    }
+    devices = list(expected)
     # bluesky annotates this as Status, but the RunEngine returns futures.
     indices = cast(
         list[asyncio.Future[int]],
-        (yield from bps.wait_for([det.get_index for det in detectors])),
+        (yield from bps.wait_for([dev.get_index for dev in devices])),
     )
     missing = {
-        det.name: num_projections - index.result()
-        for det, index in zip(detectors, indices, strict=True)
+        dev: expected[dev] - index.result()
+        for dev, index in zip(devices, indices, strict=True)
     }
     most_missing = max(missing.values(), default=0)
     if most_missing == 0:
-        # The detectors got every frame, so something else failed.
+        # Every device got every frame, so something else failed.
         raise err
     if most_missing > MAX_MISSING_FRAMES:
-        if most_missing >= num_projections / 2:
-            # Losing half or more points is not a dropped-frame problem; re-raise the
-            # original failure for more helpful debugging.
+        if any(count >= expected[dev] / 2 for dev, count in missing.items()):
+            # Losing half or more of a device's points is not a dropped-frame
+            # problem; re-raise the original failure for more helpful debugging.
             raise err
         raise RuntimeError(
-            f"Scan failed! Detector(s) missed up to {most_missing} frame(s). "
+            f"Scan failed! Device(s) missed up to {most_missing} frame(s). "
             f"Failure threshold: {MAX_MISSING_FRAMES}"
         ) from err
-    for name, count in missing.items():
-        logger.warning("Detector %s missed %d frame(s)", name, count)
+    for dev, count in missing.items():
+        if count:
+            logger.warning("%s missed %d frame(s)", dev.name, count)
     logger.warning(
         "Max missed frames %d is below failure threshold %d",
         most_missing,
         MAX_MISSING_FRAMES,
     )
     # Record the frames that every device did manage to write.
-    yield from bps.collect(
-        *[dev for dev in all_devices if isinstance(dev, Collectable)],
-        name="primary",
-    )
+    yield from _collect_streams(streams)
 
 
 def _drop_xspress3_keys(
@@ -525,13 +579,9 @@ def _drop_xspress3_keys(
 
 
 def tomo_nd_step_scan(
-    detectors: list[TomoDetector],
+    detector_configs: Sequence[DetectorConfigLike],
     *args: Any,
-    num_projections: int,
-    exposure_time: ExposureTime,
-    acquire_period: float | None = None,
-    images_to_average: int = 1,
-    filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
+    trigger_period: float | None = None,
     start: float = 0,
     stop: float = 180,
     num_repeats: int = 1,
@@ -545,7 +595,7 @@ def tomo_nd_step_scan(
     dark_flat_frequency: int = 0,
     sample_out_velocity: float | None = None,
     sample_name: str | None = None,
-    time_based: bool = True,
+    time_based: bool = False,
     snake_axes: bool | Sequence[Steppable] = False,
     relative: bool = False,
     num_retries: int = 0,
@@ -565,25 +615,19 @@ def tomo_nd_step_scan(
 
     Parameters
     ----------
-    detectors : list[TomoDetector]
-        The detectors to use for each tomo flyscan.
+    detector_configs : Sequence[DetectorConfigLike]
+        One :class:`~xpd_tools.tomo.utils.DetectorConfig` (or a dict of its
+        fields) per detector: the detector, its number of projections ``nproj``,
+        exposure time, PandA TTL output and filter type. At most three, and the
+        most projections must be a multiple of every detector's, see
+        :func:`~xpd_tools.tomo.utils.validate_detector_configs`.
     *args : Any
         Step axes patterned like ``(motor1, start1, stop1, num1, motor2, start2,
         stop2, num2, ...)``, outermost (slowest) axis first, as in
         :func:`bluesky.plans.grid_scan`. With no axes, the flyscan is repeated
         in place.
-    num_projections : int
-        The number of projections to acquire at each grid point.
-    exposure_time : ExposureTime
-        The exposure time of each projection, in seconds: one number for every
-        detector, or a mapping that gives every detector its own, keyed by detector
-        or by its ophyd ``.name``, e.g. ``{pilatus1: 0.002, "iris1": 0.01}``.
-    acquire_period : float | None, default None
-        The period between projections. See :func:`tomo_flyscan`.
-    images_to_average : int, default 1
-        The number of images to average for each projection.
-    filter_type : NDProcessFilterType, default NDProcessFilterType.AVERAGE
-        How the Proc plugin combines the averaged images.
+    trigger_period : float | None, default None
+        The time between base pulses. See :func:`tomo_flyscan`.
     start : float, default 0
         The starting angle of the rotation, in degrees.
     stop : float, default 180
@@ -602,8 +646,7 @@ def tomo_nd_step_scan(
     dark_flat_exposure_time : ExposureTime | None, default None
         The exposure time of the darks/flats: a number for every imaging detector,
         or a mapping with every imaging detector's own (keys for Xspress3 detectors
-        are ignored). None gives each detector the same exposure time as its
-        projections.
+        are ignored). None gives each detector the exposure time of its config.
     num_dark_images : int, default 20
         Number of dark images per dark/flat.
     num_flat_images : int, default 50
@@ -614,7 +657,7 @@ def tomo_nd_step_scan(
         Velocity to move the sample out for flats at; None keeps the current one.
     sample_name : str | None, default None
         The name of the sample being scanned.
-    time_based : bool, default True
+    time_based : bool, default False
         Whether the triggers are equally spaced in time, as opposed to in position.
     snake_axes : bool | Sequence[Steppable], default False
         If True, snake every axis but the outermost; otherwise, the motors to snake.
@@ -641,30 +684,33 @@ def tomo_nd_step_scan(
     Raises
     ------
     ValueError
-        If the step axes are malformed, the outermost axis is snaked, or
-        ``exposure_time`` or ``dark_flat_exposure_time`` is invalid.
+        If the step axes are malformed, the outermost axis is snaked, the detector
+        configs don't work together, or ``dark_flat_exposure_time`` is invalid.
     RuntimeError
         If a grid point still fails after ``num_retries`` retries.
     """
     num_retries = max(num_retries, 0)
-    # Checked here so a bad key fails before anything moves.
-    exposure_times: dict[TomoDetector | str, float] = {
-        **resolve_exposure_times(detectors, exposure_time)
-    }
-    # Darks/flats are only for the imaging detectors, and by default match each
+    # Checked here so bad configs fail before anything moves.
+    configs = to_detector_configs(detector_configs)
+    validate_detector_configs(configs)
+    # Darks/flats are only for the imaging detectors, and by default use each
     # detector's projection exposure time.
-    imaging_detectors = [d for d in detectors if not isinstance(d, Xspress3Detector)]
-    if dark_flat_exposure_time is None:
-        dark_flat_exposure_times: dict[TomoDetector | str, float] = {
-            det: exposure_times[det] for det in imaging_detectors
-        }
-    else:
-        dark_flat_exposure_times = {
-            **resolve_exposure_times(
-                imaging_detectors,
-                _drop_xspress3_keys(dark_flat_exposure_time, detectors),
-            )
-        }
+    dark_flat_configs = [
+        config
+        for config in configs
+        if not isinstance(config.detector, Xspress3Detector)
+    ]
+    if dark_flat_exposure_time is not None:
+        times = resolve_exposure_times(
+            [config.detector for config in dark_flat_configs],
+            _drop_xspress3_keys(
+                dark_flat_exposure_time, [config.detector for config in configs]
+            ),
+        )
+        dark_flat_configs = [
+            config.model_copy(update={"exposure_time": times[config.detector]})
+            for config in dark_flat_configs
+        ]
 
     if len(args) % 4:
         raise ValueError("Step axes must be given as (motor, start, stop, num) groups.")
@@ -693,8 +739,7 @@ def tomo_nd_step_scan(
     def _dark_flat() -> MsgGenerator[None]:
         yield from bps.checkpoint()
         yield from tomo_dark_flat(
-            detectors=imaging_detectors,
-            exposure_time=dark_flat_exposure_times,
+            detector_configs=dark_flat_configs,
             num_dark_images=num_dark_images,
             num_flat_images=num_flat_images,
             sample_out_offset=dark_flat_offset,
@@ -748,12 +793,8 @@ def tomo_nd_step_scan(
             for attempt in range(1, num_retries + 2):
                 try:
                     previous_uid = yield from tomo_flyscan(
-                        detectors=detectors,
-                        num_projections=num_projections,
-                        exposure_time=exposure_times,
-                        acquire_period=acquire_period,
-                        images_to_average=images_to_average,
-                        filter_type=filter_type,
+                        detector_configs=configs,
+                        trigger_period=trigger_period,
                         start=stop if reverse else start,
                         stop=start if reverse else stop,
                         use_shutter=use_shutter,
@@ -800,12 +841,8 @@ def tomo_nd_step_scan(
 
 
 def tomo_flyscan_loop(
-    detectors: list[TomoDetector],
-    num_projections: int,
-    exposure_time: ExposureTime,
-    acquire_period: float | None = None,
-    images_to_average: int = 1,
-    filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
+    detector_configs: Sequence[DetectorConfigLike],
+    trigger_period: float | None = None,
     start: float = 0,
     stop: float = 180,
     num_iterations: int = 1,
@@ -819,7 +856,7 @@ def tomo_flyscan_loop(
     sample_out_velocity: float | None = None,
     use_shutter: bool = True,
     sample_name: str | None = None,
-    time_based: bool = True,
+    time_based: bool = False,
     num_retries: int = 0,
     sample_out_motor: AsyncEpicsMotor | None = None,
     panda: HDFPanda | None = None,
@@ -834,19 +871,10 @@ def tomo_flyscan_loop(
 
     Parameters
     ----------
-    detectors : list[TomoDetector]
-        The detectors to use for each tomo flyscan.
-    num_projections : int
-        The number of projections per tomogram.
-    exposure_time : ExposureTime
-        The exposure time of each projection, in seconds: a number, or a mapping
-        with every detector's own. See :func:`tomo_flyscan`.
-    acquire_period : float | None, default None
-        The period between projections.
-    images_to_average : int, default 1
-        The number of images to average for each projection.
-    filter_type : NDProcessFilterType, default NDProcessFilterType.AVERAGE
-        How the Proc plugin combines the averaged images.
+    detector_configs : Sequence[DetectorConfigLike]
+        One detector config (or dict) per detector. See :func:`tomo_flyscan`.
+    trigger_period : float | None, default None
+        The time between base pulses. See :func:`tomo_flyscan`.
     start : float, default 0
         The starting angle of the rotation, in degrees.
     stop : float, default 180
@@ -875,14 +903,14 @@ def tomo_flyscan_loop(
         Whether to use the shutters.
     sample_name : str | None, default None
         The name of the sample being scanned.
-    time_based : bool, default True
+    time_based : bool, default False
         Whether the triggers are equally spaced in time.
     num_retries : int, default 0
         How many times to retry a failed tomogram.
     sample_out_motor : AsyncEpicsMotor | None, default None
         The motor that moves the sample out for flats; None uses ``amTopX``.
     panda : HDFPanda | None, default None
-        The PandA; None uses ``panda1``.
+        The PandA producing the triggers; None uses ``panda1``.
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
@@ -891,12 +919,8 @@ def tomo_flyscan_loop(
         The photon shutter; None uses ``photon_shutter``.
     """
     yield from tomo_nd_step_scan(
-        detectors,
-        num_projections=num_projections,
-        exposure_time=exposure_time,
-        acquire_period=acquire_period,
-        images_to_average=images_to_average,
-        filter_type=filter_type,
+        detector_configs,
+        trigger_period=trigger_period,
         start=start,
         stop=stop,
         num_repeats=num_iterations,
@@ -921,16 +945,12 @@ def tomo_flyscan_loop(
 
 
 def tomo_1d_step_scan(
-    detectors: list[TomoDetector],
+    detector_configs: Sequence[DetectorConfigLike],
     step_motor: Steppable,
     step_start: float,
     step_stop: float,
     num_tomograms: int,
-    num_projections: int,
-    exposure_time: ExposureTime,
-    acquire_period: float | None = None,
-    images_to_average: int = 1,
-    filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
+    trigger_period: float | None = None,
     start: float = 0,
     stop: float = 180,
     use_shutter: bool = True,
@@ -944,7 +964,7 @@ def tomo_1d_step_scan(
     dark_flat_frequency: int = 0,
     dark_flat_exposure_time: ExposureTime | None = None,
     sample_out_velocity: float | None = None,
-    time_based: bool = True,
+    time_based: bool = False,
     sample_out_motor: AsyncEpicsMotor | None = None,
     panda: HDFPanda | None = None,
     rot_motor: RotationMotor | None = None,
@@ -958,8 +978,8 @@ def tomo_1d_step_scan(
 
     Parameters
     ----------
-    detectors : list[TomoDetector]
-        The detectors to use for each tomo flyscan.
+    detector_configs : Sequence[DetectorConfigLike]
+        One detector config (or dict) per detector. See :func:`tomo_flyscan`.
     step_motor : Steppable
         The motor to step between tomograms.
     step_start : float
@@ -968,17 +988,8 @@ def tomo_1d_step_scan(
         The last position of ``step_motor``.
     num_tomograms : int
         The number of points (tomograms) along ``step_motor``.
-    num_projections : int
-        The number of projections per tomogram.
-    exposure_time : ExposureTime
-        The exposure time of each projection, in seconds: a number, or a mapping
-        with every detector's own. See :func:`tomo_flyscan`.
-    acquire_period : float | None, default None
-        The period between projections.
-    images_to_average : int, default 1
-        The number of images to average for each projection.
-    filter_type : NDProcessFilterType, default NDProcessFilterType.AVERAGE
-        How the Proc plugin combines the averaged images.
+    trigger_period : float | None, default None
+        The time between base pulses. See :func:`tomo_flyscan`.
     start : float, default 0
         The starting angle of the rotation, in degrees.
     stop : float, default 180
@@ -1008,12 +1019,12 @@ def tomo_1d_step_scan(
         :func:`tomo_nd_step_scan`.
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
-    time_based : bool, default True
+    time_based : bool, default False
         Whether the triggers are equally spaced in time.
     sample_out_motor : AsyncEpicsMotor | None, default None
         The motor that moves the sample out for flats; None uses ``amTopX``.
     panda : HDFPanda | None, default None
-        The PandA; None uses ``panda1``.
+        The PandA producing the triggers; None uses ``panda1``.
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
@@ -1022,16 +1033,12 @@ def tomo_1d_step_scan(
         The photon shutter; None uses ``photon_shutter``.
     """
     yield from tomo_nd_step_scan(
-        detectors,
+        detector_configs,
         step_motor,
         step_start,
         step_stop,
         num_tomograms,
-        num_projections=num_projections,
-        exposure_time=exposure_time,
-        acquire_period=acquire_period,
-        images_to_average=images_to_average,
-        filter_type=filter_type,
+        trigger_period=trigger_period,
         start=start,
         stop=stop,
         use_shutter=use_shutter,
@@ -1055,7 +1062,7 @@ def tomo_1d_step_scan(
 
 
 def tomo_2d_step_scan(
-    detectors: list[TomoDetector],
+    detector_configs: Sequence[DetectorConfigLike],
     outer_motor: Steppable,
     outer_start: float,
     outer_stop: float,
@@ -1064,11 +1071,7 @@ def tomo_2d_step_scan(
     inner_start: float,
     inner_stop: float,
     inner_num: int,
-    num_projections: int,
-    exposure_time: ExposureTime,
-    acquire_period: float | None = None,
-    images_to_average: int = 1,
-    filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE,
+    trigger_period: float | None = None,
     start: float = 0,
     stop: float = 180,
     use_shutter: bool = True,
@@ -1083,7 +1086,7 @@ def tomo_2d_step_scan(
     dark_flat_frequency: int = 0,
     dark_flat_exposure_time: ExposureTime | None = None,
     sample_out_velocity: float | None = None,
-    time_based: bool = True,
+    time_based: bool = False,
     sample_out_motor: AsyncEpicsMotor | None = None,
     panda: HDFPanda | None = None,
     rot_motor: RotationMotor | None = None,
@@ -1097,8 +1100,8 @@ def tomo_2d_step_scan(
 
     Parameters
     ----------
-    detectors : list[TomoDetector]
-        The detectors to use for each tomo flyscan.
+    detector_configs : Sequence[DetectorConfigLike]
+        One detector config (or dict) per detector. See :func:`tomo_flyscan`.
     outer_motor : Steppable
         The slow (outer) step motor.
     outer_start : float
@@ -1115,17 +1118,8 @@ def tomo_2d_step_scan(
         The last position of ``inner_motor``.
     inner_num : int
         The number of points along ``inner_motor``.
-    num_projections : int
-        The number of projections per tomogram.
-    exposure_time : ExposureTime
-        The exposure time of each projection, in seconds: a number, or a mapping
-        with every detector's own. See :func:`tomo_flyscan`.
-    acquire_period : float | None, default None
-        The period between projections.
-    images_to_average : int, default 1
-        The number of images to average for each projection.
-    filter_type : NDProcessFilterType, default NDProcessFilterType.AVERAGE
-        How the Proc plugin combines the averaged images.
+    trigger_period : float | None, default None
+        The time between base pulses. See :func:`tomo_flyscan`.
     start : float, default 0
         The starting angle of the rotation, in degrees.
     stop : float, default 180
@@ -1157,12 +1151,12 @@ def tomo_2d_step_scan(
         :func:`tomo_nd_step_scan`.
     sample_out_velocity : float | None, default None
         Velocity to move the sample out for flats at.
-    time_based : bool, default True
+    time_based : bool, default False
         Whether the triggers are equally spaced in time.
     sample_out_motor : AsyncEpicsMotor | None, default None
         The motor that moves the sample out for flats; None uses ``amTopX``.
     panda : HDFPanda | None, default None
-        The PandA; None uses ``panda1``.
+        The PandA producing the triggers; None uses ``panda1``.
     rot_motor : RotationMotor | None, default None
         The rotation motor; None uses ``amPhi``.
     fe_shutter : Shutter | None, default None
@@ -1171,7 +1165,7 @@ def tomo_2d_step_scan(
         The photon shutter; None uses ``photon_shutter``.
     """
     yield from tomo_nd_step_scan(
-        detectors,
+        detector_configs,
         outer_motor,
         outer_start,
         outer_stop,
@@ -1180,11 +1174,7 @@ def tomo_2d_step_scan(
         inner_start,
         inner_stop,
         inner_num,
-        num_projections=num_projections,
-        exposure_time=exposure_time,
-        acquire_period=acquire_period,
-        images_to_average=images_to_average,
-        filter_type=filter_type,
+        trigger_period=trigger_period,
         start=start,
         stop=stop,
         use_shutter=use_shutter,
