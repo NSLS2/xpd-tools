@@ -311,6 +311,19 @@ async def test_prepare_routes_ttls(panda: HDFPandaWithCalc):
     assert await div.enable.get_value() == "PCAP.ACTIVE"
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"divisor": 4},
+        {"divisor": 1, "div_block": 1},
+        {"divisor": 0},
+    ],
+)
+def test_ttl_route_rejects_inconsistent_divisor(kwargs):
+    with pytest.raises(ValueError):
+        TtlRoute(ttl_out=1, **kwargs)
+
+
 async def test_prepare_without_routes_leaves_ttls(panda: HDFPandaWithCalc):
     await SingleAxisFlyableLogic(panda, 1).on_prepare(_flyscan_info())
     assert [await panda.ttlout[n].val.get_value() for n in (1, 2, 3)] == [

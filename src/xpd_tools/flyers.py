@@ -13,6 +13,7 @@ from ophyd_async.core import (
 )
 from ophyd_async.epics.adkinetix import KinetixDetector
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
+from pydantic import model_validator
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 
@@ -104,6 +105,19 @@ class TtlRoute(ConfinedModel):
     ttl_out: int
     divisor: int = 1
     div_block: int | None = None
+
+    @model_validator(mode="after")
+    def _check_div_block(self) -> "TtlRoute":
+        if self.divisor < 1:
+            raise ValueError(f"divisor must be at least 1, got {self.divisor}.")
+        if self.divisor > 1 and self.div_block is None:
+            raise ValueError(f"A divisor of {self.divisor} requires a div_block.")
+        if self.divisor == 1 and self.div_block is not None:
+            raise ValueError(
+                f"A divisor of 1 is fed PULSE1.OUT directly; div_block "
+                f"{self.div_block} must be None."
+            )
+        return self
 
 
 class SingleAxisFlyscanInfo(ConfinedModel):
