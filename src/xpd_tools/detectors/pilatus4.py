@@ -31,6 +31,7 @@ from ophyd_async.epics.adcore import (
     AreaDetector,
     NDFileHDF5IO,
     NDPluginBaseIO,
+    NDProcessIO,
     prepare_exposures,
     trigger_info_from_driver,
 )
@@ -424,6 +425,9 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         Factories for file writer plugins and their data logics
     driver_suffix : str, optional
         Suffix for the driver PV, by default "cam1:"
+    proc_suffix : str | None, optional
+        Suffix for the Proc plugin for frame averaging, by default "Proc1:"
+        Set to None to disable the Proc plugin.
     plugins : dict[str, NDPluginBaseIO], optional
         Additional areaDetector plugins to include, by default None
     config_sigs : Sequence[SignalR], optional
@@ -432,16 +436,24 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         Name for the detector device, by default ""
     """
 
+    proc: NDProcessIO | None = None
+
     def __init__(
         self,
         prefix: str,
         *writer_factories: ADWriterFactory,
         driver_suffix="cam1:",
+        proc_suffix: str | None = "Proc1:",
         plugins: dict[str, NDPluginBaseIO] | None = None,
         config_sigs: Sequence[SignalR] = (),
         name: str = "",
     ) -> None:
         driver = Pilatus4DriverIO(prefix + driver_suffix)
+        process_plugin = None if not proc_suffix else NDProcessIO(prefix + proc_suffix)
+        if plugins is None:
+            plugins = {}
+        if process_plugin is not None:
+            plugins["proc"] = process_plugin
         super().__init__(
             driver,
             prefix,
