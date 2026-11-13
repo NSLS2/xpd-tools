@@ -33,6 +33,7 @@ from ophyd_async.epics.adcore import (
     NDPluginBaseIO,
     NDProcessIO,
     prepare_exposures,
+    prepare_filter,
     trigger_info_from_driver,
 )
 from ophyd_async.epics.core import (
@@ -309,6 +310,7 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
     """Trigger logic for Pilatus4 detectors."""
 
     driver: Pilatus4DriverIO
+    process_plugin: NDProcessIO | None = None
 
     def get_deadtime(self, config_values: SignalDict) -> float:
         return 0.001
@@ -341,6 +343,17 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
             self.driver.num_triggers.set(num),
             prepare_exposures(self.driver, 1, livetime, 0.001),
         )
+
+    async def prepare_frame_averaging(self, num_frames: int):
+        """Configure the Proc plugin for frame averaging.
+
+        Parameters
+        ----------
+        num_frames : int
+            The number of frames to average per collection.
+        """
+        if self.process_plugin is not None:
+            await prepare_filter(self.process_plugin, num_filter=num_frames)
 
     async def default_trigger_info(self):
         """Get default trigger info based on the number of images to acquire."""
@@ -436,8 +449,6 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         Name for the detector device, by default ""
     """
 
-    proc: NDProcessIO | None = None
-
     def __init__(
         self,
         prefix: str,
@@ -459,7 +470,7 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
             prefix,
             *writer_factories,
             acquire_logic=ADAcquireLogic(driver),
-            trigger_logic=Pilatus4TriggerLogic(driver),
+            trigger_logic=Pilatus4TriggerLogic(driver, process_plugin=process_plugin),
             plugins=plugins,
             config_sigs=config_sigs,
             name=name,
