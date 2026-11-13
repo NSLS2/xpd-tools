@@ -316,12 +316,22 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
         return 0.001
 
     async def configure_stream2(self):
-        """Configure the detector for stream2 acquisition mode."""
+        """Configure the detector for stream2 acquisition mode.
+        
+        Disables compression when Proc plugin is active, since Proc can only
+        average uncompressed pixel data.
+        """
+        # Disable compression if Proc plugin is enabled for frame averaging
+        compression_algo = (
+            Pilatus4CompressionAlgo.NONE 
+            if self.process_plugin is not None 
+            else Pilatus4CompressionAlgo.BSLZ4
+        )
         coros = [
             self.driver.data_source.set(Pilatus4DataSource.STREAM),
             self.driver.stream_enable.set(True),
             self.driver.stream_version.set(SimplonStreamVersion.STREAM2),
-            self.driver.compression_algo.set(Pilatus4CompressionAlgo.BSLZ4),
+            self.driver.compression_algo.set(compression_algo),
             self.driver.stream_decompress.set(False),
         ]
         await asyncio.gather(*coros)
@@ -439,8 +449,8 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
     driver_suffix : str, optional
         Suffix for the driver PV, by default "cam1:"
     proc_suffix : str | None, optional
-        Suffix for the Proc plugin for frame averaging, by default "Proc1:"
-        Set to None to disable the Proc plugin.
+        Suffix for the Proc plugin for frame averaging, by default None.
+        Set to "Proc1:" to enable frame averaging (disables compression).
     plugins : dict[str, NDPluginBaseIO], optional
         Additional areaDetector plugins to include, by default None
     config_sigs : Sequence[SignalR], optional
@@ -454,7 +464,7 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         prefix: str,
         *writer_factories: ADWriterFactory,
         driver_suffix="cam1:",
-        proc_suffix: str | None = "Proc1:",
+        proc_suffix: str | None = None,
         plugins: dict[str, NDPluginBaseIO] | None = None,
         config_sigs: Sequence[SignalR] = (),
         name: str = "",
