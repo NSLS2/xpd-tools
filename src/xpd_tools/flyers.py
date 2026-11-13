@@ -4,13 +4,17 @@ import asyncio
 from collections.abc import Awaitable
 from typing import Any
 
+from nslsii.ophyd_async.devices import Xspress3Detector
 from ophyd_async.core import (
     ConfinedModel,
     FlyableLogic,
     FlyMotorInfo,
     wait_for_value,
 )
+from ophyd_async.epics.adkinetix import KinetixDetector
 from ophyd_async.fastcs.panda import CommonPandaBlocks, PandaPcompDirection
+
+from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 
 #: PandA TTL outputs wired to detectors (``MultiTrigMultiDetV1.yaml``). TTL1 is the
 #: Pilatus, TTL2 the Xspress3 and TTL3 the Kinetix (iris).
@@ -21,6 +25,66 @@ PANDA_DIV_BLOCKS = (1, 2)
 
 #: The PandA output every detector trigger derives from.
 BASE_TRIGGER = "PULSE1.OUT"
+
+
+#: The PandA TTL output each kind of detector is wired to at the TOMO endstation.
+DEFAULT_TTL_OUT: dict[type, int] = {
+    Pilatus4Detector: 1,
+    Xspress3Detector: 2,
+    KinetixDetector: 3,
+}
+
+
+def default_ttl_out(detector: object) -> int | None:
+    """Return the PandA TTL output a detector is wired to, or None if unknown.
+
+    Parameters
+    ----------
+    detector : object
+        A detector.
+
+    Returns
+    -------
+    int | None
+        The TTL output for the detector's kind, from :data:`DEFAULT_TTL_OUT`.
+    """
+    for kind, ttl_out in DEFAULT_TTL_OUT.items():
+        if isinstance(detector, kind):
+            return ttl_out
+    return None
+
+
+def check_position_triggers(travel_counts: int, num_pulses: int) -> None:
+    """Check that ``num_pulses`` position triggers fit in ``travel_counts``.
+
+    Parameters
+    ----------
+    travel_counts : int
+        The encoder counts the motor travels over the scan.
+    num_pulses : int
+        The number of pulses the PandA sends.
+
+    Raises
+    ------
+    ValueError
+        If there is fewer than 2 pulses, the travel is not a whole number of counts
+        per step, or there are fewer than two counts per step (one live, one dead).
+    """
+    num_steps = num_pulses - 1
+    if num_steps < 1:
+        raise ValueError(f"A flyscan needs at least 2 pulses, got {num_pulses}.")
+    if travel_counts % num_steps != 0:
+        raise ValueError(
+            f"Travel distance in counts ({travel_counts}) is not evenly divisible "
+            f"by the number of steps ({num_steps})."
+        )
+    if travel_counts < num_steps * 2:
+        raise ValueError(
+            f"Travel distance in counts ({travel_counts}) is less than the minimum"
+            f" required for the number of pulses ({num_pulses}). At least two "
+            f"counts are required between each pulse, one for livetime, one "
+            f"for deadtime({2 * num_steps})."
+        )
 
 
 class TtlRoute(ConfinedModel):
@@ -291,20 +355,7 @@ def construct_fly_info_models(
     num_steps = num_pulses - 1
 
     if not time_based:
-        # Check to make sure the travel distance is evenly divisible by the number of
-        # steps, and that the travel distance is at least twice the number of steps.
-        if travel_counts % num_steps != 0:
-            raise ValueError(
-                f"Travel distance in counts ({travel_counts}) is not evenly divisible "
-                f"by the number of steps ({num_steps})."
-            )
-        elif travel_counts < num_steps * 2:
-            raise ValueError(
-                f"Travel distance in counts ({travel_counts}) is less than the minimum"
-                f" required for the number of pulses ({num_pulses}). At least two "
-                f"counts are required between each pulse, one for livetime, one "
-                f"for deadtime({2 * num_steps})."
-            )
+        check_position_triggers(travel_counts, num_pulses)
         pulse_width = 1
         pulse_step = travel_counts // num_steps
     else:

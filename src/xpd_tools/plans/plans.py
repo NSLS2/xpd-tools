@@ -19,7 +19,9 @@ from xpd_tools.detectors.utils import get_detector_acq_times
 from ..flyers import (
     SingleAxisFlyableLogic,
     SingleAxisFlyscanInfo,
+    TtlRoute,
     construct_fly_info_models,
+    default_ttl_out,
 )
 from ..motors import FlyscanMotor
 
@@ -199,9 +201,26 @@ def single_axis_flyscan(
         Name of the data stream, by default "tomo"
     acq_time_overhead : float, optional
         Overhead time for acquisition for each frame in seconds, by default 0.001
-    flyscan_type : SingleAxisFlyscanType, default SingleAxisFlyscanType.POSITION_BASED
-        Type of flyscan to perform, by default SingleAxisFlyscanType.POSITION_BASED
+    time_based : bool, optional
+        Triggers equally spaced in time rather than position, by default False
+
+    Raises
+    ------
+    ValueError
+        If a detector has no default TTL output, or the scan doesn't fit the
+        PandA's encoder counts.
+
+    Notes
+    -----
+    Every detector is triggered on every pulse, from the TTL output its kind is
+    wired to (:data:`~xpd_tools.flyers.DEFAULT_TTL_OUT`).
     """
+    ttl_routes = []
+    for det in detectors:
+        ttl_out = default_ttl_out(det)
+        if ttl_out is None:
+            raise ValueError(f"{det.name} has no default PandA TTL output.")
+        ttl_routes.append(TtlRoute(ttl_out=ttl_out))
     all_detectors = [*detectors, panda]
 
     # Construct ephemeral flyer for the single axis flyscan
@@ -233,6 +252,7 @@ def single_axis_flyscan(
         acq_time_overhead=acq_time_overhead,
         time_based=time_based,
     )
+    flyer_info = flyer_info.model_copy(update={"ttl_routes": ttl_routes})
 
     _md = {
         "detectors": [det.name for det in detectors],

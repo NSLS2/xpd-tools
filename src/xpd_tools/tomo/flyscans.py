@@ -323,16 +323,24 @@ def tomo_flyscan(
         If a device drops more than :data:`MAX_MISSING_FRAMES` frames.
     """
     configs = to_detector_configs(detector_configs)
-    routing = validate_detector_configs(configs)
+    panda = ensure_available(HDFPanda, panda, DEFAULT_DEVICE_NAMES["panda"])
+    rot_motor = ensure_available(
+        RotationMotor, rot_motor, DEFAULT_DEVICE_NAMES["rot_motor"]
+    )
+    # Check the base pulses fit the encoder counts of the scan before touching
+    # any hardware.
+    encoder_resolution = yield from bps.rd(rot_motor.encoder_resolution)
+    counts = (
+        {}
+        if time_based
+        else {"start": start, "stop": stop, "encoder_resolution": encoder_resolution}
+    )
+    routing = validate_detector_configs(configs, **counts)
     detectors = [config.detector for config in configs]
     divisors = {
         config.detector: route.divisor
         for config, route in zip(configs, routing.routes, strict=True)
     }
-    panda = ensure_available(HDFPanda, panda, DEFAULT_DEVICE_NAMES["panda"])
-    rot_motor = ensure_available(
-        RotationMotor, rot_motor, DEFAULT_DEVICE_NAMES["rot_motor"]
-    )
     fe_shutter, photon_shutter = _shutters(use_shutter, fe_shutter, photon_shutter)
 
     # A detector fired every D base pulses needs D base periods for its exposure

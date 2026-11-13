@@ -7,10 +7,24 @@ from typing import Any
 from nslsii.ophyd_async.devices import Xspress3Detector
 from ophyd_async.epics.adcore import AreaDetector, NDProcessFilterType
 from ophyd_async.epics.adkinetix import KinetixDetector
-from pydantic import BaseModel, ConfigDict, PositiveFloat, PositiveInt, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    field_validator,
+    model_validator,
+)
 
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
-from xpd_tools.flyers import PANDA_DIV_BLOCKS, PANDA_TTL_OUTPUTS, TtlRoute
+from xpd_tools.flyers import (
+    PANDA_DIV_BLOCKS,
+    PANDA_TTL_OUTPUTS,
+    TtlRoute,
+    check_position_triggers,
+    default_ttl_out,
+)
 from xpd_tools.utils import get_obj_from_ipython_ns
 
 #: Detectors that can take tomography projections.
@@ -18,33 +32,6 @@ TomoDetector = Pilatus4Detector | KinetixDetector | Xspress3Detector
 
 #: Detectors that take images, and so need darks and flats.
 ImagingDetector = Pilatus4Detector | KinetixDetector
-
-#: The PandA TTL output each kind of detector is wired to at the TOMO endstation.
-DEFAULT_TTL_OUT: dict[type, int] = {
-    Pilatus4Detector: 1,
-    Xspress3Detector: 2,
-    KinetixDetector: 3,
-}
-
-
-def default_ttl_out(detector: object) -> int | None:
-    """Return the PandA TTL output a detector is wired to, or None if unknown.
-
-    Parameters
-    ----------
-    detector : object
-        A detector.
-
-    Returns
-    -------
-    int | None
-        The TTL output for the detector's kind, from :data:`DEFAULT_TTL_OUT`.
-    """
-    for kind, ttl_out in DEFAULT_TTL_OUT.items():
-        if isinstance(detector, kind):
-            return ttl_out
-    return None
-
 
 #: An exposure time in seconds: one number for every detector, or a mapping that
 #: gives every detector its own, keyed by detector or by its ``.name``.
@@ -163,9 +150,11 @@ class DetectorConfig(BaseModel):
         :attr:`num_images`.
     exposure_time : float
         The exposure time of each frame, in seconds.
-    ttl_out : int
+    ttl_out : int, optional
         The PandA TTL output wired to the detector's trigger input, one of
-        :data:`xpd_tools.flyers.PANDA_TTL_OUTPUTS`.
+        :data:`xpd_tools.flyers.PANDA_TTL_OUTPUTS`. Defaults to the output its kind
+        of detector is wired to, :data:`~xpd_tools.flyers.DEFAULT_TTL_OUT`; pass it
+        to override.
     images_to_average : int, default 1
         The number of frames the Proc plugin combines into each image. Only
         detectors with a ``proc`` plugin support more than 1.
@@ -174,10 +163,9 @@ class DetectorConfig(BaseModel):
 
     Examples
     --------
-    ``DetectorConfig(detector=pilatus1, nproj=1800, exposure_time=0.002,
-    ttl_out=1)``, or the same as a dict:
-    ``{"detector": "pilatus1", "nproj": 1800, "exposure_time": 0.002,
-    "ttl_out": 1}``.
+    ``DetectorConfig(detector=pilatus1, nproj=1800, exposure_time=0.002)``, or the
+    same as a dict: ``{"detector": "pilatus1", "nproj": 1800, "exposure_time":
+    0.002}``. Add ``ttl_out=2`` to override the default TTL output.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True, extra="forbid")
@@ -185,13 +173,14 @@ class DetectorConfig(BaseModel):
     detector: TomoDetector
     nproj: PositiveInt
     exposure_time: PositiveFloat
-    ttl_out: int
+    # _default_ttl_out always replaces this placeholder; 0 is not a wired output, so
+    # validate_detector_configs would refuse it if it ever leaked through.
+    ttl_out: int = Field(default=0)
     images_to_average: PositiveInt = 1
     filter_type: NDProcessFilterType = NDProcessFilterType.AVERAGE
 
-    @field_validator("detector", mode="before")
-    @classmethod
-    def _look_up_detector(cls, value: Any) -> Any:
+    @staticmethod
+    def _find_detector(value: Any) -> Any:
         """Find a detector given by name in the IPython namespace."""
         if not isinstance(value, str):
             return value
@@ -201,6 +190,25 @@ class DetectorConfig(BaseModel):
                 f"No detector is named {value!r} in the IPython namespace."
             )
         return found
+
+    @field_validator("detector", mode="before")
+    @classmethod
+    def _look_up_detector(cls, value: Any) -> Any:
+        return cls._find_detector(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_ttl_out(cls, data: Any) -> Any:
+        """Fill a missing ``ttl_out`` from the detector's default wiring."""
+        if not isinstance(data, Mapping) or data.get("ttl_out") is not None:
+            return data
+        ttl_out = default_ttl_out(cls._find_detector(data.get("detector")))
+        if ttl_out is None:
+            raise ValueError(
+                f"{type(data.get('detector')).__name__} has no default TTL output; "
+                "pass ttl_out."
+            )
+        return {**data, "ttl_out": ttl_out}
 
     @property
     def num_images(self) -> int:
@@ -271,6 +279,9 @@ def to_detector_configs(
 
 def validate_detector_configs(
     configs: Sequence[DetectorConfigLike],
+    start: float | None = None,
+    stop: float | None = None,
+    encoder_resolution: float | None = None,
 ) -> TriggerRouting:
     """Check that detector configs work together, and route their triggers.
 
@@ -283,6 +294,13 @@ def validate_detector_configs(
     ----------
     configs : Sequence[DetectorConfigLike]
         The detector configs of one scan.
+    start : float | None, default None
+        The starting angle of the scan. With ``stop`` and ``encoder_resolution``,
+        also checks the scan against the encoder counts (see Raises).
+    stop : float | None, default None
+        The stopping angle of the scan.
+    encoder_resolution : float | None, default None
+        The degrees per encoder count of the rotation motor.
 
     Returns
     -------
@@ -297,8 +315,14 @@ def validate_detector_configs(
         :data:`ROTATION_STREAM`, two configs share a TTL output or one is not wired,
         the most projections are not a multiple of every detector's projections, there
         are more divided detectors than DIV blocks, or a detector averages frames
-        without a Proc plugin.
+        without a Proc plugin. If ``start``, ``stop`` and ``encoder_resolution`` are
+        given, also if the base pulses don't fit the encoder counts of the scan: the
+        travel is not a whole number of counts per base step, or is under two counts
+        per step. Position based scans only; ``start`` equal to ``stop`` is refused.
     """
+    given = [v is not None for v in (start, stop, encoder_resolution)]
+    if any(given) and not all(given):
+        raise ValueError("start, stop and encoder_resolution must be given together.")
     configs = to_detector_configs(configs)
     if not 1 <= len(configs) <= len(PANDA_TTL_OUTPUTS):
         raise ValueError(
@@ -351,6 +375,10 @@ def validate_detector_configs(
             f"detector's projections (the gaps between its triggers); "
             f"{', '.join(uneven)} are not."
         )
+
+    if all(given):
+        travel_counts = abs(round((stop - start) / encoder_resolution))  # type: ignore
+        check_position_triggers(travel_counts, num_base_pulses)
 
     # DIV blocks go to the divided detectors, the most triggers first.
     divided = sorted(
