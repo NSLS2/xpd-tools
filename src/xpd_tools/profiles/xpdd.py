@@ -203,6 +203,7 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     pilatus1 = Pilatus4Detector(
         "XF:28ID2-ES{Pilatus4-Det:1}",
         ADWriterFactory.hdf(path_provider),
+        proc_suffix="Proc1:",
         plugins={"stats1": pilatus1_stats1},
     )
     # Tell the detector to include stats plugin total reading in step scans
@@ -214,13 +215,16 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     # TODO: Remove this once we get new ophyd-async release. Flyscan will auto-disable
     # stepscan only data logic
     pilatus1_fly = Pilatus4Detector(
-        "XF:28ID2-ES{Pilatus4-Det:1}", ADWriterFactory.hdf(path_provider)
+        "XF:28ID2-ES{Pilatus4-Det:1}",
+        ADWriterFactory.hdf(path_provider),
+        proc_suffix="Proc1:",
     )
     pilatus1_fly.set_name("pilatus1")  # reuse assets/pilatus1/ per DE
 
     iris1 = KinetixDetector(
         "XF:28IDD-ES{Iris-Det:1}",
         ADWriterFactory.hdf(path_provider),
+        proc_suffix="Proc1:",
     )
 
     # psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")

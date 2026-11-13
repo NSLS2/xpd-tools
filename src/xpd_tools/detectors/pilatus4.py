@@ -31,7 +31,9 @@ from ophyd_async.epics.adcore import (
     AreaDetector,
     NDFileHDF5IO,
     NDPluginBaseIO,
+    NDProcessIO,
     prepare_exposures,
+    prepare_filter,
     trigger_info_from_driver,
 )
 from ophyd_async.epics.core import (
@@ -308,17 +310,28 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
     """Trigger logic for Pilatus4 detectors."""
 
     driver: Pilatus4DriverIO
+    process_plugin: NDProcessIO | None = None
 
     def get_deadtime(self, config_values: SignalDict) -> float:
         return 0.001
 
     async def configure_stream2(self):
-        """Configure the detector for stream2 acquisition mode."""
+        """Configure the detector for stream2 acquisition mode.
+        
+        Disables compression when Proc plugin is active, since Proc can only
+        average uncompressed pixel data.
+        """
+        # Disable compression if Proc plugin is enabled for frame averaging
+        compression_algo = (
+            Pilatus4CompressionAlgo.NONE 
+            if self.process_plugin is not None 
+            else Pilatus4CompressionAlgo.BSLZ4
+        )
         coros = [
             self.driver.data_source.set(Pilatus4DataSource.STREAM),
             self.driver.stream_enable.set(True),
             self.driver.stream_version.set(SimplonStreamVersion.STREAM2),
-            self.driver.compression_algo.set(Pilatus4CompressionAlgo.BSLZ4),
+            self.driver.compression_algo.set(compression_algo),
             self.driver.stream_decompress.set(False),
         ]
         await asyncio.gather(*coros)
@@ -340,6 +353,17 @@ class Pilatus4TriggerLogic(DetectorTriggerLogic):
             self.driver.num_triggers.set(num),
             prepare_exposures(self.driver, 1, livetime, 0.001),
         )
+
+    async def prepare_frame_averaging(self, num_frames: int):
+        """Configure the Proc plugin for frame averaging.
+
+        Parameters
+        ----------
+        num_frames : int
+            The number of frames to average per collection.
+        """
+        if self.process_plugin is not None:
+            await prepare_filter(self.process_plugin, num_filter=num_frames)
 
     async def default_trigger_info(self):
         """Get default trigger info based on the number of images to acquire."""
@@ -424,6 +448,9 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         Factories for file writer plugins and their data logics
     driver_suffix : str, optional
         Suffix for the driver PV, by default "cam1:"
+    proc_suffix : str | None, optional
+        Suffix for the Proc plugin for frame averaging, by default None.
+        Set to "Proc1:" to enable frame averaging (disables compression).
     plugins : dict[str, NDPluginBaseIO], optional
         Additional areaDetector plugins to include, by default None
     config_sigs : Sequence[SignalR], optional
@@ -437,17 +464,23 @@ class Pilatus4Detector(AreaDetector[Pilatus4DriverIO]):
         prefix: str,
         *writer_factories: ADWriterFactory,
         driver_suffix="cam1:",
+        proc_suffix: str | None = None,
         plugins: dict[str, NDPluginBaseIO] | None = None,
         config_sigs: Sequence[SignalR] = (),
         name: str = "",
     ) -> None:
         driver = Pilatus4DriverIO(prefix + driver_suffix)
+        process_plugin = None if not proc_suffix else NDProcessIO(prefix + proc_suffix)
+        if plugins is None:
+            plugins = {}
+        if process_plugin is not None:
+            plugins["proc"] = process_plugin
         super().__init__(
             driver,
             prefix,
             *writer_factories,
             acquire_logic=ADAcquireLogic(driver),
-            trigger_logic=Pilatus4TriggerLogic(driver),
+            trigger_logic=Pilatus4TriggerLogic(driver, process_plugin=process_plugin),
             plugins=plugins,
             config_sigs=config_sigs,
             name=name,

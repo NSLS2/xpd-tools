@@ -220,6 +220,7 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
     iris1 = KinetixDetector(
         "XF:28IDD-ES{Iris-Det:1}",
         ADWriterFactory.hdf(path_provider),
+        proc_suffix="Proc1:",
     )
 
     # psylo = Psylotech("XF:28ID2-ES{Psylotech:1}", name="psylo")
