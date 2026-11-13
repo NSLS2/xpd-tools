@@ -40,7 +40,7 @@ def _run_from_docs(docs: dict[str, list[dict]]) -> FakeRun:
 
 def test_tomo_flyscan_matches_spec(RE: RunEngine, tomo_rig: TomoRig, docs, sleeps):
     rig = tomo_rig
-    rig.num_frames = 6
+    rig.num_frames = 7
     RE(
         tomo_flyscan(
             [rig.config(rig.pilatus, 6, 0.001), rig.config(rig.iris, 3, 0.001)],

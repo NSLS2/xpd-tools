@@ -186,7 +186,7 @@ def test_ttl_out_defaults_by_detector_kind_and_can_be_overridden():
     config = DetectorConfig(detector=pil, nproj=10, exposure_time=0.1, ttl_out=3)
     assert config.ttl_out == 3
     with pytest.raises(ValidationError, match="no default TTL output"):
-        DetectorConfig(detector=PIL, nproj=10, exposure_time=0.1) # pyright: ignore[reportArgumentType]
+        DetectorConfig(detector=PIL, nproj=10, exposure_time=0.1)  # pyright: ignore[reportArgumentType]
 
 
 def test_validate_checks_encoder_counts_when_given_the_scan():
