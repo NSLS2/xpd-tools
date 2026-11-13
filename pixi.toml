@@ -41,6 +41,10 @@ pyside6 = ">=6.9.0,<6.13"
 # Extra arguments, e.g. `--mock`, are forwarded to the profile
 cmd = "test -n \"$BS_PROFILE\" || (echo 'BS_PROFILE is not set, e.g. BS_PROFILE=xpdd' && exit 1) && unset SESSION_MANAGER PYTHONPATH PYTHONUSERBASE && MPLBACKEND=qtagg ipython -i src/xpd_tools/profiles/$BS_PROFILE.py --"
 
+[feature.terminal.tasks.xpdd]
+# Convenience task for xpdd profile (no need to set BS_PROFILE)
+cmd = "unset SESSION_MANAGER PYTHONPATH PYTHONUSERBASE && MPLBACKEND=qtagg ipython -i src/xpd_tools/profiles/xpdd.py"
+
 [feature.py311.dependencies]
 python = "3.11.*"
 
