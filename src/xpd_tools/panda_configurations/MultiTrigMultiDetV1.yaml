@@ -10,7 +10,7 @@ calc.1.inpd: ZERO
 calc.1.label: Position calc 1
 calc.1.out_capture: Value
 calc.1.out_dataset: rotation_angle
-calc.1.out_offset: -0.4239
+calc.1.out_offset: -0.4221
 calc.1.out_scale: 0.0009
 calc.1.out_units: deg
 calc.1.shift: 0.0
@@ -36,8 +36,8 @@ calc.2.typed: Value
 clock.1.enable: ZERO
 clock.1.enable_delay: 0
 clock.1.label: Configurable clocks 1
-clock.1.period: 0.5
-clock.1.period_units: s
+clock.1.period: 0.104
+clock.1.period_units: us
 clock.1.width: 0.1
 clock.1.width_units: s
 clock.2.enable: ZERO
@@ -203,17 +203,17 @@ data.capture: false
 data.capture_mode: FOREVER
 data.create_directory: -3
 data.flush_period: 0.0
-data.hdf_directory: /nsls2/data/xpd-new/proposals/2026-3/pass-317897/assets/panda1/2026/11/11
-data.hdf_file_name: 7e5d7624-6cae-4908-a9cd-7407be2b3448.h5
+data.hdf_directory: /nsls2/data/xpd-new/proposals/2026-3/pass-317897/assets/panda1/2026/11/12
+data.hdf_file_name: 50b5d5b4-5220-4ed1-b38c-aa082126ec9f.h5
 data.num_capture: 0
-div.1.divisor: 2.0
+div.1.divisor: 4.0
 div.1.enable: PCAP.ACTIVE
 div.1.enable_delay: 0
 div.1.first_pulse: OutD
 div.1.inp: PULSE1.OUT
 div.1.inp_delay: 0
 div.1.label: Pulse divider 1
-div.2.divisor: 23.0
+div.2.divisor: 10.0
 div.2.enable: PCAP.ACTIVE
 div.2.enable_delay: 0
 div.2.first_pulse: OutD
@@ -622,18 +622,18 @@ pcap.ts_end_capture: 'No'
 pcap.ts_end_dataset: ''
 pcap.ts_start_capture: 'No'
 pcap.ts_start_dataset: ''
-pcap.ts_trig_capture: 'No'
-pcap.ts_trig_dataset: ''
+pcap.ts_trig_capture: Value
+pcap.ts_trig_dataset: trig_ts
 pcomp.1.dir: Positive
 pcomp.1.enable: PCAP.ACTIVE
 pcomp.1.enable_delay: 0
 pcomp.1.inp: CALC1.OUT
 pcomp.1.label: Position compare 1
 pcomp.1.pre_start: 0
-pcomp.1.pulses: 5
+pcomp.1.pulses: 201
 pcomp.1.relative: Absolute
-pcomp.1.start: 471
-pcomp.1.step: 100000
+pcomp.1.start: 469
+pcomp.1.step: 2000
 pcomp.1.width: 1
 pcomp.2.dir: Positive
 pcomp.2.enable: ZERO
@@ -672,7 +672,7 @@ pgen.2.table:
   position: []
 pgen.2.trig: ZERO
 pgen.2.trig_delay: 0
-pulse.1.delay: 1.0
+pulse.1.delay: 0.0
 pulse.1.delay_units: ms
 pulse.1.enable: PCAP.ACTIVE
 pulse.1.enable_delay: 0
@@ -888,16 +888,16 @@ ttlin.5.term: High-Z
 ttlin.6.label: TTL input 6
 ttlin.6.term: High-Z
 ttlout.1.label: TTL output 1
-ttlout.1.val: DIV1.OUTD
+ttlout.1.val: PULSE1.OUT
 ttlout.1.val_delay: 0
 ttlout.10.label: TTL output 10
 ttlout.10.val: ZERO
 ttlout.10.val_delay: 0
 ttlout.2.label: TTL output 2
-ttlout.2.val: PULSE1.OUT
+ttlout.2.val: DIV2.OUTD
 ttlout.2.val_delay: 0
 ttlout.3.label: TTL output 3
-ttlout.3.val: ZERO
+ttlout.3.val: DIV1.OUTD
 ttlout.3.val_delay: 0
 ttlout.4.label: TTL output 4
 ttlout.4.val: ZERO

@@ -148,7 +148,7 @@ def image_count_options(
     [(1, 12), (2, 6), (3, 4), (4, 3), (6, 2), (12, 1)]
     >>> fastest = image_count_options(100, 0, 360)[-1]
     >>> fastest.step, fastest.last_angle, fastest.num_images
-    (3.6, 360.0, 101)
+    (3.6, 360, 101)
     """
     return [
         ImageCountOption(
