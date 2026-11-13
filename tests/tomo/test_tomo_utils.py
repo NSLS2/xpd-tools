@@ -176,3 +176,29 @@ def test_validate_rejects_shared_and_reserved_names(tomo_rig: TomoRig):
     rig.iris.set_name(ROTATION_STREAM)
     with pytest.raises(ValueError, match="can't be named 'rotation'"):
         validate_detector_configs([pil, iris])
+
+
+def test_ttl_out_defaults_by_detector_kind_and_can_be_overridden():
+    from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+
+    pil = object.__new__(Pilatus4Detector)
+    assert DetectorConfig(detector=pil, nproj=10, exposure_time=0.1).ttl_out == 1
+    config = DetectorConfig(detector=pil, nproj=10, exposure_time=0.1, ttl_out=3)
+    assert config.ttl_out == 3
+    with pytest.raises(ValidationError, match="no default TTL output"):
+        DetectorConfig(detector=PIL, nproj=10, exposure_time=0.1)
+
+
+def test_validate_checks_encoder_counts_when_given_the_scan():
+    from xpd_tools.detectors.pilatus4 import Pilatus4Detector
+
+    det = object.__new__(Pilatus4Detector)
+    pil = DetectorConfig(detector=det, nproj=9, exposure_time=0.1)
+    # 9 steps over 90 counts: fine. 100 counts: not divisible. 12 counts: too tight.
+    validate_detector_configs([pil], start=0, stop=9, encoder_resolution=0.1)
+    with pytest.raises(ValueError, match="not evenly divisible"):
+        validate_detector_configs([pil], start=0, stop=10, encoder_resolution=0.1)
+    with pytest.raises(ValueError, match="At least two"):
+        validate_detector_configs([pil], start=0, stop=0.9, encoder_resolution=0.1)
+    with pytest.raises(ValueError, match="given together"):
+        validate_detector_configs([pil], start=0, stop=9)
