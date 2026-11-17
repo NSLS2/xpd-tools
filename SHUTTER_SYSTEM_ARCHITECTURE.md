@@ -42,16 +42,21 @@ Monochromator (LAU optic splits PDF vs XPD energy)
 | **PV prefix** | `XF:28ID-PPS{Sh:FE}` ✓ |
 | **Control commands** | `{Cmd:Opn-Cmd}` (open), `{Cmd:Cls-Cmd}` (close) |
 | **Feedback readback** | `{Pos-Sts}` (position status: "Open" / "Not Open") |
-| **Settle time** | TBD (needs measurement) |
+| **Settle time** | **? UNKNOWN** — _Ask Kyle_ |
 | **Used in** | xpdtools tomo plans (fe_shutter device) |
 | **Status enum** | `ShutterStatus` = {OPEN: "Open", CLOSED: "Not Open"} |
 | **Source** | CS-Studio: 28id2-phoebus/pps/28id_pps_layout.bob |
+| **Verification** | ✓ PV extracted from screen; **settle time & control response time still need measurement** |
 
 **Device instantiation** (xpdtools profile):
 ```python
 from xpd_tools.shutter import PPSShutter
 fe_shutter = PPSShutter("XF:28ID-PPS{Sh:FE}", name="fe_shutter")
 ```
+
+**🔴 PENDING KYLE'S CONFIRMATION:**
+1. Is PV `XF:28ID-PPS{Sh:FE}` correct?
+2. How long does FE shutter settle after opening/closing? (Need for plan timing)
 
 ---
 
@@ -92,16 +97,22 @@ fs = FastShutter("XF:28ID1B-OP{PSh:1-Det:2}", name="fs")
 | **PV prefix** | `XF:28IDC-ES:1{Sh:Exp}` ✓ |
 | **Control commands** | `{Cmd:Opn-Cmd}` (open), `{Cmd:Cls-Cmd}` (close) |
 | **Feedback readback** | `{Pos-Sts}` (position status: "Open" / "Not Open") |
-| **Settle time** | TBD (needs measurement) |
+| **Settle time** | **? UNKNOWN** — _Ask Kyle_ |
 | **Used in** | xpdtools tomo plans (photon_shutter device) |
 | **Status enum** | `ShutterStatus` = {OPEN: "Open", CLOSED: "Not Open"} |
 | **Source** | CS-Studio: 28id2-phoebus/es/28idc_fast_shutter.bob |
+| **Verification** | ✓ PV extracted from screen; **settle time & control response time still need measurement** |
 
 **Device instantiation** (xpdtools profile):
 ```python
 from xpd_tools.shutter import Shutter
 photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", name="photon_shutter")
 ```
+
+**🔴 PENDING KYLE'S CONFIRMATION:**
+1. Is PV `XF:28IDC-ES:1{Sh:Exp}` correct?
+2. How long does XPD C-hutch fast shutter settle after opening/closing? (PDF is 0.1s)
+3. Any known issues with this shutter? (e.g., slow response, stickiness)
 
 ---
 
@@ -257,12 +268,16 @@ def xrd(
 
 ## Discussion & Feedback
 
-**For Kyle (2026-11-17):**
-- ✓ FE shutter PV confirmed: `XF:28ID-PPS{Sh:FE}`
-- ✓ XPD C-hutch fast shutter PV confirmed: `XF:28IDC-ES:1{Sh:Exp}`
-- Measure and confirm settle times for each shutter
-- Confirm whether PDF fast shutter inverted logic is intentional or a bug
-- Review CS-Studio screen issues and proposed fixes
+**Questions for Kyle (2026-11-17) — Please Confirm:**
+
+| Item | Status | Question |
+|------|--------|----------|
+| **FE shutter PV** | ✓ Extracted, needs confirm | Is `XF:28ID-PPS{Sh:FE}` correct? |
+| **FE shutter settle time** | **? UNKNOWN** | How long does FE shutter take to stabilize after open/close? |
+| **XPD C-hutch fast shutter PV** | ✓ Extracted, needs confirm | Is `XF:28IDC-ES:1{Sh:Exp}` correct? |
+| **XPD C-hutch settle time** | **? UNKNOWN** | How long does XPD C-hutch fast shutter stabilize? (PDF is 0.1s) |
+| **PDF fast shutter inverted logic** | ✓ Confirmed in code | Is inverted control (OFF=open, ON=close) intentional? Bug or feature? |
+| **CS-Studio screens** | Issues found | Should we file PRs to fix top-fork label (PDF vs XPD-1) and add XPD D-hutch shutter symbol? |
 
 **For xpdtools developers:**
 - Replace TEST PVs in xpdd.py and devd.py with real PVs (above)
