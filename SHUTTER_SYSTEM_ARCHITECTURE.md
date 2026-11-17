@@ -11,6 +11,44 @@ Diagram scope: topology + control PV addresses + feedback readback patterns.
 
 ---
 
+## Beam Path Diagram (Mermaid)
+
+```mermaid
+graph TD
+    Ring["NSLS-II Ring<br/>(28-ID bending magnet)"]
+    FE["FE Shutter<br/>(XF:28ID-PPS{Sh:FE})<br/>Two-command pattern<br/>Hutch B"]
+    Mono["Monochromator<br/>(LAU optic)<br/>Splits energy:<br/>PDF vs XPD"]
+    
+    PDFPath["PDF Beam Path<br/>(28-ID-1)"]
+    PDFFastSh["PDF Fast Shutter<br/>(XF:28ID1B-OP{PSh:1-Det:2})<br/>Cmd/Sts inverted<br/>(OFF=open, ON=close)"]
+    PDFHutch["PDF Hutch<br/>(Hutch A/B)<br/>Detectors"]
+    
+    XPDPath["XPD Beam Path<br/>(28-ID-2)"]
+    XPDCHutchSh["XPD C-Hutch Fast Shutter<br/>(XF:28IDC-ES:1{Sh:Exp})<br/>Cmd/Sts single-pair<br/>('Open'/'Close' enums)"]
+    CHutch["C-Hutch<br/>Experiments"]
+    DHutch["D-Hutch<br/>(NO SHUTTER)<br/>⚠️ Known gap"]
+    
+    Ring --> FE
+    FE --> Mono
+    
+    Mono -->|PDF energy| PDFPath
+    Mono -->|XPD energy| XPDPath
+    
+    PDFPath --> PDFFastSh
+    PDFFastSh --> PDFHutch
+    
+    XPDPath --> XPDCHutchSh
+    XPDCHutchSh --> CHutch
+    CHutch --> DHutch
+    
+    style FE fill:#ff9999
+    style PDFFastSh fill:#99ccff
+    style XPDCHutchSh fill:#99ff99
+    style DHutch fill:#ffcc99
+```
+
+---
+
 ## Beam Path Topology
 
 ```
