@@ -2,7 +2,12 @@
 
 **Purpose:** Canonical reference for the beam shutter topology, PV addresses, and control logic across PDF (28-ID-1) and XPD (28-ID-2) beamlines. This document guides fast-shutter PR development, operation manuals, and CS-Studio screen corrections.
 
-**Status:** PVs extracted from CS-Studio screens (28id2-phoebus) on 2026-11-17. Diagram scope: topology + control PV addresses + feedback readback patterns.
+**Status:** PVs extracted and verified from CS-Studio screens on 2026-11-17:
+- **PDF fast shutter** (`XF:28ID1B-OP{PSh:1-Det:2}`): verified in 28id1-phoebus/ut/28id1-ut.bob
+- **XPD FE shutter** (`XF:28ID-PPS{Sh:FE}`): verified in 28id2-phoebus/pps/28id_pps_layout.bob
+- **XPD C-hutch fast shutter** (`XF:28IDC-ES:1{Sh:Exp}`): verified in 28id2-phoebus/es/28idc_fast_shutter.bob
+
+Diagram scope: topology + control PV addresses + feedback readback patterns.
 
 ---
 
