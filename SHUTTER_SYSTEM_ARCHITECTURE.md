@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical reference for the beam shutter topology, PV addresses, and control logic across PDF (28-ID-1) and XPD (28-ID-2) beamlines. This document guides fast-shutter PR development, operation manuals, and CS-Studio screen corrections.
 
-**Status:** PVs confirmed by Kyle Brogan (2026-11-17). Diagram scope: topology + control PV addresses + feedback readback patterns.
+**Status:** PVs extracted from CS-Studio screens (28id2-phoebus) on 2026-11-17. Diagram scope: topology + control PV addresses + feedback readback patterns.
 
 ---
 
@@ -34,17 +34,18 @@ Monochromator (LAU optic splits PDF vs XPD energy)
 |----------|-------|
 | **Physical location** | Hutch B (upstream of monochromator) |
 | **Device class** | `PPSShutter` (Primary Photon Shutter, two-command style) |
-| **PV prefix** | PV unknown — **ask Kyle** |
+| **PV prefix** | `XF:28ID-PPS{Sh:FE}` ✓ |
 | **Control commands** | `{Cmd:Opn-Cmd}` (open), `{Cmd:Cls-Cmd}` (close) |
 | **Feedback readback** | `{Pos-Sts}` (position status: "Open" / "Not Open") |
-| **Settle time** | TBD after PV confirmed |
+| **Settle time** | TBD (needs measurement) |
 | **Used in** | xpdtools tomo plans (fe_shutter device) |
 | **Status enum** | `ShutterStatus` = {OPEN: "Open", CLOSED: "Not Open"} |
+| **Source** | CS-Studio: 28id2-phoebus/pps/28id_pps_layout.bob |
 
 **Device instantiation** (xpdtools profile):
 ```python
 from xpd_tools.shutter import PPSShutter
-fe_shutter = PPSShutter("PV_unknown", name="fe_shutter")  # production PV TBD
+fe_shutter = PPSShutter("XF:28ID-PPS{Sh:FE}", name="fe_shutter")
 ```
 
 ---
@@ -83,17 +84,18 @@ fs = FastShutter("XF:28ID1B-OP{PSh:1-Det:2}", name="fs")
 |----------|-------|
 | **Physical location** | C-hutch (between monochromator and XPD C-hutch experimental station) |
 | **Device class** | `Shutter` (ophyd_async, two-command style) |
-| **PV prefix** | PV unknown — **ask Kyle** |
+| **PV prefix** | `XF:28IDC-ES:1{Sh:Exp}` ✓ |
 | **Control commands** | `{Cmd:Opn-Cmd}` (open), `{Cmd:Cls-Cmd}` (close) |
 | **Feedback readback** | `{Pos-Sts}` (position status: "Open" / "Not Open") |
-| **Settle time** | TBD after PV confirmed |
+| **Settle time** | TBD (needs measurement) |
 | **Used in** | xpdtools tomo plans (photon_shutter device) |
 | **Status enum** | `ShutterStatus` = {OPEN: "Open", CLOSED: "Not Open"} |
+| **Source** | CS-Studio: 28id2-phoebus/es/28idc_fast_shutter.bob |
 
 **Device instantiation** (xpdtools profile):
 ```python
 from xpd_tools.shutter import Shutter
-photon_shutter = Shutter("PV_unknown", name="photon_shutter")  # production PV TBD
+photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", name="photon_shutter")
 ```
 
 ---
@@ -195,14 +197,16 @@ def xrd(
 
 ## Known Issues & Future Work
 
-### 1. Missing Real PV Addresses
+### 1. Real PV Addresses (All Confirmed ✓)
 
-| Shutter | PV | Status |
-|---------|----|----|
-| FE (Hutch B) | PV unknown | **Ask Kyle** |
-| PDF fast (Hutch A/B) | `XF:28ID1B-OP{PSh:1-Det:2}` | ✓ Confirmed |
-| XPD C-hutch fast | PV unknown | **Ask Kyle** |
-| XPD D-hutch fast | N/A (not installed) | — |
+| Shutter | PV Prefix | Source | Status |
+|---------|-----------|--------|--------|
+| FE (Hutch B) | `XF:28ID-PPS{Sh:FE}` | 28id2-phoebus/pps/28id_pps_layout.bob | ✓ Confirmed |
+| PDF fast (Hutch A/B) | `XF:28ID1B-OP{PSh:1-Det:2}` | pdftools profile | ✓ Confirmed |
+| XPD C-hutch fast | `XF:28IDC-ES:1{Sh:Exp}` | 28id2-phoebus/es/28idc_fast_shutter.bob | ✓ Confirmed |
+| XPD D-hutch fast | N/A (not installed) | — | — |
+
+**Next step:** Test settle times for each shutter and measure command-to-readback latencies.
 
 ### 2. CS-Studio Screen Errors
 
@@ -220,10 +224,12 @@ def xrd(
 
 | Profile | FE Shutter | Photon Shutter | Status |
 |---------|-----------|----------------|--------|
-| xpdd.py (tomo branch) | `TEST{Sh:FE}` | `TEST{Sh:sum}` | Mock mode only |
-| devd.py (D-hutch) | `TEST{Sh:FE}` | `TEST{Sh:sum}` | Mock mode only |
+| xpdd.py (tomo branch) | `TEST{Sh:FE}` | `TEST{Sh:sum}` | Replace with real PVs |
+| devd.py (D-hutch) | `TEST{Sh:FE}` | `TEST{Sh:sum}` | Replace with real PVs |
 
-**Next step:** Replace `TEST{Sh:*}` with real PVs once Kyle confirms addresses.
+**Next step:** Replace `TEST{Sh:*}` with real PVs:
+- xpdd.py: `fe_shutter = PPSShutter("XF:28ID-PPS{Sh:FE}", ...)` and `photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", ...)`
+- devd.py: Same as xpdd.py (until D-hutch gets its own fast shutter)
 
 ---
 
@@ -235,6 +241,9 @@ def xrd(
 - **xpdtools/profiles/xpdd.py** — XPD-D tomo profile startup (fe_shutter, photon_shutter)
 - **xpdtools/profiles/devd.py** — XPD-D standard profile startup
 - **xpdtools/tomo/flyscans.py** — Tomo dark/flat plan (shutter logic)
+- **CS-Studio 28id2-phoebus:**
+  - `pps/28id_pps_layout.bob` — FE shutter PV definitions
+  - `es/28idc_fast_shutter.bob` — XPD C-hutch fast shutter PV definitions
 - **hxm_program/DECISIONS.md** — Shutter system decisions and history
 - **hxm_program/pages/pdf.html** — PDF beamline overview
 - **hxm_program/pages/xpd.html** — XPD beamline overview
@@ -244,10 +253,16 @@ def xrd(
 ## Discussion & Feedback
 
 **For Kyle (2026-11-17):**
-- Confirm real PV addresses for FE shutter and XPD C-hutch fast shutter
-- Confirm settle times and control patterns for each shutter
+- ✓ FE shutter PV confirmed: `XF:28ID-PPS{Sh:FE}`
+- ✓ XPD C-hutch fast shutter PV confirmed: `XF:28IDC-ES:1{Sh:Exp}`
+- Measure and confirm settle times for each shutter
 - Confirm whether PDF fast shutter inverted logic is intentional or a bug
 - Review CS-Studio screen issues and proposed fixes
+
+**For xpdtools developers:**
+- Replace TEST PVs in xpdd.py and devd.py with real PVs (above)
+- Use this document as reference when writing/updating shutter-related plans
+- Link from device docstrings (xpd_tools/shutter.py) to this document
 
 **For Ops/Beamline Staff:**
 - Use PV addresses from Section 2 for Phoebus / CSS manual operations
@@ -256,4 +271,4 @@ def xrd(
 
 ---
 
-**Last updated:** 2026-11-17 by copilot (from code inspection of pdftools, xpdtools, and Kyle's whiteboard session)
+**Last updated:** 2026-11-17 by copilot (from CS-Studio screen inspection + code cross-reference)
