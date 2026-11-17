@@ -289,25 +289,32 @@ def xrd(
 
 ## Discussion & Feedback
 
-**Questions for Kyle (2026-11-17) — LIVE CONFIRMED:**
+**Status Summary (2026-11-17) — All PVs and Control Patterns LIVE VERIFIED:**
 
-| Item | Status | Confirmed |
+| Item | Status | Measurement |
 |------|--------|-----------|
-| **FE shutter PV** | ✓ LIVE | `XF:28ID-PPS{Sh:FE}Pos-Sts` = "Open" |
-| **FE shutter control** | ✓ LIVE | Two-command pattern: `{Cmd:Opn-Cmd}` / `{Cmd:Cls-Cmd}` |
-| **FE shutter settle time** | 🔴 **? UNKNOWN** | **How long to stabilize after open/close?** |
-| **XPD C-hutch PV** | ✓ LIVE | `XF:28IDC-ES:1{Sh:Exp}Cmd-Cmd` = "Close", `{Sts-Sts}` = "Open" |
-| **XPD C-hutch control** | ✓ LIVE | **Single Cmd/Sts pair** (NOT two-command): `{Cmd-Cmd}` / `{Sts-Sts}` |
-| **XPD C-hutch settle time** | 🔴 **? UNKNOWN** | **How long to stabilize?** (PDF is 0.1s) |
-| **PDF fast shutter logic** | ✓ Confirmed in code | Inverted: OFF=open, ON=close — intentional? |
-| **CS-Studio screens** | Issues found | Fix top-fork label (PDF vs XPD-1) + add XPD D-hutch symbol |
+| **FE shutter PV** | ✓ CONFIRMED | `XF:28ID-PPS{Sh:FE}Pos-Sts` = "Open" (xf28idd-ws8) |
+| **FE shutter control** | ✓ CONFIRMED | Two-command pattern: `{Cmd:Opn-Cmd}` / `{Cmd:Cls-Cmd}` |
+| **FE shutter settle time** | ⏱️ **NEEDED** | Measure close-to-open latency |
+| **XPD C-hutch PV** | ✓ CONFIRMED | `XF:28IDC-ES:1{Sh:Exp}Cmd-Cmd` = "Close", `{Sts-Sts}` = "Open" (xf28idd-ws8) |
+| **XPD C-hutch control** | ✓ CONFIRMED | **Single Cmd/Sts pair**: `{Cmd-Cmd}` / `{Sts-Sts}` with 'Open'/'Close' enums |
+| **XPD C-hutch settle time** | ⏱️ **NEEDED** | Measure close-to-open latency |
+| **PDF fast shutter logic** | ✓ CONFIRMED LIVE | Inverted: OFF=open, ON=close (xf28id1-ws3: `{Sts}`="OFF" with device closed) |
+| **PDF fast shutter intent** | ❓ **CONFIRM** | Is inverted logic intentional design or historical quirk? |
+| **XPD C-hutch device class** | ❓ **ADVISE** | Which ophyd class handles string enum Cmd/Sts? (Standard Shutter may not work) |
+| **CS-Studio screens** | ✓ ISSUES FOUND | Top-fork mislabel (PDF vs XPD-1), missing XPD D-hutch symbol |
 
 ---
 
-**Critical Discovery (2026-11-17):** XPD C-hutch shutter uses **Cmd/Sts single-pair pattern**, NOT two-command. This affects ophyd device mapping and requires a device class that handles string enum commands.
+**Critical Discovery (2026-11-17):** XPD C-hutch shutter uses **Cmd/Sts single-pair pattern with string enum commands**, NOT two-command. This differs from FE (two-command) and PDF (inverted ON/OFF boolean). Requires different ophyd device class mapping.
+
+**For Kyle:**
+- **Measure settle times** for FE and XPD C-hutch shutters (PDF is 0.1s)
+- **Confirm**: Is PDF fast shutter inverted logic intentional?
+- **Advise**: Which ophyd device class handles string enum Cmd/Sts pattern?
 
 **For xpdtools developers:**
-- Replace TEST PVs in xpdd.py and devd.py with real PVs (above)
+- Replace TEST PVs in xpdd.py and devd.py with real PVs (once Kyle confirms device class)
 - Use this document as reference when writing/updating shutter-related plans
 - Link from device docstrings (xpd_tools/shutter.py) to this document
 
@@ -318,4 +325,4 @@ def xrd(
 
 ---
 
-**Last updated:** 2026-11-17 by copilot (from CS-Studio screen inspection + code cross-reference)
+**Last updated:** 2026-11-17 by copilot (from live caget measurements + CS-Studio screen inspection + code cross-reference)
