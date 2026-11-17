@@ -93,15 +93,21 @@ fs = FastShutter("XF:28ID1B-OP{PSh:1-Det:2}", name="fs")
 | Property | Value |
 |----------|-------|
 | **Physical location** | C-hutch (between monochromator and XPD C-hutch experimental station) |
-| **Device class** | `Shutter` (ophyd_async, two-command style) |
+| **Device class** | `Shutter` (ophyd_async, Cmd/Sts single-command style) |
 | **PV prefix** | `XF:28IDC-ES:1{Sh:Exp}` ✓ |
-| **Control commands** | `{Cmd:Opn-Cmd}` (open), `{Cmd:Cls-Cmd}` (close) |
-| **Feedback readback** | `{Pos-Sts}` (position status: "Open" / "Not Open") |
-| **Settle time** | **? UNKNOWN** — _Ask Kyle_ |
+| **Control PV** | `{Cmd-Cmd}` (single command: "Open" / "Close") |
+| **Feedback readback** | `{Sts-Sts}` (shows current state: "Open" / "Close") |
+| **Settle time** | **? UNKNOWN** — needs measurement |
 | **Used in** | xpdtools tomo plans (photon_shutter device) |
-| **Status enum** | `ShutterStatus` = {OPEN: "Open", CLOSED: "Not Open"} |
+| **Status values** | "Open" / "Close" (string enum) |
 | **Source** | CS-Studio: 28id2-phoebus/es/28idc_fast_shutter.bob |
-| **Verification** | ✓ PV extracted from screen; **settle time & control response time still need measurement** |
+| **Verification** | ✓ **CONFIRMED LIVE** (2026-11-17): `Sts-Sts`="Open", `Cmd-Cmd`="Close" |
+
+**Control Pattern (Cmd/Sts style):**
+```
+Command: XF:28IDC-ES:1{Sh:Exp}Cmd-Cmd  (write "Open" or "Close")
+Status:  XF:28IDC-ES:1{Sh:Exp}Sts-Sts  (read current state)
+```
 
 **Device instantiation** (xpdtools profile):
 ```python
@@ -109,10 +115,11 @@ from xpd_tools.shutter import Shutter
 photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", name="photon_shutter")
 ```
 
-**🔴 PENDING KYLE'S CONFIRMATION:**
-1. Is PV `XF:28IDC-ES:1{Sh:Exp}` correct?
-2. How long does XPD C-hutch fast shutter settle after opening/closing? (PDF is 0.1s)
-3. Any known issues with this shutter? (e.g., slow response, stickiness)
+**🟢 CONFIRMED:**
+- ✓ PV prefix: `XF:28IDC-ES:1{Sh:Exp}`
+- ✓ Control pattern: `{Cmd-Cmd}` = "Open" / "Close" (single Cmd/Sts pair, not two-command)
+- ✓ Status feedback: `{Sts-Sts}` = reads current state
+- 🔴 **Settle time:** Still needs measurement
 
 ---
 
@@ -236,6 +243,20 @@ def xrd(
 
 **Proposed fixes:** File 3 GitHub issues in cs-studio-xf repos to update screens and reference this document.
 
+## Control Pattern Summary
+
+**Three different control patterns across the 28-ID shutter system:**
+
+| Shutter | Control Style | Command PV | Status PV | Control Values |
+|---------|-------|-----------|-----------|-------|
+| **FE** (`Sh:FE`) | Two-command | `{Cmd:Opn-Cmd}` + `{Cmd:Cls-Cmd}` | `{Pos-Sts}` | Triggerable commands → "Open" / "Not Open" |
+| **PDF fast** (`PSh:1-Det:2`) | Cmd/Sts (inverted) | `{Cmd}` | `{Sts}` | OFF=open, ON=close → "Open" / "Close" |
+| **XPD C-hutch** (`{Sh:Exp}`) | Cmd/Sts (standard) | `{Cmd-Cmd}` | `{Sts-Sts}` | "Open" / "Close" → "Open" / "Close" |
+
+**Key difference:** XPD C-hutch is **single Cmd/Sts pair**, NOT two-command. This requires ophyd device that maps string commands, not trigger-based.
+
+---
+
 ### 3. Test PV Placeholders (xpdtools profiles)
 
 | Profile | FE Shutter | Photon Shutter | Status |
@@ -268,16 +289,22 @@ def xrd(
 
 ## Discussion & Feedback
 
-**Questions for Kyle (2026-11-17) — Please Confirm:**
+**Questions for Kyle (2026-11-17) — LIVE CONFIRMED:**
 
-| Item | Status | Question |
-|------|--------|----------|
-| **FE shutter PV** | ✓ Extracted, needs confirm | Is `XF:28ID-PPS{Sh:FE}` correct? |
-| **FE shutter settle time** | **? UNKNOWN** | How long does FE shutter take to stabilize after open/close? |
-| **XPD C-hutch fast shutter PV** | ✓ Extracted, needs confirm | Is `XF:28IDC-ES:1{Sh:Exp}` correct? |
-| **XPD C-hutch settle time** | **? UNKNOWN** | How long does XPD C-hutch fast shutter stabilize? (PDF is 0.1s) |
-| **PDF fast shutter inverted logic** | ✓ Confirmed in code | Is inverted control (OFF=open, ON=close) intentional? Bug or feature? |
-| **CS-Studio screens** | Issues found | Should we file PRs to fix top-fork label (PDF vs XPD-1) and add XPD D-hutch shutter symbol? |
+| Item | Status | Confirmed |
+|------|--------|-----------|
+| **FE shutter PV** | ✓ LIVE | `XF:28ID-PPS{Sh:FE}Pos-Sts` = "Open" |
+| **FE shutter control** | ✓ LIVE | Two-command pattern: `{Cmd:Opn-Cmd}` / `{Cmd:Cls-Cmd}` |
+| **FE shutter settle time** | 🔴 **? UNKNOWN** | **How long to stabilize after open/close?** |
+| **XPD C-hutch PV** | ✓ LIVE | `XF:28IDC-ES:1{Sh:Exp}Cmd-Cmd` = "Close", `{Sts-Sts}` = "Open" |
+| **XPD C-hutch control** | ✓ LIVE | **Single Cmd/Sts pair** (NOT two-command): `{Cmd-Cmd}` / `{Sts-Sts}` |
+| **XPD C-hutch settle time** | 🔴 **? UNKNOWN** | **How long to stabilize?** (PDF is 0.1s) |
+| **PDF fast shutter logic** | ✓ Confirmed in code | Inverted: OFF=open, ON=close — intentional? |
+| **CS-Studio screens** | Issues found | Fix top-fork label (PDF vs XPD-1) + add XPD D-hutch symbol |
+
+---
+
+**Critical Discovery (2026-11-17):** XPD C-hutch shutter uses **Cmd/Sts single-pair pattern**, NOT two-command. This affects ophyd device mapping and requires a device class that handles string enum commands.
 
 **For xpdtools developers:**
 - Replace TEST PVs in xpdd.py and devd.py with real PVs (above)
