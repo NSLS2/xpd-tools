@@ -56,7 +56,7 @@ else:
     TILED_BACKUP_ROOT = "/nsls2/data/xpd-new/shared/config/bluesky/tiled_backup"
 
 # Environment variables for Redis host and ophyd_async detector state preservation
-os.environ["REDIS_HOST"] = "xf28id2-hex-redis1.nsls2.bnl.gov"
+os.environ["REDIS_HOST"] = "xf28id2-xpd-redis1.nsls2.bnl.gov"
 os.environ["OPHYD_ASYNC_PRESERVE_DETECTOR_STATE"] = "YES"
 
 # Print version information for bluesky, ophyd_async, tiled, and hextools.
@@ -64,9 +64,21 @@ print_version_info(additional_packages=["xpd_tools"])
 
 
 # Setup the RunEngine and its metadata.
-RE: RunEngine = initialize_run_engine()
+if MOCK:
+    from datetime import datetime
+
+    RE: RunEngine = RunEngine(
+        {
+            "data_session": "pass-123456",
+            "cycle": (
+                f"{datetime.today().year}-{int(datetime.today().month / 4) + 1}"
+            ),
+        }
+    )
+else:
+    RE = initialize_run_engine()
 RE.md["facility"] = "NSLS-II"
-RE.md["group"] = "HEX"
+RE.md["group"] = "XPD"
 RE.md["beamline_id"] = "28-ID-2"
 
 # Uncomment if running in the terminal to get progress bars.
