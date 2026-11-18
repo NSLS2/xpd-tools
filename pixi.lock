@@ -313,6 +313,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/af/f75e868caeaa49306423af5a2b85bcbec37f18c6ea49766f2ab0de0e775d/confluent_kafka-2.16.1-cp313-cp313-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
@@ -329,11 +330,9 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a4/55/2c393b8fcd3f330f994a139a93b1b81537d6c251911fead40e60c93e9ca0/p4p-4.3.0-cp313-cp313-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/98/ef2b6fe2903e377cbe870c3b2800d62552f1e3dbe81ce49e1923c53d1c5c/h5py-3.16.0-cp313-cp313-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -794,6 +793,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/af/f75e868caeaa49306423af5a2b85bcbec37f18c6ea49766f2ab0de0e775d/confluent_kafka-2.16.1-cp313-cp313-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
@@ -810,11 +810,9 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a4/55/2c393b8fcd3f330f994a139a93b1b81537d6c251911fead40e60c93e9ca0/p4p-4.3.0-cp313-cp313-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/98/ef2b6fe2903e377cbe870c3b2800d62552f1e3dbe81ce49e1923c53d1c5c/h5py-3.16.0-cp313-cp313-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -1270,6 +1268,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/2e/9b/f66e55f5f33c5d625900469aa51fb6744cd04ce895ee9859290dcc95f09e/confluent_kafka-2.16.1-cp311-cp311-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4f/c2/384b1242aa51a50b4722e09fbb3fb165b337c5a313d520b8f70f4a116f6e/epicscorelibs-7.0.10.99.0.2-cp311-cp311-manylinux2014_x86_64.whl
@@ -1288,9 +1287,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/aa/ed/3fb20a1a96b8dc645d88c4072df481fe06e0289e4d528ebbdcc044ebc8b3/ruamel_yaml_clib-0.2.15-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -1749,6 +1746,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/44/1b/e8364fadbc05bff19e67dda4f151e63fb13c58252cd5e1e1750c22cc1b8f/pymongo-4.19.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
@@ -1767,10 +1765,8 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ae/75/9e6f9b9326e94bc6f10f9f1fe2c4ad338e255717578fcee9c23351ba0dff/p4p-4.3.0-cp312-cp312-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -2232,6 +2228,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/af/f75e868caeaa49306423af5a2b85bcbec37f18c6ea49766f2ab0de0e775d/confluent_kafka-2.16.1-cp313-cp313-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
@@ -2248,11 +2245,9 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a4/55/2c393b8fcd3f330f994a139a93b1b81537d6c251911fead40e60c93e9ca0/p4p-4.3.0-cp313-cp313-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/98/ef2b6fe2903e377cbe870c3b2800d62552f1e3dbe81ce49e1923c53d1c5c/h5py-3.16.0-cp313-cp313-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -2538,6 +2533,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/35/7a/987e583882f985fe4d7323774889ec58049171828b58c2217e7f79cdf44e/sphinxcontrib_devhelp-2.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/38/0c/b54a4fdd7f90a3af8b02ebc9ce6712c2c208b7926a2f7bad95c33ebbe943/uvicorn-0.54.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/af/f75e868caeaa49306423af5a2b85bcbec37f18c6ea49766f2ab0de0e775d/confluent_kafka-2.16.1-cp313-cp313-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/4b/85/41d27f234b82e47c167a5f6c0f62501dc0c640585ff4aba79e08a390336a/charset_normalizer-3.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
@@ -2577,12 +2573,10 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/ab/43/86aacc027959108b4c66eeae8b73cedb057dfa6eb3a335d05ad65197081c/kiwisolver-1.5.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/af/1b/b0f5f020bd43351932df9d16857330d3304715c4b1f7f783dc6e58cb7919/pycryptodome-4.3.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b4/4f/3f2c25c9b43970b5e9a08beb5e04776247edea684ddc0930f4f02f0bb6cb/fastapi-0.162.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/98/ef2b6fe2903e377cbe870c3b2800d62552f1e3dbe81ce49e1923c53d1c5c/h5py-3.16.0-cp313-cp313-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
@@ -2958,6 +2952,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/27/cd/c883e1a7c447479d6e13985565080e3fea88ab5a107c21684c813dba1875/flexcache-0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/33/ef/6d27fc118f58cb24886da413545a7efb0853d405fddbfd8b2d9ac09fbed4/jupyterlab_widgets-3.0.17-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/47/3b/0a007667d2077c197793beede94483f1efe57a23e03ddcf57ee7e2ab26da/pydantic_numpy-9.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/af/f75e868caeaa49306423af5a2b85bcbec37f18c6ea49766f2ab0de0e775d/confluent_kafka-2.16.1-cp313-cp313-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/4e/f6/71d6ec9f18da0b2201287ce9db6afb1a1f637dedb3f0703409558981c723/ldap3-2.9.1-py2.py3-none-any.whl
@@ -2974,11 +2969,9 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a4/55/2c393b8fcd3f330f994a139a93b1b81537d6c251911fead40e60c93e9ca0/p4p-4.3.0-cp313-cp313-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/af/fe/b6045c782f1fd1ae317d2a6ca1884857ce5c20f59befe6ab25a8603c43a7/ruamel_yaml-0.18.17-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b7/d5/01ea71591a29e88926582e3ca7ed32f8b933e9ebc99187a7ab100587242d/pint-0.26.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bd/98/ef2b6fe2903e377cbe870c3b2800d62552f1e3dbe81ce49e1923c53d1c5c/h5py-3.16.0-cp313-cp313-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/55/298e9b3b864a198234997e87a1471c1b17d7f3546ace6d18fb5cf1ce24b2/ipywidgets-8.1.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/4c/c73f828fdbcd37eaf21d08fa852544a3ca7c2dbb3ea76873d64f2ea413d1/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl
@@ -3056,7 +3049,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/adbc-driver-manager?source=compressed-mapping
+  - pkg:pypi/adbc-driver-manager?source=hash-mapping
   run_exports: {}
   size: 396749
   timestamp: 1793069943967
@@ -3939,7 +3932,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/coverage?source=compressed-mapping
+  - pkg:pypi/coverage?source=hash-mapping
   run_exports: {}
   size: 431944
   timestamp: 1793049301371
@@ -3954,7 +3947,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/coverage?source=compressed-mapping
+  - pkg:pypi/coverage?source=hash-mapping
   run_exports: {}
   size: 419926
   timestamp: 1793049301371
@@ -4024,7 +4017,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/cytoolz?source=compressed-mapping
+  - pkg:pypi/cytoolz?source=hash-mapping
   run_exports: {}
   size: 762767
   timestamp: 1791511255926
@@ -4040,7 +4033,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/cytoolz?source=compressed-mapping
+  - pkg:pypi/cytoolz?source=hash-mapping
   run_exports: {}
   size: 765976
   timestamp: 1791511269143
@@ -4056,7 +4049,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/cytoolz?source=compressed-mapping
+  - pkg:pypi/cytoolz?source=hash-mapping
   run_exports: {}
   size: 760733
   timestamp: 1791511265780
@@ -4373,7 +4366,7 @@ packages:
   license: Apache-2.0
   license_family: Apache
   purls:
-  - pkg:pypi/google-crc32c?source=compressed-mapping
+  - pkg:pypi/google-crc32c?source=hash-mapping
   run_exports: {}
   size: 29520
   timestamp: 1788537554663
@@ -6766,7 +6759,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/numcodecs?source=compressed-mapping
+  - pkg:pypi/numcodecs?source=hash-mapping
   run_exports: {}
   size: 2236378
   timestamp: 1792548537443
@@ -7189,7 +7182,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/pandas?source=compressed-mapping
+  - pkg:pypi/pandas?source=hash-mapping
   run_exports: {}
   size: 17245251
   timestamp: 1792679045326
@@ -8342,7 +8335,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/rpds-py?source=compressed-mapping
+  - pkg:pypi/rpds-py?source=hash-mapping
   run_exports: {}
   size: 302657
   timestamp: 1791202432096
@@ -9288,7 +9281,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/zstandard?source=compressed-mapping
+  - pkg:pypi/zstandard?source=hash-mapping
   run_exports: {}
   size: 466599
   timestamp: 1788604311166
@@ -9324,7 +9317,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/zstandard?source=compressed-mapping
+  - pkg:pypi/zstandard?source=hash-mapping
   run_exports: {}
   size: 472702
   timestamp: 1788604307981
@@ -9619,7 +9612,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/bluesky-tiled-plugins?source=compressed-mapping
+  - pkg:pypi/bluesky-tiled-plugins?source=hash-mapping
   run_exports: {}
   size: 67457
   timestamp: 1793717923309
@@ -10638,7 +10631,7 @@ packages:
   - python
   license: BSD-3-Clause
   purls:
-  - pkg:pypi/jsonpointer?source=compressed-mapping
+  - pkg:pypi/jsonpointer?source=hash-mapping
   run_exports: {}
   size: 16176
   timestamp: 1793687837164
@@ -11290,7 +11283,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/pyproject-hooks?source=compressed-mapping
+  - pkg:pypi/pyproject-hooks?source=hash-mapping
   run_exports: {}
   size: 17061
   timestamp: 1791576869230
@@ -11477,7 +11470,7 @@ packages:
   - python
   license: MIT
   purls:
-  - pkg:pypi/python-discovery?source=compressed-mapping
+  - pkg:pypi/python-discovery?source=hash-mapping
   run_exports: {}
   size: 43956
   timestamp: 1793701161522
@@ -12200,7 +12193,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/tzlocal?source=compressed-mapping
+  - pkg:pypi/tzlocal?source=hash-mapping
   run_exports: {}
   size: 24206
   timestamp: 1792678127238
@@ -12345,7 +12338,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/xyzservices?source=compressed-mapping
+  - pkg:pypi/xyzservices?source=hash-mapping
   run_exports: {}
   size: 53963
   timestamp: 1788530754725
@@ -12425,7 +12418,7 @@ packages:
   - bluesky-tiled-plugins>=2.0.13
   - bluesky>=1.15.1
   - ipython>=9.15.0
-  - nslsii>=0.11.9
+  - nslsii>=0.12.0
   - ophyd-async[ca,pva] @ git+https://github.com/bluesky/ophyd-async@main
   - redis-json-dict>=0.2.2
   - rich>=15.0.0
@@ -13202,6 +13195,38 @@ packages:
   - railroad-diagrams ; extra == 'diagrams'
   - jinja2 ; extra == 'diagrams'
   requires_python: '>=3.9'
+- pypi: https://files.pythonhosted.org/packages/42/52/e82ac256a5bbc9c860e3a71f192ac4bcb08da5e781a0001849aaa81ee637/nslsii-0.12.0-py3-none-any.whl
+  name: nslsii
+  version: 0.12.0
+  sha256: ff6db543bb255f292be5d404d6c4b791e868b08843eaf4e7384145868f6a71eb
+  requires_dist:
+  - appdirs
+  - bluesky-kafka>=0.8.0
+  - bluesky>=1.8.1
+  - caproto
+  - databroker
+  - h5py
+  - httpx
+  - ipython
+  - ipywidgets
+  - ldap3
+  - matplotlib
+  - msgpack-numpy
+  - msgpack>=1.0.0
+  - numpy
+  - opencv-python
+  - ophyd
+  - ophyd-async[ca]>=0.21.3
+  - packaging
+  - pillow
+  - psutil
+  - pycryptodome
+  - pyolog
+  - pyyaml
+  - redis
+  - redis-json-dict
+  - requests
+  requires_python: '>=3.11,<3.14'
 - pypi: https://files.pythonhosted.org/packages/44/1b/e8364fadbc05bff19e67dda4f151e63fb13c58252cd5e1e1750c22cc1b8f/pymongo-4.19.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
   name: pymongo
   version: 4.19.0
@@ -14195,38 +14220,6 @@ packages:
   - ryd ; extra == 'docs'
   - mercurial>5.7 ; extra == 'docs'
   requires_python: '>=3.9'
-- pypi: https://files.pythonhosted.org/packages/b0/ec/d13d965f8b075d422e638f6888ec367b0ed9bcd9875ac27c7396ce486a9a/nslsii-0.11.9-py3-none-any.whl
-  name: nslsii
-  version: 0.11.9
-  sha256: b3e6a21202d82cdcdb68852c835c51a65ebd4c0fc4a67f3950733484c7acae85
-  requires_dist:
-  - appdirs
-  - bluesky-kafka>=0.8.0
-  - bluesky>=1.8.1
-  - caproto
-  - databroker
-  - h5py
-  - httpx
-  - ipython
-  - ipywidgets
-  - ldap3
-  - matplotlib
-  - msgpack>=1.0.0
-  - msgpack-numpy
-  - numpy
-  - opencv-python
-  - ophyd
-  - ophyd-async
-  - packaging
-  - pillow
-  - psutil
-  - pycryptodome
-  - pyolog
-  - redis
-  - redis-json-dict
-  - requests
-  - setuptools
-  - shortuuid
 - pypi: https://files.pythonhosted.org/packages/b1/d3/a3e8393cdf6e40e94b3a91ab8afdb010769829b520b2fbfdc4697f31a1c3/bluesky_kafka-0.10.0-py3-none-any.whl
   name: bluesky-kafka
   version: 0.10.0
@@ -14367,11 +14360,6 @@ packages:
   requires_dist:
   - numpy>=1.21.2
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/c0/44/21d6bf170bf40b41396480d8d49ad640bca3f2b02139cd52aa1e272830a5/shortuuid-1.0.13-py3-none-any.whl
-  name: shortuuid
-  version: 1.0.13
-  sha256: a482a497300b49b4953e15108a7913244e1bb0d41f9d332f5e9925dba33a3c5a
-  requires_python: '>=3.6'
 - pypi: https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl
   name: openpyxl
   version: 3.1.5

@@ -1,6 +1,7 @@
 """XPD-D Bluesky profile for the 28-ID-2 beamline at NSLS-II."""
 
 import os
+from pathlib import PurePosixPath
 
 # Remove PYEPICS_LIBCA set by the conda epics-base activation script.
 # It points to conda's libca.so which conflicts with epicscorelibs' libca.so
@@ -153,8 +154,7 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
 
 path_provider = NSLS2PathProvider(
     RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
-    beamline_tla="xpd",
-    beamline_tla_suffix="-new",
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
 )
 
 # Created before the devices are, so it keeps the name pilatus1 gives its plugins

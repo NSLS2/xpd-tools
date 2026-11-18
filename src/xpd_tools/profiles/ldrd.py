@@ -5,6 +5,7 @@
 """XPD Bluesky profile for the 28-ID-2 beamline at NSLS-II."""
 
 import os
+from pathlib import PurePosixPath
 
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
@@ -84,8 +85,7 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
 
 path_provider = NSLS2PathProvider(
     RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
-    beamline_tla="xpd",
-    beamline_tla_suffix="-new",
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
 )
 
 #
