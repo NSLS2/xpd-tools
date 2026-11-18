@@ -4,6 +4,9 @@
 does not depend on xpdAcq. Each PR here adds one small bluesky-native replacement and keeps the start-document keys
 that pdfstream reads.
 
+These five PRs are 3.1 to 3.5 of the full xpdAcq retirement plan (`docs/xpdacq-retirement.md`, #59). That plan adds
+the YAML settings file, shutter stubs, `ct`, beamtime through sync-experiment, and the profile switch.
+
 | PR | Change | Replaces | Shown working by |
 |---|---|---|---|
 | 3.1 | Dark frames: a `take_dark` plan (fast shutter closed, its own run) and a preprocessor that takes a new dark when the last one is older than a set window or the exposure changed. Each light run's start document gets `sc_dk_field_uid` | `periodic_dark`, `take_dark`, `_inject_qualified_dark_frame_uid`, `glbl['dk_window']` | Mock RunEngine test: the first run gets a dark, a second run inside the window reuses it, and a change of exposure takes a new one |
