@@ -9,6 +9,7 @@ from bluesky.run_engine import RunEngine
 from IPython.core.getipython import get_ipython
 from IPython.terminal.interactiveshell import TerminalInteractiveShell
 from IPython.terminal.prompts import Prompts
+from nslsii import configure_bluesky_json_logging
 from nslsii.sync_experiment import sync_experiment
 from nslsii.utils import open_redis_client
 from pygments.token import Token
@@ -66,9 +67,13 @@ def initialize_run_engine() -> RunEngine:
                 ),
             }
         )
-    return RunEngine(
+    RE = RunEngine(
         RedisJSONDict(open_redis_client(redis_ssl=True), "")  # type: ignore (TODO: Loosen type of RE.md to Mapping from dict)
     )
+    # Write bluesky, ophyd, ophyd-async, nslsii and IPython logs and a summary of every
+    # document to /var/log/bluesky, from where they reach Loki (Grafana loki-bluesky).
+    configure_bluesky_json_logging(ipython=get_ipython(), RE=RE)
+    return RE
 
 
 def start_beamtime(proposal_id: int, verbose: bool = True) -> None:
