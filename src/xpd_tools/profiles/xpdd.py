@@ -1,6 +1,7 @@
 """XPD-D Bluesky profile for the 28-ID-2 beamline at NSLS-II."""
 
 import os
+from pathlib import PurePosixPath
 
 import bluesky.plan_stubs as bps
 import bluesky.plans as bp
@@ -75,7 +76,9 @@ if ipython is not None and isinstance(ipython, TerminalInteractiveShell):
         ]
 
 
-path_provider = NSLS2PathProvider(RE.md, beamline_tla="xpd", beamline_tla_suffix="-new")
+path_provider = NSLS2PathProvider(
+    RE.md, base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals")
+)
 
 with init_devices(mock=XPD_TOOLS_RUNNING_IN_CI):
     panda1 = HDFPanda("XF:28ID2-ES{PANDA:1}:", path_provider)
