@@ -26,7 +26,8 @@ graph TD
     XPDPath["XPD Beam Path<br/>(28-ID-2)"]
     XPDCHutchSh["XPD C-Hutch Fast Shutter<br/>(XF:28IDC-ES:1{Sh:Exp})<br/>Cmd/Sts single-pair<br/>('Open'/'Close' enums)"]
     CHutch["C-Hutch<br/>Experiments"]
-    DHutch["D-Hutch<br/>(NO SHUTTER)<br/>⚠️ Known gap"]
+    MotorSh["XPD C-Hutch Motorized Fast Shutter<br/>(motor XF:28IDC-ES:1{Sh2:Exp-Ax:5}Mtr,<br/>switches {Sh:Exp}Sw:Opn1/Cls1-Sts)<br/>Used by D-hutch tomography"]
+    DHutch["D-Hutch<br/>(no shutter of its own)"]
     
     Ring --> FE
     FE --> Mono
@@ -39,7 +40,8 @@ graph TD
     
     XPDPath --> XPDCHutchSh
     XPDCHutchSh --> CHutch
-    CHutch --> DHutch
+    CHutch --> MotorSh
+    MotorSh --> DHutch
     
     style FE fill:#ff9999
     style PDFFastSh fill:#99ccff
@@ -62,7 +64,7 @@ Monochromator (LAU optic splits PDF vs XPD energy)
     ├─→ PDF path → Fast Shutter (Hutch A/B) → PDF Hutch (28-ID-1)
     │
     └─→ XPD path → Fast Shutter (C-hutch) → XPD C-hutch (28-ID-2)
-                   [NO shutter in D-hutch] ← KNOWN GAP
+                   → C-hutch motorized fast shutter ({Sh2:Exp}) → XPD D-hutch (no shutter of its own)
 ```
 
 ---
@@ -161,16 +163,26 @@ photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", name="photon_shutter")
 
 ---
 
-### 4. XPD D-Hutch
+### 4. XPD D-Hutch (uses the C-hutch motorized fast shutter)
 
-**Status:** ⚠️ **NO FAST SHUTTER INSTALLED** (known hardware gap)
+**Corrected 2026-11-19** (from NSLS2/xpd-tools#63 and the CS-Studio screens). The D hutch has no shutter of its own, but
+it is downstream of the C hutch, and its tomography plans open and close the **C-hutch motorized fast shutter**.
 
 | Property | Value |
 |----------|-------|
-| **Physical location** | D-hutch (beam line from monochromator) |
-| **Fast shutter** | None (not installed) |
-| **Plans** | Tomo plans can run with FE shutter gate only; beam is not gated per-hutch |
-| **Future work** | Add fast shutter and update CS-Studio screens (xf28id/28id2-phoebus) |
+| **Device class** | `FastShutter` (xpd-tools#63): moves the motor itself and reads the position switches |
+| **Motor** | `XF:28IDC-ES:1{Sh2:Exp-Ax:5}Mtr` |
+| **Position switches** | `XF:28IDC-ES:1{Sh:Exp}Sw:Opn1-Sts`, `Sw:Cls1-Sts` (read "SW Low" when made) |
+| **Positions** | #63: open −20°, closed +20° (set by hand at the beamline). The screen `28idc_fast_shutter_motorize` says Open=60°, Close=0°. **Open question** |
+| **Source** | `28id/es/28idc_fast_shutter_motorize.opi` shows the `{Sh:Exp}` switches as this shutter's open/closed status; the Phoebus screen commands `{Sh2:Exp}Cmd-Cmd` and reads `{Sh:Exp}Sts-Sts` (cs-studio-xf as of 2026-10-20, not refreshed) |
+| **Settle time** | Not needed: `FastShutter` waits for its switches and checks the motor position |
+
+The front-end and photon shutters are only checked open by the D-hutch plans, never moved.
+
+**Open question: which photon shutter gates XPD?** The profiles check `XF:28IDA-PPS{PSh}`. On `28id_pps_layout.bob`
+`{PSh}` sits on the branch labelled "XPD-1" and `XF:28IDA-PPS:2{PSh:2}` on "XPD-2"; section "CS-Studio Screen
+Errors" below says the "XPD-1" label really means PDF. If so, XPD's photon shutter is `:2{PSh:2}`. To confirm: read both
+`Pos-Sts` while only one branch has beam.
 
 ---
 
@@ -265,7 +277,7 @@ def xrd(
 | FE (Hutch B) | `XF:28ID-PPS{Sh:FE}` | 28id2-phoebus/pps/28id_pps_layout.bob | ✓ Confirmed |
 | PDF fast (Hutch A/B) | `XF:28ID1B-OP{PSh:1-Det:2}` | pdftools profile | ✓ Confirmed |
 | XPD C-hutch fast | `XF:28IDC-ES:1{Sh:Exp}` | 28id2-phoebus/es/28idc_fast_shutter.bob | ✓ Confirmed |
-| XPD D-hutch fast | N/A (not installed) | — | — |
+| XPD D-hutch | uses the C-hutch motorized fast shutter: motor `XF:28IDC-ES:1{Sh2:Exp-Ax:5}Mtr`, switches `XF:28IDC-ES:1{Sh:Exp}Sw:*1-Sts` | 28idc_fast_shutter_motorize.opi, xpd-tools#63 | ✓ (angles open) |
 
 **Next step:** Test settle times for each shutter and measure command-to-readback latencies.
 
@@ -277,7 +289,7 @@ def xrd(
 |-------|---------|-----------|----------|
 | Top fork label | "XPD-1" | "PDF" | High |
 | Bottom fork (XPD) | Missing fast shutter symbol | Add fast shutter symbol | Medium |
-| D-hutch | No shutter shown | Correct (no shutter installed) | Low |
+| D-hutch | No shutter shown | Correct (none of its own; it uses the C-hutch motorized shutter upstream) | Low |
 
 **Proposed fixes:** File 3 GitHub issues in cs-studio-xf repos to update screens and reference this document.
 
@@ -304,7 +316,9 @@ def xrd(
 
 **Next step:** Replace `TEST{Sh:*}` with real PVs:
 - xpdd.py: `fe_shutter = PPSShutter("XF:28ID-PPS{Sh:FE}", ...)` and `photon_shutter = Shutter("XF:28IDC-ES:1{Sh:Exp}", ...)`
-- devd.py: Same as xpdd.py (until D-hutch gets its own fast shutter)
+- devd.py: Same as xpdd.py.
+
+**Update 2026-11-19:** xpd-tools#63 replaces the placeholders in both profiles: `fe_shutter` `XF:28ID-PPS{Sh:FE}`, `photon_shutter` `XF:28IDA-PPS{PSh}` (see the open question in section 4), and `fast_shutter = FastShutter()`.
 
 ---
 
@@ -363,4 +377,4 @@ def xrd(
 
 ---
 
-**Last updated:** 2026-11-17 by copilot (from live caget measurements + CS-Studio screen inspection + code cross-reference)
+**Last updated:** 2026-11-19 by copilot: D-hutch section corrected from xpd-tools#63 and the CS-Studio screens (was 2026-11-17: live caget measurements, CS-Studio screen inspection, code cross-reference)
