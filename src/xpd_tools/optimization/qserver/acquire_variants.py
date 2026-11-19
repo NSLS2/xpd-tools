@@ -218,6 +218,7 @@ def xray_acquire(
     actuators,
     sensors=None,
     md=None,
+    user_md=None,
     *,
     flow_config: FlowConfig | None = None,
     xray_config: XrayConfig | None = None,

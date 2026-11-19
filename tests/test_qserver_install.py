@@ -1,5 +1,8 @@
 """Tests for install(), which loads the ported Queue Server plans into a profile."""
 
+import builtins
+import dis
+import types
 from unittest.mock import MagicMock
 
 import bluesky.plan_stubs as bps
@@ -56,3 +59,30 @@ def test_install_names_what_the_profile_is_missing():
     del ns["pe1c"]
     with pytest.raises(NameError, match="pe1c"):
         qserver.install(ns)
+
+
+def _global_loads(code):
+    for instruction in dis.get_instructions(code):
+        if instruction.opname in ("LOAD_GLOBAL", "LOAD_NAME"):
+            yield instruction.argval
+    for const in code.co_consts:
+        if isinstance(const, types.CodeType):
+            yield from _global_loads(const)
+
+
+@pytest.mark.parametrize(
+    "name", qserver.XRAY_UVVIS_NAMES + qserver.ACQUIRE_VARIANTS_NAMES
+)
+def test_every_global_a_plan_reads_is_defined_after_install(name):
+    ns = _profile()
+    qserver.install(ns)
+    function = ns[name]
+    if not isinstance(function, types.FunctionType):
+        pytest.skip(f"{name} is not a function")
+    missing = {
+        global_name
+        for global_name in _global_loads(function.__code__)
+        if global_name not in function.__globals__
+        and not hasattr(builtins, global_name)
+    }
+    assert not missing, f"{name} reads undefined names: {sorted(missing)}"
