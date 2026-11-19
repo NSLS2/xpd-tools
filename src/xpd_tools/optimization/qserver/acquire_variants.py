@@ -1,4 +1,4 @@
-# Ported verbatim from NSLS2/xpd-profile-collection, branch qserver, commit 12397de,
+# Ported verbatim from NSLS2/xpd-profile-collection, branch main, commit 246ecf5 (qserver up to 141f81f),
 # startup/98-xpd-tools.py (TJ Barrett's autonomous-workflow plans for the XPD Queue Server).
 # Unchanged on purpose, flaws and lint included: follow-up PRs clean it up. It still
 # uses names from the profile namespace, handed to it by install() in __init__.py.
@@ -61,6 +61,7 @@ def uvvis_acquire(
     actuators,
     sensors=None,
     md=None,
+    user_md=None,
     *,
     flow_config: FlowConfig | None = None,
     wash_config: WashConfig | None = None,
@@ -149,6 +150,8 @@ def uvvis_acquire(
         "detectors": ["qepro"],
     }
     _md.update(md or {})
+    if user_md:
+        _md.update(user_md)
 
     monitor = (
         PLQualityMonitor(qepro, stream_name="fluorescence") if use_good_bad else None
@@ -215,6 +218,7 @@ def xray_acquire(
     actuators,
     sensors=None,
     md=None,
+    user_md=None,
     *,
     flow_config: FlowConfig | None = None,
     xray_config: XrayConfig | None = None,
@@ -307,6 +311,8 @@ def xray_acquire(
     }
     _md.update(md or {})
     _md.update(sp_md)
+    if user_md:
+        _md.update(user_md)
 
     dilute_pump = _resolve_pumps(dilute_pump_name) if post_dilute else []
 
