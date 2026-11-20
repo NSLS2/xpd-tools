@@ -5,11 +5,13 @@ xpd-profile-collection drops `xpdacq` from its environment.
 
 ## Rules
 
-- **xpd-tools never imports `xpdacq` or `xpdconf`.** The behaviour is ported as plain bluesky plans and
-  preprocessors, plus YAML settings files.
-- **Settings in YAML, state in Redis.** Settings that change rarely go in a YAML file. State that must outlive a
-  session (the dark list, the current calibration) goes in xpd-tools' own DB on the endstation's Redis (see
-  [Redis](#redis-the-xpd-tools-db)), not in `xpdUser/` files.
+- **xpd-tools never imports `xpdacq` or `xpdconf`.** The behaviour is ported as plain bluesky plans,
+  preprocessors and devices.
+- **Settings in code and plans, state in Redis.** `glbl`'s settings become signals on an `AcquisitionSettings`
+  device, changed with `bps.mv` or a preset plan, with named presets in code and no settings files. State that must
+  outlive a session (the dark list, the current calibration) goes in xpd-tools' own DB on the endstation's Redis
+  (see [Redis](#redis-the-xpd-tools-db)), not in `xpdUser/` files. Host settings (the pdfstream proxy addresses,
+  Redis coordinates) stay in the files ansible deploys.
 - **Port only what XPD uses today.** That means what xpd-tools `autonomous` and xpd-profile-collection `qserver`
   use. The `main` and `pixi_2026C2` profile branches use a subset of `qserver`. The rest of xpdAcq is not ported.
 - **Small PRs**, each shown working with mock tests (ophyd-async `mock` devices and a `RunEngine`).
@@ -31,7 +33,7 @@ Measured on 2026-11-18 against xpd-tools `autonomous` (beb88dd) and xpd-profile-
 
 | xpdAcq feature (what XPD calls) | Replacement in xpd-tools | PR |
 |---|---|---|
-| Settings in `glbl`: `frame_acq_time`, `dk_window`, `shutter_control`, `auto_load_calib`, the pdfstream proxy addresses (set today by `set_glbl_qserver`) | One YAML file per endstation, read at startup | 3.0 |
+| Settings in `glbl`: `frame_acq_time`, `dk_window`, `shutter_control`, `auto_load_calib` (set today by `set_glbl_qserver`) | An `AcquisitionSettings` device with presets in code (3.0a); its values kept in Redis (3.0b) | 3.0a, 3.0b |
 | Darks: `periodic_dark`, `take_dark`, `_validate_dark`, `_inject_qualified_dark_frame_uid`, `glbl['_dark_dict_list']` | A `take_dark` plan and a dark preprocessor, with the dark list in Redis | 3.1 |
 | Calibration: `run_calibration`, `_inject_calibration_md`, `_auto_load_calibration_file`, `load_calibration_md` | A calibration run, a `.poni` loader and a calibration preprocessor, with the current calibration in Redis | 3.2 |
 | Sample metadata from `bt`, loaded from the SAF spreadsheet by `import_sample_info` | A spreadsheet loader and a plan argument | 3.3 |
@@ -69,9 +71,10 @@ Each PR adds one thing and its tests. Nothing in the profile changes until 3.10.
 
 | PR | Change | Shown working by |
 |---|---|---|
-| 3.0 | `src/xpd_tools/acquisition_configurations/<endstation>.yaml`, following the `panda_configurations/` pattern, plus a loader returning a typed settings object. Keys and today's `qserver` values: `frame_acq_time: 0.5` (s), `dark_window: 1000` (min), `shutter_control: true`, `auto_load_calibration: true`, `calibration_file`, `inbound_proxy_address`, `outbound_proxy_address`. Also `xpd_tools.state`: a Redis client for the xpd-tools DB, from the `[redis.<endstation>.xpdtools]` section of `/etc/bluesky/bluesky_redis_config.toml`. | Unit test that loads each packaged file; the client against `fakeredis` |
+| 3.0a | `AcquisitionSettings`: an ophyd-async device whose soft signals `frame_acq_time` (s), `dark_window` (min), `shutter_control` and `auto_load_calibration` replace those `glbl` keys. Plans read them with `bps.rd`, users change them with `bps.mv`, and a run that reads the device records them. `AcquisitionConfiguration` names presets in code (`xpd`: `qserver`'s `set_glbl_qserver` defaults 0.5 s, 1000 min, true, true), applied by `use_acquisition_configuration(settings, "xpd")`. The plan takes the preset name as a string, because the Queue Server refuses a plan whose default is an Enum member. | Mock test: the device starts with the preset, `mv` changes a value, the plan restores the preset and refuses an unknown name, and a run records the values with units |
+| 3.0b | `xpd_tools.state`: a Redis client for the xpd-tools DB, from the `[redis.<endstation>.xpdtools]` section of `/etc/bluesky/bluesky_redis_config.toml` (nslsii's `open_redis_client` takes a DB number but does not read that file). `AcquisitionSettings` keeps its values in that DB (through `soft_signal_rw`'s getter and setter), so bsui and the Queue Server share them and they survive a restart. | The client against `fakeredis`; two devices on one fake Redis see each other's changes |
 | 3.1 | `take_dark(detector, shutter)`: closes the shutter and counts in its own run with `dark_frame: True`. A dark preprocessor takes a new dark before a light run when the cache has no dark with the same frame time and total exposure taken inside `dark_window`. Otherwise it reuses the cached one. Every light run gets `sc_dk_field_uid`. The dark list replaces `glbl['_dark_dict_list']`. It is kept in Redis, one key per dark (detector, frame time, exposure), each expiring after `dark_window`. So darks survive a restart, are shared by bsui and the Queue Server worker, and clear themselves. | Mock test with `fakeredis`: the first run takes a dark, a second run inside the window reuses it, and a new exposure or an expired key takes a new dark |
-| 3.2 | `calibration_run(detector, calibrant, exposure)` takes the standard's image in a run marked `is_calibration: True`, as `run_calibration` does; fitting it in the pyFAI GUI stays a manual step. `load_calibration(path)` reads the resulting pyFAI `.poni` (TJ saves it as `xpdUser/config_base/xpdAcq_calib_info.poni`) and stores it as the detector's current calibration in Redis (the profile loads `calibration_file` at startup when `auto_load_calibration` is on). A preprocessor writes the current one to `calibration_md`. A `calibration_md` the user passes is kept, not overwritten. That is the fix in xpdAcq `master` (PR #589), which 1.1.4 lacks. No calibration means no key, as in xpdAcq. | Mock test with `fakeredis`: a calibration run carries `is_calibration`; with a calibration, the start document carries it; a user-passed one wins; with no file, the key is absent |
+| 3.2 | `calibration_run(detector, calibrant, exposure)` takes the standard's image in a run marked `is_calibration: True`, as `run_calibration` does; fitting it in the pyFAI GUI stays a manual step. `load_calibration(path)` reads the resulting pyFAI `.poni` (TJ saves it as `xpdUser/config_base/xpdAcq_calib_info.poni`) and stores it as the detector's current calibration in Redis (when `auto_load_calibration` is on, the profile loads one at startup; Hui's scripts switch between `config_base/xrd.poni` and `config_base/pdf.poni`, so 3.2 names calibrations rather than keeping one file setting). A preprocessor writes the current one to `calibration_md`. A `calibration_md` the user passes is kept, not overwritten. That is the fix in xpdAcq `master` (PR #589), which 1.1.4 lacks. No calibration means no key, as in xpdAcq. | Mock test with `fakeredis`: a calibration run carries `is_calibration`; with a calibration, the start document carries it; a user-passed one wins; with no file, the key is absent |
 | 3.3 | Sample metadata: a loader for the SAF sample spreadsheet (`<saf>_sample.xlsx`, replacing `import_sample_info`) that keeps the keys pdfstream reads (`sample_name`, `sample_composition`, `bkgd_sample_name`), and a plan argument (`sample_info`) | Mock test: a spreadsheet row lands in the start document with those keys |
 | 3.4 | `analysis_stage: "raw"`, the filter positions and an xpd-tools version key in each start document | Mock test |
 | 3.5 | Exposure setup through `prepare`, for `pe1c` and the Pilatus, as `qserver`'s `_pre_plan` does. PerkinElmer: frames = total exposure ÷ `frame_acq_time`, rounded up (1.1 s at 0.5 s per frame is 3 frames); an exposure shorter than one frame is refused, as xpdAcq does. Pilatus: one frame of the whole exposure (`_pre_plan` sets its `acquire_time` and `acquire_period` to the exposure). | Mock test: each detector is prepared with the requested exposure and frame count, including a PerkinElmer exposure that is not a whole number of frames |
@@ -81,8 +84,9 @@ Each PR adds one thing and its tests. Nothing in the profile changes until 3.10.
 | 3.9 | `install(RE, settings)` adds the preprocessors of 3.2 to 3.4 to `RE.preprocessors` and attaches the subscriptions (Tiled, the zmq publisher). `xrun(sample, plan, **md)` is a thin callable over `RE`. | Mock test: `RE(ct(...))` and `xrun(0, ct(...))` give the same start documents, and a plain `RE(count(...))` carries the metadata |
 | 3.10 | Profile switch, done in xpd-profile-collection: call `install(RE)`, use xpd-tools' `xrun` in place of xpdAcq's, replace the `glbl`/`bt` calls with the above, point `RE.md` at the endstation's Redis over TLS (`qserver` still names the old `info.xpd.nsls2.bnl.gov:6379`), then remove `xpdacq` from `pixi.toml`. One PR per endstation profile that uses it. | Beamline test at XPD before merge |
 
-Dependencies: 3.1 needs 3.0, 3.5 and 3.6. 3.2 and 3.5 need 3.0. 3.7 needs 3.1 to 3.6. 3.9 needs 3.2 to 3.4 and 3.8.
-3.10 needs everything. Transition steps 1.1 (shutter) and 1.2 (detector) come first. The tests use `fakeredis`, so 3.0
+Dependencies: 3.0b needs 3.0a. 3.1 needs 3.0a, 3.0b, 3.5 and 3.6. 3.2 needs 3.0a and 3.0b. 3.5 needs 3.0a. 3.7 needs
+3.1 to 3.6. 3.9 needs 3.2 to 3.4 and 3.8. 3.10 needs everything. Transition steps 1.1 (shutter) and 1.2 (detector)
+come first. The tests use `fakeredis`, so 3.0a
 to 3.9 can merge before the ansible change that adds the Redis DB. That change has to be in place before 3.10.
 
 ## Beamtime: sync-experiment instead of `bt`
@@ -116,8 +120,8 @@ sync-experiment) and DB 15 holds API keys. xpd-tools gets a DB of its own, so it
 - **Ansible:** one entry, `xpdtools: <N>`, in the `bluesky_redis_config` role's `bluesky_redis_config_dbs` for
   xf28id2. Workstations then get a `[redis.<endstation>.xpdtools]` section in
   `/etc/bluesky/bluesky_redis_config.toml`. `nslsii`'s `open_redis_client(redis_db=N)` already supports it.
-- **What goes in:** the dark list (3.1) and the current calibration per detector (3.2). Nothing else for now.
-  Settings stay in the YAML file.
+- **What goes in:** the acquisition settings (3.0b), the dark list (3.1) and the current calibration per detector
+  (3.2). Nothing else for now.
 - **Limits to design for:**
   - dark keys get a TTL (`dark_window`), so they clear themselves. The current calibration gets none: at the 8 GB
     limit Redis evicts only keys that have a TTL, and an expired calibration would silently drop `calibration_md`
@@ -147,6 +151,9 @@ These are unused by `autonomous` and `qserver`, so they are not ported:
 - **3.1:** `qserver`'s JSON dump/reload of `_dark_dict_list` and `pixi_2026C2`'s export helper are replaced by the
   Redis dark list. Does anything still need a dark list as a file?
 - **xrun:** does anyone still use `verify_write`, `ask_before_run`, the robot, or plan selection by index?
+- **3.9:** where does `install(RE)` get the pdfstream proxy address? Ansible's `xpdacq_config` sets it per host
+  (`-qs` hosts publish to the `ipc-in-tcp-out` proxy; workstations to `ipc-in-ipc-out`), in a file that goes
+  with xpdAcq.
 - **3.3:** TJ notes that background metadata is missing. The spreadsheet's background column fills
   `bkgd_sample_name`, which pdfstream reads. Is that column left empty, or is other background metadata needed?
 - **3.10:** which profile branch runs at each XPD workstation today? ws3 runs `pixi_2026C2`, which has 23 commits of
