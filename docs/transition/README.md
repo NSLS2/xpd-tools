@@ -43,8 +43,8 @@ can run alongside. Steps 5, 6 and 7 come after.
 | 0 | [00-inventory.md](00-inventory.md) | This PR: rules, plus an inventory of every object to move | 1 | — |
 | 1 | [01-devices.md](01-devices.md) | Fast shutter and PerkinElmer into `main` | 2 (+1) | — |
 | 2 | [02-one-device-stack.md](02-one-device-stack.md) | `autonomous` uses `main`'s devices; its ophyd v1 copies are deleted | 6 | 2.5 needs 1.1 |
-| 3 | [03-replace-xpdacq.md](03-replace-xpdacq.md) | Dark frames, calibration, sample and analysis-stage metadata, and exposure setup, without xpdAcq | 5 | 1 |
-| 4 | [04-scan-with-dark.md](04-scan-with-dark.md) | `scan_with_dark` | 1 (+1) | 1, 3 |
+| 3 | [03-replace-xpdacq.md](03-replace-xpdacq.md) | Replace xpdAcq: the plan is in #59 (`docs/xpdacq-retirement.md`) | 11 | 1 (3.1, 3.5, 3.6 only) |
+| 4 | [04-scan-with-dark.md](04-scan-with-dark.md) | `scan_with_dark` | 1 (+1) | 1; 3.0–3.6, 3.8, 3.9 |
 | 5 | [05-acquisition-plans.md](05-acquisition-plans.md) | The four Queue Server acquisition plans | 5 | 4 |
 | 6 | [06-optimization.md](06-optimization.md) | The `optimization` package, in dependency order | 10 | 5 (in part) |
 | 7 | [07-queue-server-from-main.md](07-queue-server-from-main.md) | qs1 loads from `main`; copies and `autonomous` retired | 3 | 5, 6 |

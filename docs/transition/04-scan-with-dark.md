@@ -5,7 +5,7 @@ argument names so that Queue Server callers do not change.
 
 | PR | Change | Source | Needs | Shown working by |
 |---|---|---|---|---|
-| 4.1 | `scan_with_dark(dets, exposure, sample_info, md, stream_name, no_dark, …)` | qserver `94-CHL-plans.py:197` (`trigger_areaDet` at `:116`, `_pre_plan` at `:28`) | 1.1, 1.2, 3.1–3.5 | Mock RunEngine test: one dark run, then one light run whose start document carries `sc_dk_field_uid`, `calibration_md`, sample metadata and `analysis_stage`. Beamline: one run processed by pdfstream. |
+| 4.1 | `scan_with_dark(dets, exposure, sample_info, md, stream_name, no_dark, …)` | qserver `94-CHL-plans.py:197` (`trigger_areaDet` at `:116`, `_pre_plan` at `:28`) | 1.1, 1.2, 3.0–3.6, 3.8, 3.9 | Mock RunEngine test, with `install(RE)` from 3.9: one dark run, then one light run whose start document carries `sc_dk_field_uid`, `calibration_md`, sample metadata and `analysis_stage`. Beamline: one run processed by pdfstream. |
 | 4.2 | `ct_dark`, only if XPD still uses it | qserver `94-CHL-plans.py:11` | 4.1 | Mock test |
 
 ## Questions
