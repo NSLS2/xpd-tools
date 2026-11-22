@@ -2,7 +2,7 @@
 
 import math
 from collections.abc import MutableMapping
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -65,8 +65,6 @@ _PRESETS: dict[AcquisitionConfiguration, AcquisitionSettings] = {
     ),
 }
 
-_NAMES = tuple(field.name for field in fields(AcquisitionSettings))
-
 
 class PersistentAcquisitionSettings:
     """`AcquisitionSettings` kept in a mapping, one key per setting.
@@ -84,8 +82,8 @@ class PersistentAcquisitionSettings:
     store : MutableMapping[str, Any]
         Where the settings are kept.
     configuration : str, optional
-        Preset for any setting the store does not hold yet; default ``"xpd"``.
-        Settings already in the store are kept.
+        Preset that a setting reads as until something stores it; default
+        ``"xpd"``. Starting writes nothing, so stored settings are kept.
 
     Examples
     --------
@@ -102,14 +100,18 @@ class PersistentAcquisitionSettings:
         configuration: str = AcquisitionConfiguration.XPD,
     ) -> None:
         self._store = store
-        preset = asdict(AcquisitionConfiguration(configuration).settings)
-        missing = {name: value for name, value in preset.items() if name not in store}
-        if missing:
-            store.update(missing)
+        # Defaults are read, never written: writing them at start could undo a
+        # change another session makes while this one starts.
+        self._defaults = asdict(AcquisitionConfiguration(configuration).settings)
 
     def get(self) -> AcquisitionSettings:
         """Read the current settings from the store."""
-        return AcquisitionSettings(**{name: self._store[name] for name in _NAMES})
+        return AcquisitionSettings(
+            **{
+                name: self._store.get(name, default)
+                for name, default in self._defaults.items()
+            }
+        )
 
     def update(self, **changes: Any) -> AcquisitionSettings:
         """Change the given settings, keep the others, and return them all.
@@ -119,7 +121,7 @@ class PersistentAcquisitionSettings:
         TypeError
             If a name is not a setting, or a value has the wrong type.
         ValueError
-            If a time is not positive.
+            If a time is not finite and positive.
         """
         settings = replace(self.get(), **changes)
         # Write only what changed, so a setting another session changed since

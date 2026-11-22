@@ -48,6 +48,23 @@ class FakeRedis:
         pass
 
 
+class InterleavingStore(dict):
+    """A store that lets another session act at this session's first write."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.other_session: Any = None
+
+    def run_other_session(self) -> None:
+        if self.other_session is not None:
+            other_session, self.other_session = self.other_session, None
+            other_session()
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        self.run_other_session()
+        super().update(*args, **kwargs)
+
+
 def test_every_configuration_has_settings():
     for configuration in AcquisitionConfiguration:
         assert isinstance(configuration.settings, AcquisitionSettings)
@@ -55,6 +72,24 @@ def test_every_configuration_has_settings():
 
 def test_new_settings_start_with_the_preset():
     assert PersistentAcquisitionSettings({}).get() == XPD
+
+
+def test_starting_writes_nothing_to_the_store():
+    store: dict[str, Any] = {}
+    PersistentAcquisitionSettings(store)
+    assert store == {}
+
+
+def test_a_change_made_while_another_session_starts_is_kept():
+    store = InterleavingStore()
+
+    def other_session() -> None:
+        PersistentAcquisitionSettings(store).update(frame_acq_time=0.1)
+
+    store.other_session = other_session
+    starting = PersistentAcquisitionSettings(store)
+    store.run_other_session()  # if starting wrote nothing, the change lands now
+    assert starting.get().frame_acq_time == 0.1
 
 
 def test_stored_settings_survive_a_restart():
@@ -126,12 +161,7 @@ def test_values_round_trip_through_redis_json_dict():
         shutter_control=True,
         auto_load_calibration=True,
     )
-    assert set(redis.data) == {
-        "acquisition_settings:frame_acq_time",
-        "acquisition_settings:dark_window",
-        "acquisition_settings:shutter_control",
-        "acquisition_settings:auto_load_calibration",
-    }
+    assert set(redis.data) == {"acquisition_settings:frame_acq_time"}
 
 
 def test_set_plan_changes_only_what_is_given(RE: RunEngine):
