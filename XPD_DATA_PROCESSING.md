@@ -26,15 +26,16 @@ from tiled.client import from_uri
 c = from_uri("https://tiled.nsls2.bnl.gov")["xpdd"]["migration"]  # the catalog the XPD-D profile writes today
 run = c[uid]
 start = run.metadata["start"]              # proposal, sample, exposure times, ...
-scan = run["primary"].read()               # detector frames and rotation_angle, per frame
-darkflat = c[start["last_dark_flat_uid"]]  # the dark/flat run this scan was taken with
+frames = run["pilatus1"].read()           # since #53: one stream per detector (was "primary")
+angles = run["rotation"].read()            # rotation_angle on every PandA base pulse
+darkflat = c[start["last_dark_flat_uid"]]  # the dark/flat run this scan was taken with (check it first, below)
 dark, flat = darkflat["dark"].read(), darkflat["flat"].read()
 ```
 
 ## Three checks for every run
 
-What acquisition has to get right, checked against the `xpdd-tomo` branch at `1175d91` and scan 12462. **Mehmet:
-please mark what processing needs and what is missing.**
+What acquisition has to get right, checked against the `xpdd-tomo` branch at `1175d91` and scan 12462, and updated
+for the layout at `0889d26` (2026-11-22). **Mehmet: please mark what processing needs and what is missing.**
 
 ### 1. Format
 
@@ -46,18 +47,19 @@ matters when processing reads the files directly (large tomography stacks) or ne
 
 ### 2. Data products
 
-| Product | In Tiled today | Open |
+| Product | In Tiled (`xpdd-tomo` `0889d26`) | Open |
 |---|---|---|
-| Detector frames | `pilatus1`, `iris1`, `xspress3-1` (+ channel) in `primary` | One shared `time` axis; per-detector rates (Mehmet, 11-10) need a new layout |
-| Rotation angle | `rotation_angle` in `primary`, one per frame, from the PandA | Per detector, once rates differ |
-| Darks and flats | `dark` and `flat` streams of the `tomo_dark_flat` run, linked by `last_dark_flat_uid` | |
-| Grid position of a step scan | `grid_reference_positions` in the start document | |
-| Prosilica (visible camera) | **Not in the xpd-tools XPD-D profile** (xpdDacq has one) | Needed? For what? |
+| Detector frames | One stream per detector, named after it (`pilatus1`, `iris1`, `xspress3-1`), each at its own rate (#53; at `1175d91` all were in `primary` on one `time` axis) | Has processing agreed to this layout? (R3) |
+| Rotation angle | `rotation_angle` in the `rotation` stream, on every PandA base pulse; a detector fed every D-th pulse (`trigger_divisor` in `detector_configs`) has the angles `rotation_angle[::D]` | |
+| Darks and flats | `dark` and `flat` streams of a separate `tomo_dark_flat` run, linked from the scan by `last_dark_flat_uid` | The link is optional, and is set when the dark/flat run **starts**, so it can point at a run that failed, or at an earlier proposal's (review B2). A reader must check the linked run before using it: it exited `success`, has both streams, has the same detectors and exposures, and has the scan's `data_session` and `cycle` (the last check is what hextools' exporter has done since hextools#105) |
+| Grid position of a step scan | `grid_positions` in the start document: each step motor's absolute setpoint at this tomogram | `grid_reference_positions` is only in relative step scans and holds where each step motor was when the scan started, the same for every tomogram |
+| Dexela | In `profiles/devd.py` only (#58, fly scans since #63) | Which profile runs at XPD-D? (review G4) |
+| Prosilica (visible camera) | A device class since #58, but in neither profile and not usable in the tomography plans | Needed? For what? |
 | Other motor positions (sample stack, slits) | **No baseline stream** in the profile | Which ones? |
 
 ### 3. Metadata
 
-Scan 12462's start document has `data_session` and `proposal` (PI, title), `sample_name` when given,
+Scan 12462's start document (`1175d91`) has `data_session` and `proposal` (PI, title), `sample_name` when given,
 `detectors`, `exposure_time` per detector, `acquire_period`, `num_points`, `start_position` / `stop_position`,
 `rotation_motor`, `time_based`, `images_to_average`, `filter_type`, `last_dark_flat_uid` / `_scan_id`, the
 `tiled_specs`, and versions. Not there today:
@@ -65,6 +67,10 @@ Scan 12462's start document has `data_session` and `proposal` (PI, title), `samp
 - **Energy or wavelength**, and **calibration** (detector distance, centre, tilt: a poni file or a run that holds it).
 - **Sample** beyond its name (composition, environment).
 - `start_datetime` is wrong: scan 12462 (2026-11-10) reads `2026-07-17T15:04:59`.
+
+Since #53 each detector's settings are in `detector_configs` (`nproj`, `num_images`, `exposure_time`,
+`images_to_average`, `filter_type`, `ttl_out`, `trigger_divisor`), with `num_base_pulses` and `trigger_period` for the
+PandA ([`specs.py`](https://github.com/NSLS2/xpd-tools/blob/0889d26fd55c616ab8af55faf54dfd91c1bb25ab/src/xpd_tools/specs.py#L173)).
 
 What else does processing need?
 
@@ -74,7 +80,8 @@ Proposed by AJ (2026-11-10), not agreed yet.
 
 - **R1. Processing reads runs from Tiled.** Every processing step (script, service or notebook) finds its input run
   in Tiled and reads its metadata and data there, by uid or by a Tiled search. Darks, flats and calibration runs are
-  found the same way, through uids the input run carries. Anything that needs data sooner than Tiled can give it
+  found the same way, through uids the input run carries, and the reader checks a linked run before using it
+  (completed, the streams it needs, compatible detectors and exposures, same proposal and cycle). Anything that needs data sooner than Tiled can give it
   (feedback to a running plan, or to the scientist in the hutch) is an exception, decided and written down.
 - **R2. No side files for processing.** Acquisition writes no file whose purpose is to tell processing about a run:
   no per-run metadata document and no job file for a watcher. The detector's own data files are not side files.

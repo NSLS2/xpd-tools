@@ -8,6 +8,13 @@ dicts, plus `validate_detector_configs`), but each detector gives its own `nproj
 `collections_per_event` ratio, and also carries `ttl_out`, `images_to_average` and `filter_type`. The sections below
 are the discussion that led there.
 
+**Status 2026-11-22 (`xpdd-tomo` `0889d26`):** per-detector rates are in too (#53, `497af97`). The PandA makes one
+base pulse per image of the detector with the most projections and feeds each other detector every D-th pulse through
+a DIV block, so the most projections must be a multiple of every detector's `nproj` (`validate_detector_configs` checks it); `tomo.builder` helps choose them (`image_count_options`,
+`suggest_base_images`). Each detector writes its own stream, and each one's full config goes into the start document
+as `detector_configs` (item 4 below). Q1 is answered by that design. Still open: Q2 and Q3, and the hextools GUI form
+(order of work, step 2).
+
 ## The problem
 
 An XPD-D scan uses 1 to 3 detectors (Pilatus4, IRIS, Xspress3), and each can need its own settings: at least
