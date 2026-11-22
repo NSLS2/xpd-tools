@@ -1,26 +1,26 @@
-"""Acquisition settings for XPD, held in a device that plans read and users move."""
+"""Acquisition settings for XPD, kept in Redis so every session shares them."""
 
-from dataclasses import dataclass
+from collections.abc import MutableMapping
+from dataclasses import asdict, dataclass, fields, replace
 from enum import StrEnum
-
-from ophyd_async.core import StandardReadable, soft_signal_rw
-from ophyd_async.core import StandardReadableFormat as Format
+from typing import Any
 
 
 @dataclass(frozen=True)
-class AcquisitionPreset:
-    """Values that an `AcquisitionConfiguration` puts on `AcquisitionSettings`.
+class AcquisitionSettings:
+    """The acquisition settings that replace xpdAcq's ``glbl`` keys.
 
     Parameters
     ----------
     frame_acq_time : float
-        Detector frame time in seconds.
+        Detector frame time in seconds (``glbl['frame_acq_time']``).
     dark_window : float
-        Minutes for which a dark frame stays valid.
+        Minutes for which a dark frame stays valid (``glbl['dk_window']``).
     shutter_control : bool
         Whether plans open the fast shutter only while exposing.
     auto_load_calibration : bool
-        Whether the current calibration is added to each run.
+        Whether the current calibration is added to each run
+        (``glbl['auto_load_calib']``).
     """
 
     frame_acq_time: float
@@ -29,11 +29,18 @@ class AcquisitionPreset:
     auto_load_calibration: bool
 
     def __post_init__(self) -> None:
-        """Refuse non-positive times."""
-        if self.frame_acq_time <= 0:
-            raise ValueError(f"frame_acq_time must be > 0 s, not {self.frame_acq_time}")
-        if self.dark_window <= 0:
-            raise ValueError(f"dark_window must be > 0 min, not {self.dark_window}")
+        """Refuse non-positive times and values of the wrong type."""
+        for name in ("frame_acq_time", "dark_window"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise TypeError(f"{name} must be a number, not {value!r}")
+            if value <= 0:
+                raise ValueError(f"{name} must be > 0, not {value}")
+            object.__setattr__(self, name, float(value))
+        for name in ("shutter_control", "auto_load_calibration"):
+            value = getattr(self, name)
+            if not isinstance(value, bool):
+                raise TypeError(f"{name} must be True or False, not {value!r}")
 
 
 class AcquisitionConfiguration(StrEnum):
@@ -42,14 +49,14 @@ class AcquisitionConfiguration(StrEnum):
     XPD = "xpd"
 
     @property
-    def preset(self) -> AcquisitionPreset:
-        """The values this configuration sets."""
+    def settings(self) -> AcquisitionSettings:
+        """The settings this configuration applies."""
         return _PRESETS[self]
 
 
 # Defaults of qserver's set_glbl_qserver (xpd-profile-collection 141f81f).
-_PRESETS: dict[AcquisitionConfiguration, AcquisitionPreset] = {
-    AcquisitionConfiguration.XPD: AcquisitionPreset(
+_PRESETS: dict[AcquisitionConfiguration, AcquisitionSettings] = {
+    AcquisitionConfiguration.XPD: AcquisitionSettings(
         frame_acq_time=0.5,
         dark_window=1000.0,
         shutter_control=True,
@@ -57,46 +64,78 @@ _PRESETS: dict[AcquisitionConfiguration, AcquisitionPreset] = {
     ),
 }
 
+_NAMES = tuple(field.name for field in fields(AcquisitionSettings))
 
-class AcquisitionSettings(StandardReadable):
-    """Acquisition settings that replace xpdAcq's ``glbl``.
 
-    Change a value with ``bps.mv(settings.frame_acq_time, 0.1)``, or apply a
-    preset with `xpd_tools.plans.use_acquisition_configuration`. The values are
-    configuration signals, so a run that reads this device records them.
+class PersistentAcquisitionSettings:
+    """`AcquisitionSettings` kept in a mapping, one key per setting.
+
+    In a profile the mapping is a ``RedisJSONDict`` on the xpd-tools Redis DB,
+    so bsui and the Queue Server share the settings and they survive a restart.
+    The mapping is read on every access, so no session holds a stale copy.
+
+    Do not give it the DB that holds ``RE.md``: ``RE.md`` is a ``RedisJSONDict``
+    with an empty prefix, so it reads every key in its DB and these settings
+    would appear in every start document.
 
     Parameters
     ----------
-    configuration : AcquisitionConfiguration, optional
-        Preset for the starting values; default is ``XPD``.
-    name : str, optional
-        Device name propagated to its signals; default is empty.
+    store : MutableMapping[str, Any]
+        Where the settings are kept.
+    configuration : str, optional
+        Preset for any setting the store does not hold yet; default ``"xpd"``.
+        Settings already in the store are kept.
 
-    Attributes
-    ----------
-    frame_acq_time : SignalRW[float]
-        Detector frame time in seconds.
-    dark_window : SignalRW[float]
-        Minutes for which a dark frame stays valid.
-    shutter_control : SignalRW[bool]
-        Whether plans open the fast shutter only while exposing.
-    auto_load_calibration : SignalRW[bool]
-        Whether the current calibration is added to each run.
+    Examples
+    --------
+    >>> settings = PersistentAcquisitionSettings({})
+    >>> settings.update(dark_window=10).dark_window
+    10.0
+    >>> settings.get().frame_acq_time
+    0.5
     """
 
     def __init__(
         self,
-        configuration: AcquisitionConfiguration = AcquisitionConfiguration.XPD,
-        name: str = "",
+        store: MutableMapping[str, Any],
+        configuration: str = AcquisitionConfiguration.XPD,
     ) -> None:
-        preset = configuration.preset
-        with self.add_children_as_readables(Format.CONFIG_SIGNAL):
-            self.frame_acq_time = soft_signal_rw(
-                float, preset.frame_acq_time, units="s"
-            )
-            self.dark_window = soft_signal_rw(float, preset.dark_window, units="min")
-            self.shutter_control = soft_signal_rw(bool, preset.shutter_control)
-            self.auto_load_calibration = soft_signal_rw(
-                bool, preset.auto_load_calibration
-            )
-        super().__init__(name=name)
+        self._store = store
+        preset = asdict(AcquisitionConfiguration(configuration).settings)
+        missing = {name: value for name, value in preset.items() if name not in store}
+        if missing:
+            store.update(missing)
+
+    def get(self) -> AcquisitionSettings:
+        """Read the current settings from the store."""
+        return AcquisitionSettings(**{name: self._store[name] for name in _NAMES})
+
+    def update(self, **changes: Any) -> AcquisitionSettings:
+        """Change some settings and return the new ones.
+
+        Raises
+        ------
+        TypeError
+            If a name is not a setting, or a value has the wrong type.
+        ValueError
+            If a time is not positive.
+        """
+        settings = replace(self.get(), **changes)
+        self._store.update(asdict(settings))
+        return settings
+
+    def use(self, configuration: str) -> AcquisitionSettings:
+        """Apply a named preset and return its settings.
+
+        Raises
+        ------
+        ValueError
+            If ``configuration`` names no preset.
+        """
+        settings = AcquisitionConfiguration(configuration).settings
+        self._store.update(asdict(settings))
+        return settings
+
+    def __repr__(self) -> str:
+        """Show the current settings, as printing ``glbl`` did."""
+        return f"{type(self).__name__}({self.get()!r})"

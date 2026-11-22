@@ -1,108 +1,149 @@
-"""Tests for the acquisition settings device, its presets and its plan."""
+"""Tests for the acquisition settings, their Redis-backed store and their plans."""
 
-from collections.abc import Generator
-from typing import Any, cast
+from fnmatch import fnmatchcase
+from typing import Any
 
-import bluesky.plan_stubs as bps
 import pytest
-from bluesky import Msg
-from bluesky.plans import count
 from bluesky.run_engine import RunEngine
-from ophyd_async.core import init_devices
+from redis_json_dict.redis_json_dict import RedisJSONDict
 
 from xpd_tools.acquisition_settings import (
     AcquisitionConfiguration,
-    AcquisitionPreset,
     AcquisitionSettings,
+    PersistentAcquisitionSettings,
 )
-from xpd_tools.plans import use_acquisition_configuration
+from xpd_tools.plans import acquisition_settings_plans
 
-XPD_VALUES = {
-    "settings-frame_acq_time": 0.5,
-    "settings-dark_window": 1000.0,
-    "settings-shutter_control": True,
-    "settings-auto_load_calibration": True,
-}
-
-
-@pytest.fixture
-async def settings() -> AcquisitionSettings:
-    async with init_devices():
-        device = AcquisitionSettings(name="settings")
-    return device
+XPD = AcquisitionSettings(
+    frame_acq_time=0.5,
+    dark_window=1000.0,
+    shutter_control=True,
+    auto_load_calibration=True,
+)
 
 
-def _read_all(settings: AcquisitionSettings) -> Generator[Msg, None, dict[str, Any]]:
-    signals = (
-        settings.frame_acq_time,
-        settings.dark_window,
-        settings.shutter_control,
-        settings.auto_load_calibration,
-    )
-    values = {}
-    for signal in signals:
-        values[signal.name] = yield from bps.rd(signal)
-    return values
+class FakeRedis:
+    """The part of a Redis client that `RedisJSONDict` uses, kept in memory."""
+
+    def __init__(self) -> None:
+        self.data: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self.data.get(key)
+
+    def set(self, key: str, value: bytes) -> None:
+        self.data[key] = value
+
+    def delete(self, *keys: str) -> None:
+        for key in keys:
+            self.data.pop(key, None)
+
+    def scan_iter(self, match: str):
+        return (key.encode() for key in list(self.data) if fnmatchcase(key, match))
+
+    def pipeline(self) -> "FakeRedis":
+        return self
+
+    def execute(self) -> None:
+        pass
 
 
-def _values(RE: RunEngine, settings: AcquisitionSettings) -> dict[str, Any]:
-    return cast(Any, RE(_read_all(settings))).plan_result
-
-
-def test_every_configuration_has_a_preset():
+def test_every_configuration_has_settings():
     for configuration in AcquisitionConfiguration:
-        assert isinstance(configuration.preset, AcquisitionPreset)
+        assert isinstance(configuration.settings, AcquisitionSettings)
 
 
-def test_starts_with_the_xpd_preset(RE: RunEngine, settings: AcquisitionSettings):
-    assert _values(RE, settings) == XPD_VALUES
+def test_new_settings_start_with_the_preset():
+    assert PersistentAcquisitionSettings({}).get() == XPD
 
 
-def test_a_value_is_changed_with_mv(RE: RunEngine, settings: AcquisitionSettings):
-    RE(bps.mv(settings.frame_acq_time, 0.1, settings.dark_window, 10.0))
-    values = _values(RE, settings)
-    assert values["settings-frame_acq_time"] == 0.1
-    assert values["settings-dark_window"] == 10.0
-
-
-def test_use_acquisition_configuration_restores_the_preset(
-    RE: RunEngine, settings: AcquisitionSettings
-):
-    RE(bps.mv(settings.frame_acq_time, 0.1, settings.shutter_control, False))
-    RE(use_acquisition_configuration(settings, "xpd"))
-    assert _values(RE, settings) == XPD_VALUES
-
-
-def test_unknown_configuration_is_refused(RE: RunEngine, settings: AcquisitionSettings):
-    with pytest.raises(ValueError, match="bogus"):
-        RE(use_acquisition_configuration(settings, "bogus"))
-    assert _values(RE, settings) == XPD_VALUES
-
-
-def test_a_run_reading_the_device_records_the_settings_and_units(
-    RE: RunEngine, settings: AcquisitionSettings
-):
-    descriptors: list[Any] = []
-    RE(bps.mv(settings.frame_acq_time, 0.1))
-    RE(
-        count([settings]),
-        lambda name, doc: descriptors.append(doc) if name == "descriptor" else None,
+def test_stored_settings_survive_a_restart():
+    store: dict[str, Any] = {}
+    PersistentAcquisitionSettings(store).update(
+        frame_acq_time=0.1, shutter_control=False
     )
-    configuration = descriptors[0]["configuration"]["settings"]
-    assert configuration["data"]["settings-frame_acq_time"] == 0.1
-    assert configuration["data"]["settings-dark_window"] == 1000.0
-    assert configuration["data_keys"]["settings-frame_acq_time"]["units"] == "s"
-    assert configuration["data_keys"]["settings-dark_window"]["units"] == "min"
+    restarted = PersistentAcquisitionSettings(store)
+    assert restarted.get().frame_acq_time == 0.1
+    assert restarted.get().shutter_control is False
+
+
+def test_two_sessions_on_one_store_see_each_others_changes():
+    store: dict[str, Any] = {}
+    bsui = PersistentAcquisitionSettings(store)
+    queue_server = PersistentAcquisitionSettings(store)
+    bsui.update(dark_window=10)
+    assert queue_server.get().dark_window == 10.0
 
 
 @pytest.mark.parametrize(
-    "frame_acq_time, dark_window", [(0.0, 1.0), (-0.1, 1.0), (0.5, 0.0)]
+    "changes, error",
+    [
+        ({"frame_acq_time": 0}, ValueError),
+        ({"frame_acq_time": -0.1}, ValueError),
+        ({"dark_window": 0.0}, ValueError),
+        ({"frame_acq_time": "0.5"}, TypeError),
+        ({"dark_window": True}, TypeError),
+        ({"shutter_control": "yes"}, TypeError),
+        ({"dk_window": 10}, TypeError),
+    ],
 )
-def test_preset_refuses_non_positive_times(frame_acq_time: float, dark_window: float):
-    with pytest.raises(ValueError, match="must be > 0"):
-        AcquisitionPreset(
-            frame_acq_time=frame_acq_time,
-            dark_window=dark_window,
-            shutter_control=True,
-            auto_load_calibration=True,
-        )
+def test_a_bad_change_is_refused_and_changes_nothing(
+    changes: dict[str, Any], error: type[Exception]
+):
+    settings = PersistentAcquisitionSettings({})
+    with pytest.raises(error):
+        settings.update(**changes)
+    assert settings.get() == XPD
+
+
+def test_values_round_trip_through_redis_json_dict():
+    redis = FakeRedis()
+    store = RedisJSONDict(redis, "acquisition_settings:")
+    PersistentAcquisitionSettings(store).update(frame_acq_time=0.1)
+    restarted = PersistentAcquisitionSettings(
+        RedisJSONDict(redis, "acquisition_settings:")
+    )
+    assert restarted.get() == AcquisitionSettings(
+        frame_acq_time=0.1,
+        dark_window=1000.0,
+        shutter_control=True,
+        auto_load_calibration=True,
+    )
+    assert set(redis.data) == {
+        "acquisition_settings:frame_acq_time",
+        "acquisition_settings:dark_window",
+        "acquisition_settings:shutter_control",
+        "acquisition_settings:auto_load_calibration",
+    }
+
+
+def test_set_plan_changes_only_what_is_given(RE: RunEngine):
+    settings = PersistentAcquisitionSettings({})
+    _, set_acquisition_settings = acquisition_settings_plans(settings)
+    RE(set_acquisition_settings(frame_acq_time=0.1, shutter_control=False))
+    assert settings.get() == AcquisitionSettings(
+        frame_acq_time=0.1,
+        dark_window=1000.0,
+        shutter_control=False,
+        auto_load_calibration=True,
+    )
+
+
+def test_use_plan_restores_the_preset(RE: RunEngine):
+    settings = PersistentAcquisitionSettings({})
+    use_acquisition_configuration, _ = acquisition_settings_plans(settings)
+    settings.update(frame_acq_time=0.1, dark_window=10)
+    RE(use_acquisition_configuration("xpd"))
+    assert settings.get() == XPD
+
+
+def test_plans_refuse_bad_input_and_change_nothing(RE: RunEngine):
+    settings = PersistentAcquisitionSettings({})
+    use_acquisition_configuration, set_acquisition_settings = (
+        acquisition_settings_plans(settings)
+    )
+    with pytest.raises(ValueError, match="bogus"):
+        RE(use_acquisition_configuration("bogus"))
+    with pytest.raises(ValueError, match="frame_acq_time"):
+        RE(set_acquisition_settings(frame_acq_time=0.0))
+    assert settings.get() == XPD
