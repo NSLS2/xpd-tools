@@ -75,12 +75,29 @@ def test_two_sessions_on_one_store_see_each_others_changes():
     assert queue_server.get().dark_window == 10.0
 
 
+def test_overlapping_updates_from_two_sessions_keep_both_changes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    store: dict[str, Any] = {}
+    bsui = PersistentAcquisitionSettings(store)
+    queue_server = PersistentAcquisitionSettings(store)
+    # bsui reads, the Queue Server then changes dark_window, then bsui writes.
+    read_before_the_other_change = bsui.get()
+    queue_server.update(dark_window=10)
+    monkeypatch.setattr(bsui, "get", lambda: read_before_the_other_change)
+    bsui.update(frame_acq_time=0.1)
+    assert queue_server.get().dark_window == 10.0
+    assert queue_server.get().frame_acq_time == 0.1
+
+
 @pytest.mark.parametrize(
     "changes, error",
     [
         ({"frame_acq_time": 0}, ValueError),
         ({"frame_acq_time": -0.1}, ValueError),
         ({"dark_window": 0.0}, ValueError),
+        ({"frame_acq_time": float("nan")}, ValueError),
+        ({"dark_window": float("inf")}, ValueError),
         ({"frame_acq_time": "0.5"}, TypeError),
         ({"dark_window": True}, TypeError),
         ({"shutter_control": "yes"}, TypeError),

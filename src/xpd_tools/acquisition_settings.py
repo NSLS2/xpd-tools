@@ -1,5 +1,6 @@
 """Acquisition settings for XPD, kept in Redis so every session shares them."""
 
+import math
 from collections.abc import MutableMapping
 from dataclasses import asdict, dataclass, fields, replace
 from enum import StrEnum
@@ -29,13 +30,13 @@ class AcquisitionSettings:
     auto_load_calibration: bool
 
     def __post_init__(self) -> None:
-        """Refuse non-positive times and values of the wrong type."""
+        """Refuse times that are not positive and finite, and wrong types."""
         for name in ("frame_acq_time", "dark_window"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int | float):
                 raise TypeError(f"{name} must be a number, not {value!r}")
-            if value <= 0:
-                raise ValueError(f"{name} must be > 0, not {value}")
+            if not (math.isfinite(value) and value > 0):
+                raise ValueError(f"{name} must be finite and > 0, not {value}")
             object.__setattr__(self, name, float(value))
         for name in ("shutter_control", "auto_load_calibration"):
             value = getattr(self, name)
@@ -111,7 +112,7 @@ class PersistentAcquisitionSettings:
         return AcquisitionSettings(**{name: self._store[name] for name in _NAMES})
 
     def update(self, **changes: Any) -> AcquisitionSettings:
-        """Change some settings and return the new ones.
+        """Change the given settings, keep the others, and return them all.
 
         Raises
         ------
@@ -121,7 +122,9 @@ class PersistentAcquisitionSettings:
             If a time is not positive.
         """
         settings = replace(self.get(), **changes)
-        self._store.update(asdict(settings))
+        # Write only what changed, so a setting another session changed since
+        # the read above is not put back.
+        self._store.update({name: getattr(settings, name) for name in changes})
         return settings
 
     def use(self, configuration: str) -> AcquisitionSettings:
