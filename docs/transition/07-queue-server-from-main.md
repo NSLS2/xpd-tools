@@ -6,6 +6,9 @@
 | 7.2 | xpd-profile-collection `qserver` | Pin the qs1 environment to a release or commit of xpd-tools `main` instead of `autonomous` | 7.1 | qs1 starts its worker |
 | 7.3 | — | One autonomous campaign at the beamline runs entirely from `main`; then retire `autonomous` | 7.2 | The campaign's runs in Tiled |
 
-## Question
+## Questions
 
 - Who decides when `autonomous` is retired: TJ, Tom, or the XPD team?
+- The C-hutch profile is moving into xpd-tools (`profiles/collection.py`, #56). If the qs1 worker starts from it,
+  7.1 and 7.2 change from xpd-profile-collection `qserver` to xpd-tools and the ansible role that deploys qs1. Which
+  one does qs1 start from?

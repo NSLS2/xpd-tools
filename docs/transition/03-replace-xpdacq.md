@@ -9,7 +9,7 @@ needs.
 
 | PR | Change | Step 4 needs it |
 |---|---|---|
-| 3.0 | Settings YAML and an xpd-tools Redis client | yes |
+| 3.0 | Settings: an `AcquisitionSettings` dataclass kept in Redis, with presets in code | yes |
 | 3.1 | Darks: `take_dark` and a dark preprocessor | yes |
 | 3.2 | Calibration run, `.poni` loader and `calibration_md` | yes |
 | 3.3 | Sample spreadsheet and `sample_info` | yes |
@@ -19,6 +19,6 @@ needs.
 | 3.7 | `ct` and a step plan | no |
 | 3.8 | `start_beamtime` and the `bt_*` keys pdfstream reads | yes, through 3.9 |
 | 3.9 | `install(RE)`: the metadata preprocessors on the RunEngine, and a thin `xrun` | yes |
-| 3.10 | Profile switch in xpd-profile-collection | no |
+| 3.10 | Profile switch in xpd-tools' C-hutch profile (`profiles/collection.py`, #56) | no |
 
 3.1, 3.5 and 3.6 need step 1 (shutter and detector). The order of the others is in #59.
