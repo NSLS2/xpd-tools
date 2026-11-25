@@ -16,6 +16,7 @@ from ophyd_async.epics.adcore import ADImageMode, ADWriterFactory
 from xpd_tools.detectors.prosilica import (
     ProsilicaDetector,
     ProsilicaExposureMode,
+    ProsilicaLegacyDetector,
     ProsilicaTriggerEvent,
     ProsilicaTriggerMode,
 )
@@ -114,3 +115,60 @@ def test_mock_internal_acquisition(RE: RunEngine, prosilica: ProsilicaDetector):
 
     assert docs["stop"][0]["exit_status"] == "success"
     assert len(docs["stream_datum"]) == 1
+
+
+@pytest.fixture
+async def prosilica_legacy(tmp_path: Path) -> ProsilicaLegacyDetector:
+    path_provider = StaticPathProvider(UUIDFilenameProvider(), tmp_path)
+    async with init_devices(mock=True):
+        prosilica_legacy = ProsilicaLegacyDetector(
+            "PROS:",
+            ADWriterFactory.hdf(path_provider),
+            trigger_input=ProsilicaTriggerMode.SYNC_IN_2,
+            name="prosilica_legacy",
+        )
+    return prosilica_legacy
+
+
+def test_legacy_driver_omits_missing_pvs(prosilica_legacy: ProsilicaLegacyDetector):
+    for attr in ("gain_mode", "exposure_mode", "temperature_mainboard"):
+        assert not hasattr(prosilica_legacy.driver, attr)
+
+
+@pytest.mark.parametrize(
+    ("trigger_info", "trigger_mode"),
+    [
+        (
+            TriggerInfo(number_of_events=3, livetime=0.5, deadtime=0.1),
+            ProsilicaTriggerMode.FIXED_RATE,
+        ),
+        (
+            TriggerInfo(
+                number_of_events=3,
+                trigger=DetectorTrigger.EXTERNAL_EDGE,
+                livetime=0.5,
+                deadtime=0.1,
+            ),
+            ProsilicaTriggerMode.SYNC_IN_2,
+        ),
+    ],
+)
+async def test_legacy_prepare_sets_trigger_mode(
+    prosilica_legacy: ProsilicaLegacyDetector,
+    trigger_info: TriggerInfo,
+    trigger_mode: ProsilicaTriggerMode,
+):
+    await prosilica_legacy.prepare(trigger_info)
+    assert await prosilica_legacy.driver.trigger_mode.get_value() == trigger_mode
+    assert await prosilica_legacy.driver.num_images.get_value() == 3
+
+
+async def test_legacy_rejects_level_trigger(prosilica_legacy: ProsilicaLegacyDetector):
+    with pytest.raises(ValueError, match="(?i)trigger"):
+        await prosilica_legacy.prepare(
+            TriggerInfo(
+                number_of_events=1,
+                trigger=DetectorTrigger.EXTERNAL_LEVEL,
+                deadtime=0.1,
+            )
+        )

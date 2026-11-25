@@ -183,10 +183,11 @@ class ProsilicaTimestampType(StrictEnum):
     IOC = "IOC"
 
 
-class ProsilicaDriverIO(StandardReadable, ADBaseIO):
-    """Prosilica driver interface.
+class ProsilicaLegacyDriverIO(StandardReadable, ADBaseIO):
+    """Prosilica driver interface for older ADProsilica IOCs (e.g. 2.5.0).
 
-    PV names follow ``prosilica.template`` from the ADProsilica repository.
+    These IOCs lack the ``GainMode``, ``ExposureMode`` and
+    ``TemperatureMainboard`` PVs, which are added by `ProsilicaDriverIO`.
 
     See https://github.com/areaDetector/ADProsilica/blob/master/docs/ADProsilica/ADProsilica.rst
     """
@@ -221,16 +222,6 @@ class ProsilicaDriverIO(StandardReadable, ADBaseIO):
     bayer_convert: A[
         SignalRW[ProsilicaBayerConvert],
         PvSuffix.rbv("BayerConvert"),
-        Format.CONFIG_SIGNAL,
-    ]
-
-    # Gain and Exposure Modes
-    gain_mode: A[
-        SignalRW[ProsilicaAutoMode], PvSuffix.rbv("GainMode"), Format.CONFIG_SIGNAL
-    ]
-    exposure_mode: A[
-        SignalRW[ProsilicaExposureMode],
-        PvSuffix.rbv("ExposureMode"),
         Format.CONFIG_SIGNAL,
     ]
 
@@ -283,23 +274,45 @@ class ProsilicaDriverIO(StandardReadable, ADBaseIO):
     packets_resent: A[SignalR[int], PvSuffix("PSPacketsResent_RBV")]
     bad_frame_counter: A[SignalR[int], PvSuffix("PSBadFrameCounter_RBV")]
 
+
+class ProsilicaDriverIO(ProsilicaLegacyDriverIO):
+    """Prosilica driver interface.
+
+    PV names follow ``prosilica.template`` from the ADProsilica repository.
+
+    See https://github.com/areaDetector/ADProsilica/blob/master/docs/ADProsilica/ADProsilica.rst
+    """
+
+    # Gain and Exposure Modes
+    gain_mode: A[
+        SignalRW[ProsilicaAutoMode], PvSuffix.rbv("GainMode"), Format.CONFIG_SIGNAL
+    ]
+    exposure_mode: A[
+        SignalRW[ProsilicaExposureMode],
+        PvSuffix.rbv("ExposureMode"),
+        Format.CONFIG_SIGNAL,
+    ]
+
     # Temperature
     temperature_mainboard: A[SignalR[float], PvSuffix("TemperatureMainboard_RBV")]
 
 
 @dataclass
-class ProsilicaTriggerLogic(DetectorTriggerLogic):
-    """Trigger logic for Prosilica cameras.
+class ProsilicaLegacyTriggerLogic(DetectorTriggerLogic):
+    """Trigger logic for older Prosilica IOCs without an ``ExposureMode`` PV.
+
+    Level (pulse-width) triggering is not supported because it requires
+    ``ExposureMode=External``.
 
     Parameters
     ----------
-    driver : ProsilicaDriverIO
+    driver : ProsilicaLegacyDriverIO
         The camera driver.
     trigger_input : ProsilicaTriggerMode, optional
         ``Sync In`` line used for external triggers, by default ``SYNC_IN_1``.
     """
 
-    driver: ProsilicaDriverIO
+    driver: ProsilicaLegacyDriverIO
     trigger_input: ProsilicaTriggerMode = ProsilicaTriggerMode.SYNC_IN_1
 
     def __post_init__(self):
@@ -312,6 +325,10 @@ class ProsilicaTriggerLogic(DetectorTriggerLogic):
 
     def get_deadtime(self, config_values: SignalDict) -> float:
         return PROSILICA_READOUT_TIME
+
+    def _set_exposure_mode(self, mode: ProsilicaExposureMode) -> list:
+        """Coroutines that set the exposure mode; legacy IOCs have none."""
+        return []
 
     async def prepare_internal(self, num: int, livetime: float, deadtime: float):
         """Prepare the camera for internally triggered acquisition.
@@ -326,7 +343,7 @@ class ProsilicaTriggerLogic(DetectorTriggerLogic):
         )
         await asyncio.gather(
             self.driver.trigger_mode.set(trigger_mode),
-            self.driver.exposure_mode.set(ProsilicaExposureMode.MANUAL),
+            *self._set_exposure_mode(ProsilicaExposureMode.MANUAL),
             prepare_exposures(self.driver, num, livetime, deadtime),
         )
 
@@ -335,17 +352,8 @@ class ProsilicaTriggerLogic(DetectorTriggerLogic):
         await asyncio.gather(
             self.driver.trigger_mode.set(self.trigger_input),
             self.driver.trigger_event.set(ProsilicaTriggerEvent.RISING_EDGE),
-            self.driver.exposure_mode.set(ProsilicaExposureMode.MANUAL),
+            *self._set_exposure_mode(ProsilicaExposureMode.MANUAL),
             prepare_exposures(self.driver, num, livetime),
-        )
-
-    async def prepare_level(self, num: int):
-        """Prepare the camera to expose while the trigger input is high."""
-        await asyncio.gather(
-            self.driver.trigger_mode.set(self.trigger_input),
-            self.driver.trigger_event.set(ProsilicaTriggerEvent.HIGH_LEVEL),
-            self.driver.exposure_mode.set(ProsilicaExposureMode.EXTERNAL),
-            prepare_exposures(self.driver, num),
         )
 
     async def default_trigger_info(self):
@@ -353,10 +361,39 @@ class ProsilicaTriggerLogic(DetectorTriggerLogic):
         return await trigger_info_from_driver(self.driver.num_images)
 
 
-class ProsilicaDetectorMock(DeviceMock["ProsilicaDetector"]):
+@dataclass
+class ProsilicaTriggerLogic(ProsilicaLegacyTriggerLogic):
+    """Trigger logic for Prosilica cameras.
+
+    Parameters
+    ----------
+    driver : ProsilicaDriverIO
+        The camera driver.
+    trigger_input : ProsilicaTriggerMode, optional
+        ``Sync In`` line used for external triggers, by default ``SYNC_IN_1``.
+    """
+
+    driver: ProsilicaDriverIO  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    def _set_exposure_mode(self, mode: ProsilicaExposureMode) -> list:
+        return [self.driver.exposure_mode.set(mode)]
+
+    async def prepare_level(self, num: int):
+        """Prepare the camera to expose while the trigger input is high."""
+        await asyncio.gather(
+            self.driver.trigger_mode.set(self.trigger_input),
+            self.driver.trigger_event.set(ProsilicaTriggerEvent.HIGH_LEVEL),
+            *self._set_exposure_mode(ProsilicaExposureMode.EXTERNAL),
+            prepare_exposures(self.driver, num),
+        )
+
+
+class ProsilicaDetectorMock(DeviceMock["ProsilicaDetector | ProsilicaLegacyDetector"]):
     """Mock behaviour that simulates Prosilica internally triggered acquisition."""
 
-    async def connect(self, device: "ProsilicaDetector") -> None:
+    async def connect(
+        self, device: "ProsilicaDetector | ProsilicaLegacyDetector"
+    ) -> None:
         """Mock signals to simulate Prosilica camera acquisition."""
         set_mock_value(device.driver.array_size_x, 2448)
         set_mock_value(device.driver.array_size_y, 2050)
@@ -451,6 +488,40 @@ class ProsilicaDetector(AreaDetector[ProsilicaDriverIO]):
             *writer_factories,
             acquire_logic=ADAcquireLogic(driver),
             trigger_logic=ProsilicaTriggerLogic(driver, trigger_input),
+            plugins=plugins,
+            config_sigs=config_sigs,
+            name=name,
+        )
+
+
+@default_mock_class(ProsilicaDetectorMock)
+class ProsilicaLegacyDetector(AreaDetector[ProsilicaLegacyDriverIO]):
+    """Create a Prosilica AreaDetector for older ADProsilica IOCs (e.g. 2.5.0).
+
+    Use this when the IOC lacks the ``GainMode``, ``ExposureMode`` and
+    ``TemperatureMainboard`` PVs. Internal and edge triggering are supported;
+    level (pulse-width) triggering is not.
+
+    Parameters are the same as for `ProsilicaDetector`.
+    """
+
+    def __init__(
+        self,
+        prefix: str,
+        *writer_factories: ADWriterFactory,
+        driver_suffix="cam1:",
+        trigger_input: ProsilicaTriggerMode = ProsilicaTriggerMode.SYNC_IN_1,
+        plugins: dict[str, NDPluginBaseIO] | None = None,
+        config_sigs: Sequence[SignalR] = (),
+        name: str = "",
+    ) -> None:
+        driver = ProsilicaLegacyDriverIO(prefix + driver_suffix)
+        super().__init__(
+            driver,
+            prefix,
+            *writer_factories,
+            acquire_logic=ADAcquireLogic(driver),
+            trigger_logic=ProsilicaLegacyTriggerLogic(driver, trigger_input),
             plugins=plugins,
             config_sigs=config_sigs,
             name=name,

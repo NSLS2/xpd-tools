@@ -8,6 +8,11 @@ from .dexela import (
     DexelaReadoutMode,
     DexelaTriggerMode,
 )
+from .emergent_vision import (
+    EmergentVisionDetector,
+    EmergentVisionDriverIO,
+    EVTPixelFormat,
+)
 from .panda import (
     PandAConfiguration,
     switch_panda_configuration,
@@ -26,10 +31,19 @@ from .prosilica import (
     ProsilicaDetector,
     ProsilicaDriverIO,
     ProsilicaExposureMode,
+    ProsilicaLegacyDetector,
+    ProsilicaLegacyDriverIO,
     ProsilicaTriggerEvent,
     ProsilicaTriggerMode,
 )
 from .qepro import QEPro, QEProTEC
+from .vimba import (
+    VimbaDetector,
+    VimbaDriverIO,
+    VimbaExposeOutModeAlvium,
+    VimbaOverlapAlvium,
+    VimbaTriggerSourceAlvium,
+)
 
 __all__ = [
     "DexelaBinningMode",
@@ -38,6 +52,9 @@ __all__ = [
     "DexelaFullWellMode",
     "DexelaReadoutMode",
     "DexelaTriggerMode",
+    "EmergentVisionDetector",
+    "EmergentVisionDriverIO",
+    "EVTPixelFormat",
     "PandAConfiguration",
     "switch_panda_configuration",
     "Pilatus4Detector",
@@ -51,8 +68,15 @@ __all__ = [
     "ProsilicaDetector",
     "ProsilicaDriverIO",
     "ProsilicaExposureMode",
+    "ProsilicaLegacyDetector",
+    "ProsilicaLegacyDriverIO",
     "ProsilicaTriggerEvent",
     "ProsilicaTriggerMode",
     "QEPro",
     "QEProTEC",
+    "VimbaDetector",
+    "VimbaDriverIO",
+    "VimbaExposeOutModeAlvium",
+    "VimbaOverlapAlvium",
+    "VimbaTriggerSourceAlvium",
 ]

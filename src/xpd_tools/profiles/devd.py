@@ -39,6 +39,11 @@ from ophyd_async.plan_stubs import retrieve_settings, store_settings
 from rich import print as rprint
 from tiled.client import from_uri
 
+from xpd_tools.detectors import (
+    EmergentVisionDetector,
+    ProsilicaLegacyDetector,
+    VimbaDetector,
+)
 from xpd_tools.detectors.dexela import DexelaDetector
 from xpd_tools.detectors.pilatus4 import Pilatus4Detector
 from xpd_tools.motors import RotationMotor
@@ -174,6 +179,21 @@ dexela1_path_provider = NSLS2PathProvider(
 )
 
 
+avt1_path_provider = NSLS2PathProvider(
+    RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
+    base_write_dir=PureWindowsPath("Z:\\proposals"),
+    granularity="year",
+)
+
+evt1_path_provider = NSLS2PathProvider(
+    RE.md,  # type: ignore (nslsii types metadata_dict as dict; RE.md is a RedisJSONDict)
+    base_data_dir=PurePosixPath("/nsls2/data/xpd-new/proposals"),
+    base_write_dir=PureWindowsPath("Z:\\proposals"),
+    granularity="year",
+)
+
+
 #############
 #############
 # DETECTORS #
@@ -239,6 +259,20 @@ with init_devices(mock=XPDTOOLS_RUNNING_IN_CI):
         "XF:28IDD-ES{Iris-Det:1}", ADWriterFactory.hdf(path_provider)
     )
     iris1_fly.set_name("iris1")  #
+
+    prosilica1 = ProsilicaLegacyDetector(
+        "XF:28IDD-BI{Det-Sample:1}",
+        ADWriterFactory.hdf(path_provider),
+        name="prosilica1",
+    )
+
+    avt1 = VimbaDetector(
+        "XF:28ID2-ES:2{Det:AV1}", ADWriterFactory.hdf(avt1_path_provider), name="avt1"
+    )
+
+    evt1 = EmergentVisionDetector(
+        "XF:28IDD-EM1{EVT-Cam:1}", ADWriterFactory.hdf(evt1_path_provider), name="evt1"
+    )
 
     # Xspress3 fluorescence detector (prefix and channels from xpdDacq)
     xs3 = Xspress3Detector(
